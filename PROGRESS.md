@@ -7,7 +7,7 @@
 | 1 | Khởi tạo | xong | 2026-09-04 |
 | 2 | Database | xong | 2026-09-04 |
 | 3 | Giao thức và TCP server | xong | 2026-09-04 |
-| 4 | EA phía Master | chưa bắt đầu | |
+| 4 | EA phía Master | **code xong, CHƯA nghiệm thu** | 2026-09-04 |
 | 5 | EA phía Client và thực thi lệnh | chưa bắt đầu | |
 | 6 | Luồng mở lệnh | chưa bắt đầu | |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
@@ -218,3 +218,82 @@
      chưa ai gọi định kỳ — gắn vào vòng nền ở phase 6 cùng với `processor.py`.
   6. **`ConfigMessage` và `broadcast_config()` đã có nhưng chưa nơi nào gọi.** Phase 9 sẽ gọi khi
      người vận hành đổi tham số nóng trên dashboard.
+
+### Phase 4
+
+> **TRẠNG THÁI: chưa hoàn thành.** Code MQL5 đã viết xong (mục 4.1–4.5), nhưng **toàn bộ 11 mục
+> "Kiểm tra phần mới" chưa chạy được** vì máy này không có MetaTrader 5. Không có terminal thì
+> không biên dịch được, không chạy được, và không kiểm chứng được điều quan trọng nhất của phase
+> này: "một hành động giao dịch, đúng một event". **Không được coi phase 4 là xong.**
+
+- **Đã làm:**
+  - `ea/CopyBridgeCommon.mqh` (~1300 dòng), gồm:
+    - Socket client với backoff 1s, 2s, 5s, 10s rồi giữ 10s; không chặn luồng chính.
+    - Hai hàm bọc UTF-8 `CbUtf8Encode`/`CbUtf8Decode` — **nơi duy nhất** gọi
+      `StringToCharArray`/`CharArrayToString`, luôn kèm `CP_UTF8`.
+    - Bộ đệm nhận gom byte tới khi gặp `\n`, giới hạn 256 KB khớp với Bridge.
+    - `CJsonWriter` + `CJsonReader` viết tay: escape đầy đủ (đặc biệt là newline), parser hiểu
+      chuỗi, escape `\uXXXX`, và object/array lồng nhau.
+    - Hàng đợi cục bộ `MQL5\Files\copybridge\<login>_outbox.ndjson`, **ghi file trước, gửi
+      socket sau**; cắt phần đã được `hello_ack.last_seq` xác nhận; gửi bù khi nhận `resend`.
+    - `seq` bền qua khởi động lại, lưu ở `<login>_state.json`.
+    - Bộ nhớ `command_id` đã thực thi (mảng + file, giữ 24 giờ); nhận lại command trùng thì trả
+      **ack cũ nguyên văn**.
+    - Khung `caused_by_command_id`: `RememberCause()` / `CauseFor()` với cửa sổ 10 giây.
+      Phase 4 chỉ cài sẵn, dùng thật ở phase 7.
+    - `CbProcessTransaction()`: **chỉ xử lý `TRADE_TRANSACTION_DEAL_ADD`**, phân nhánh đủ bốn
+      giá trị `deal.entry`, phân biệt đóng toàn phần với một phần bằng `PositionSelectByTicket()`,
+      luôn gửi `volume_after` thật (D-14).
+  - `ea/CopyBridgeMaster.mq5`: `AgentRole = MASTER`, `EventSetMillisecondTimer(100)` (không dựa
+    vào `OnTick`), từ chối khởi động nếu tài khoản không ở chế độ Hedging, dòng trạng thái trên
+    chart (kết nối Bridge, kết nối sàn, `seq`, số event trong hàng đợi).
+  - `tests/test_ea_protocol_contract.py` (24 test): đối chiếu **hai chiều** giữa mã nguồn MQL5 và
+    schema pydantic — mọi khoá JSON EA ghi ra đều phải có nghĩa với Bridge, và mỗi loại message
+    EA gửi phải được schema chấp nhận. Cộng thêm các test đọc mã nguồn để khoá lại các quy tắc
+    của phase 4 (chỉ `DEAL_ADD`, ghi-trước-gửi-sau, `CP_UTF8`, timer thay `OnTick`, không
+    `OrderSend`, không ký tự ngoài ASCII trong file MQL5).
+  - **Tổng 235 test xanh**, `ruff check .` sạch.
+
+- **Lệch so với plan:**
+  1. **Mã nguồn MQL5 và mọi chú thích trong đó viết bằng tiếng Anh không dấu**, khác quy ước
+     "chú thích tiếng Việt" ở `docs/CONVENTIONS.md`. MetaEditor và các bản build MT5 xử lý
+     encoding file nguồn không thống nhất; dấu tiếng Việt trong `.mqh` là nguồn lỗi biên dịch
+     rất khó tìm. Đã có test khoá lại việc này.
+  2. **Thêm `tests/test_ea_protocol_contract.py`** (không có trong plan). Không thay được test
+     trên terminal thật, nhưng bắt được lỗi "EA và Bridge nói lệch nhau" mà không cần MT5.
+  3. **Trường chiều lệnh tên `direction`**, đúng như đã chốt ở phase 3 (plan phase 4 gọi nó là
+     `type`).
+  4. **`event_id` dạng `EVT-<account_login>-<seq>`**, không phải `EVT-<agent>-<seq>`. EA không
+     biết `agent_id` cho tới khi nhận `hello_ack`, mà `event_id` phải sinh được cả khi Bridge
+     đang chết. `account_login` luôn có sẵn và cũng là duy nhất.
+  5. **Thêm kiểm tra tài khoản Hedging trong `OnInit`.** Plan không yêu cầu, nhưng mục 2 của
+     `00-README.md` nói rõ chỉ hỗ trợ Hedging — chặn ngay lúc khởi động rẻ hơn nhiều so với
+     phát hiện qua một event `INOUT` giữa phiên.
+
+- **Vấn đề còn treo:**
+  1. **CHƯA CÓ MT5 TRÊN MÁY.** Cần cài MetaTrader 5 và mở một tài khoản **demo** trước khi chạy
+     được 11 mục kiểm tra của phase 4. Đây là lựa chọn của người chủ dự án (chọn broker nào,
+     tài khoản demo nào), không nên tự quyết.
+  2. **Code MQL5 chưa từng được biên dịch.** Rủi ro cụ thể còn lại: sai tên hàm hoặc sai chữ ký
+     API mà không có compiler bắt. Ba lỗi loại này đã tự tìm và sửa trong lúc viết
+     (`TimeGDT` → `TimeGMT`; `HistorySelect` phải dùng `TimeCurrent()` chứ không phải giờ GMT;
+     `StringToInteger()` không đọc được chuỗi hex nên phải tự parse `\uXXXX`), nhưng **không có
+     gì đảm bảo đã hết**.
+  3. **Chưa ghi được hành vi close-by của broker.** Mục kiểm tra cuối của phase 4 yêu cầu ghi
+     lại chính xác broker xử lý phần dư thế nào (đóng cả hai và tạo vị thế mới, hay đóng một phần
+     vị thế lớn). **Phase 7 cần thông tin này.** Chưa có terminal nên chưa ghi được.
+  4. Chưa có `config.toml` thật; chưa có `bridge/__main__.py` (từ phase 3).
+
+- **Phát hiện sớm (ghi lại, không xử lý ở phase này):**
+  1. **`CbNowIso()` lấy phần mili giây từ `GetTickCount() % 1000`**, không đồng bộ với phần giây
+     của `TimeGMT()`. Đủ để đo độ trễ tương đối, nhưng **không được dùng làm khoá hay để so sánh
+     thứ tự**. Nếu phase 9 muốn hiển thị độ trễ copy chính xác tới mili giây thì phải đo ở phía
+     Bridge, không tin `ts_agent`.
+  2. **`SendSymbolSpecs()` dựng một chuỗi JSON cho toàn bộ Market Watch trong một message.**
+     Market Watch vài trăm symbol có thể vượt giới hạn 256 KB một dòng. Nếu gặp, phải chia lô —
+     và khi đó giao thức cần một trường đánh dấu "còn tiếp".
+   3. **`CauseFor()` dọn danh sách nguyên nhân mỗi lần gọi.** Với cửa sổ 10 giây và tần suất deal
+     thực tế thì danh sách luôn rất ngắn, nhưng đây là chỗ nếu phase 7 gọi trong vòng lặp nóng
+     thì cần xem lại.
+  4. **EA chưa dùng `MagicNumber` để lọc event.** Đúng phạm vi: Master phải báo **mọi** vị thế,
+     kể cả lệnh mở tay, để Bridge phân biệt (FR-12). Đừng "sửa" chỗ này thành lọc theo magic.
