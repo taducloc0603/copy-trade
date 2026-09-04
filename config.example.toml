@@ -1,0 +1,11 @@
+# Mẫu cấu hình. Sao chép thành `config.toml` rồi điền giá trị thật.
+# `config.toml` nằm trong .gitignore, `config.example.toml` thì được commit.
+
+[bridge]
+host = "0.0.0.0"
+port = 8787
+web_port = 8080
+db_path = "data/bridge.db"
+
+[security]
+# Token thật đặt trong config.toml, file này nằm trong .gitignore
