@@ -1,0 +1,158 @@
+"""Outbox command: ghi vào DB trước, gửi socket sau.
+
+Thứ tự này là bất di bất dịch:
+
+1. `INSERT INTO command ... status = 'PENDING'`
+2. gửi qua socket
+3. `UPDATE command SET status = 'SENT'`
+
+**Không bao giờ gửi một command chưa có trong DB.** Nếu Bridge chết ngay sau khi gửi mà trước
+khi kịp ghi, ta sẽ có một lệnh đã đặt ngoài sàn mà sổ sách không biết — đúng loại sai lệch mà
+đối chiếu ở phase 8 không thể tự sửa vì nó không biết là phải tìm cái gì.
+
+Agent đang offline thì command **ở lại `PENDING`**, không bị đánh `TIMEOUT`. Phân biệt "chưa
+gửi được" với "đã gửi mà không có phản hồi" là điều kiện cần để phase 8 xử lý đúng.
+"""
+
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import timedelta
+from typing import Any
+
+from bridge.clock import to_iso, utc_now, utc_now_iso
+from bridge.db.repo import Database
+from bridge.logging_setup import get_logger
+from bridge.protocol.messages import CommandMessage
+from bridge.protocol.server import BridgeServer
+
+log = get_logger(__name__)
+
+#: Hạn mặc định cho một command khi nơi gọi không chỉ định.
+DEFAULT_DEADLINE_MS = 5000
+
+COMMAND_ID_PREFIX = "CMD"
+
+
+def new_command_id() -> str:
+    """Sinh `command_id` mới.
+
+    Khác Pair ID, `command_id` không cần đọc bằng mắt nên dùng UUID cho gọn và không cần bộ đếm
+    trong DB.
+    """
+    return f"{COMMAND_ID_PREFIX}-{uuid.uuid4().hex}"
+
+
+class CommandDispatcher:
+    """Tạo, gửi và theo dõi hạn của command."""
+
+    def __init__(self, db: Database, server: BridgeServer) -> None:
+        self.db = db
+        self.server = server
+        # Agent vừa bắt tay xong thì đẩy ngay các command còn tồn.
+        server.on_agent_online = self.on_agent_online
+
+    # -- tạo và gửi ------------------------------------------------------------------------
+
+    async def dispatch(self, target_agent_id: str, command_type: str, *,
+                       pair_id: str | None = None, payload: dict[str, Any] | None = None,
+                       deadline_ms: int = DEFAULT_DEADLINE_MS,
+                       command_id: str | None = None) -> str:
+        """Ghi một command vào outbox rồi gửi ngay nếu agent đang kết nối.
+
+        Trả về `command_id`. Agent offline thì command nằm lại `PENDING` và sẽ được gửi khi
+        agent nối lại — hàm này **không** báo lỗi trong trường hợp đó.
+        """
+        command_id = command_id or new_command_id()
+        payload = payload or {}
+        deadline_at = to_iso(utc_now() + timedelta(milliseconds=deadline_ms))
+
+        self.db.create_command(
+            command_id, target_agent_id, command_type, pair_id=pair_id,
+            payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            deadline_at=deadline_at,
+        )
+        log.info("Tạo command %s type=%s cho agent %s", command_id, command_type,
+                 target_agent_id, extra={"agent_id": target_agent_id, "pair_id": pair_id,
+                                         "command_id": command_id})
+        await self._send(command_id, target_agent_id, command_type, pair_id, payload,
+                         deadline_at)
+        return command_id
+
+    async def _send(self, command_id: str, target_agent_id: str, command_type: str,
+                    pair_id: str | None, payload: dict[str, Any],
+                    deadline_at: str | None) -> bool:
+        message = CommandMessage(
+            command_id=command_id, type=command_type, pair_id=pair_id, payload=payload,
+            deadline_ts=deadline_at, ts=utc_now_iso(),
+        )
+        sent = await self.server.send_to(target_agent_id, message)
+        if sent:
+            self.db.mark_command_sent(command_id)
+        else:
+            log.warning("Agent %s đang offline, command %s nằm lại PENDING",
+                        target_agent_id, command_id,
+                        extra={"agent_id": target_agent_id, "command_id": command_id,
+                               "pair_id": pair_id})
+        return sent
+
+    async def on_agent_online(self, agent_id: str) -> None:
+        """Agent vừa kết nối: yêu cầu snapshot rồi đẩy nốt các command còn tồn."""
+        await self.request_snapshot(agent_id)
+        await self.flush_pending(agent_id)
+
+    async def request_snapshot(self, agent_id: str) -> str:
+        """Yêu cầu agent gửi toàn bộ vị thế hiện có.
+
+        Phase này chỉ lưu lại kết quả; đối chiếu là việc của phase 8.
+        """
+        return await self.dispatch(agent_id, "REQUEST_SNAPSHOT")
+
+    async def flush_pending(self, agent_id: str) -> int:
+        """Gửi mọi command đang `PENDING` của một agent, theo đúng thứ tự tạo."""
+        rows = [
+            row for row in self.db.list_inflight_commands()
+            if row["target_agent_id"] == agent_id and row["status"] == "PENDING"
+        ]
+        sent = 0
+        for row in rows:
+            payload = json.loads(row["payload_json"]) if row["payload_json"] else {}
+            if await self._send(row["command_id"], agent_id, row["type"], row["pair_id"],
+                                payload, row["deadline_at"]):
+                sent += 1
+        if sent:
+            log.info("Đã gửi bù %d command tồn đọng cho agent %s", sent, agent_id,
+                     extra={"agent_id": agent_id})
+        return sent
+
+    # -- hạn -------------------------------------------------------------------------------
+
+    def scan_deadlines(self) -> int:
+        """Chuyển các command `SENT` quá hạn sang `TIMEOUT` và tạo alert.
+
+        Chỉ quét `SENT`. Command `PENDING` là chưa gửi được vì agent offline — đánh `TIMEOUT`
+        cho nó là trộn lẫn hai tình huống khác hẳn nhau.
+        """
+        now = utc_now_iso()
+        rows = self.db.query_all(
+            "SELECT * FROM command WHERE status = 'SENT' AND deadline_at IS NOT NULL "
+            "AND deadline_at < ?",
+            (now,),
+        )
+        for row in rows:
+            command_id = row["command_id"]
+            with self.db.transaction() as conn:
+                conn.execute(
+                    "UPDATE command SET status = 'TIMEOUT', updated_at = ? WHERE command_id = ?",
+                    (now, command_id),
+                )
+            self.db.create_alert(
+                "ERROR", "COMMAND_TIMEOUT",
+                f"Command {command_id} type {row['type']} khong nhan duoc ack truoc han",
+                pair_id=row["pair_id"], agent_id=row["target_agent_id"],
+            )
+            log.error("Command %s quá hạn mà chưa có ack, chuyển TIMEOUT", command_id,
+                      extra={"command_id": command_id, "pair_id": row["pair_id"],
+                             "agent_id": row["target_agent_id"]})
+        return len(rows)

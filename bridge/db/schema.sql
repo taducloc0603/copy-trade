@@ -1,7 +1,10 @@
 -- Schema đầy đủ của MT5 Copy Bridge.
 --
--- File này là migration số 1 và là bản mô tả schema chính thức. Các thay đổi về sau nằm ở
--- `bridge/db/migrations/NNN_*.sql`, không sửa trực tiếp file này sau khi đã chạy trên máy thật.
+-- File này là migration số 1 và là bản mô tả schema chính thức.
+--
+-- Cho tới lần triển khai thật đầu tiên (phase 10), sửa thẳng file này là hợp lệ — chưa có
+-- database nào ngoài các file tạm của test. **Sau lần triển khai thật đầu tiên** thì file này
+-- đóng băng, và mọi thay đổi phải đi qua `bridge/db/migrations/NNN_*.sql`.
 --
 -- Các ràng buộc ở đây là cơ chế chống copy trùng CUỐI CÙNG. Logic ứng dụng có thể sai,
 -- ràng buộc DB thì không.
@@ -200,11 +203,15 @@ CREATE TABLE IF NOT EXISTS event (
     event_id             TEXT    NOT NULL UNIQUE,
     agent_id             TEXT    NOT NULL REFERENCES agent(agent_id),
     seq                  INTEGER NOT NULL CHECK (seq >= 0),
-    type                 TEXT    NOT NULL,
+    type                 TEXT    NOT NULL
+                                 CHECK (type IN ('position_opened', 'position_closed',
+                                                 'position_changed', 'order_rejected')),
     position_id          INTEGER,
     pair_id              TEXT    REFERENCES pair(pair_id),
     caused_by_command_id TEXT,
-    deal_entry           TEXT,
+    -- NULL chỉ hợp lệ với `order_rejected` — event đó không sinh từ deal nào.
+    deal_entry           TEXT    CHECK (deal_entry IS NULL
+                                        OR deal_entry IN ('IN', 'OUT', 'INOUT', 'OUT_BY')),
     volume_delta         REAL,
     volume_after         REAL,
     price                REAL,

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 1 | Khởi tạo | xong | 2026-09-04 |
 | 2 | Database | xong | 2026-09-04 |
-| 3 | Giao thức và TCP server | chưa bắt đầu | |
+| 3 | Giao thức và TCP server | xong | 2026-09-04 |
 | 4 | EA phía Master | chưa bắt đầu | |
 | 5 | EA phía Client và thực thi lệnh | chưa bắt đầu | |
 | 6 | Luồng mở lệnh | chưa bắt đầu | |
@@ -149,3 +149,72 @@
      dọn. Phase 10 dùng `VACUUM INTO` cho sao lưu, việc đó xử lý luôn phần này.
   6. **Chưa có công việc định kỳ gọi `run_retention()`.** Hàm đã sẵn sàng, lịch chạy hàng ngày
      thuộc phase 10.
+
+### Phase 3
+
+- **Đã làm:**
+  - `bridge/protocol/framing.py`: bộ đệm NDJSON chịu được message bị cắt, message dính nhau,
+    giới hạn 256 KB một dòng, giải mã UTF-8, dòng hỏng chỉ bị bỏ qua.
+  - `bridge/protocol/messages.py`: schema pydantic v2 cho 6 message agent→bridge và 5 message
+    bridge→agent. Hai ràng buộc bảo vệ D-14 nằm ở đây: `position_closed`/`position_changed`
+    bắt buộc có `volume_after`, mọi event sinh từ deal bắt buộc có `deal_entry` và `position_id`.
+  - `bridge/protocol/auth.py`: băm token bằng SHA-256, so bằng `hmac.compare_digest`,
+    sinh token 32 byte. Không hàm nào ở đây ghi token ra log.
+  - `bridge/protocol/server.py`: `asyncio.start_server`, bắt tay 6 bước, phát hiện lỗ hổng `seq`
+    và gửi `resend`, heartbeat + `broker_connected` → ONLINE/DEGRADED/OFFLINE, alert chỉ tạo
+    khi **chuyển** trạng thái.
+  - `bridge/protocol/dispatcher.py`: outbox ghi-trước-gửi-sau, command cho agent offline nằm lại
+    `PENDING`, quét hạn chuyển `SENT` quá hạn sang `TIMEOUT` kèm alert.
+  - `tests/mock_agent.py`: TCP client giả lập EA — bắt tay, bơm event với `seq` tự đặt (tạo lỗ
+    hổng hoặc trùng), gửi byte thô, trả ack với `retcode` chỉ định, giữ vị thế trong bộ nhớ để
+    trả lời `snapshot`, mô phỏng ngắt kết nối đột ngột, có sẵn bộ nhớ `command_id` đã xử lý
+    cho phase 5.
+  - Siết `CHECK` cho `event.type` và `event.deal_entry` trong `schema.sql` — xử lý xong mục
+    "phát hiện sớm" số 1 của phase 2.
+  - Test: `test_framing.py` (13), `test_messages.py` (34), `test_server.py` (26),
+    `test_dispatcher.py` (13). **Tổng toàn dự án 211 test, tất cả xanh.** `ruff check .` sạch.
+
+- **Lệch so với plan:**
+  1. **Siết `CHECK` bằng cách sửa thẳng `schema.sql`, không tạo `migrations/002_*.sql`.**
+     Chưa có database nào được triển khai thật nên chưa cần migration; đã sửa phần đầu
+     `schema.sql` nói rõ file này đóng băng **sau** lần triển khai thật đầu tiên (phase 10).
+  2. **Trường chiều lệnh trong `event.data` tên là `direction`, không phải `type`.** Phase 4
+     của plan liệt kê trường `type` trong event, nhưng `type` đã là loại event rồi. Đặt tên
+     `direction` để EA ở phase 4 không phải đoán. **EA phải theo tên này.**
+  3. **Không có message ack cho event.** Plan mục 3.4 viết "seq cũ thì bỏ qua nhưng vẫn phải trả
+     về ack xử lý cũ", nhưng bảng message ở 3.2 không có loại message nào để làm việc đó — chỉ
+     command mới có ack. Đã hiểu là "không xử lý lại", và `record_event()` dedup lo phần đó.
+     Nếu ý ban đầu là cần một message `event_ack` thật thì phải bổ sung vào giao thức ở phase 4.
+  4. **Mọi lời gọi database ở tầng mạng đều đồng bộ**, không qua executor. `Database` giữ một
+     kết nối với bộ đếm giao dịch lồng nhau; `await` giữa `BEGIN` và `COMMIT` sẽ làm hỏng bộ đếm
+     khi có hai tác vụ chen nhau. Gọi đồng bộ loại bỏ hẳn lớp lỗi đó. Xem "phát hiện sớm" số 3.
+  5. **`_advance_last_seq` đẩy `last_seq` theo chuỗi liên tục**, không chỉ gán bằng `seq` vừa
+     nhận. Plan chỉ nói "`last_seq` chỉ tăng khi event đã ghi thành công"; cách này giữ đúng ý
+     đó cả khi event tới lệch thứ tự do gửi bù.
+  6. **Thêm hai mã từ chối ngoài plan**: `ROLE_MISMATCH` và `AGENT_DISABLED`. Cùng loại với
+     `ACCOUNT_MISMATCH` mà plan đã yêu cầu.
+  7. **`command_id` dùng UUID (`CMD-<hex>`), không có bộ đếm trong DB.** Khác Pair ID,
+     `command_id` không cần đọc bằng mắt.
+
+- **Vấn đề còn treo:**
+  - Chưa có `config.toml` thật. Giờ đã cần: server lấy host/port từ đó khi chạy thật. Chưa chặn
+    được test vì test truyền `ServerConfig` trực tiếp.
+  - Chưa có cách chạy Bridge như một tiến trình (`bridge/__main__.py`). Vẫn đúng phạm vi —
+    phase 6 mới có vòng xử lý nghiệp vụ để chạy.
+  - `bridge/engine/` và `bridge/web/` vẫn trống.
+
+- **Phát hiện sớm (ghi lại, không xử lý ở phase này):**
+  1. **`_find_agent_by_token()` quét tuyến tính toàn bộ bảng `agent`** và băm một lần cho mỗi
+     dòng. Với 1 Master + 1 Client thì không đáng kể; nếu số agent lên vài chục thì đánh index
+     theo `token_hash` và tra thẳng.
+  2. **`agent.account_login` vẫn chưa `UNIQUE`** (từ phase 2). Phase 3 đã kiểm tra bằng code khi
+     bắt tay, nhưng ràng buộc DB vẫn nên có — cân nhắc ở phase 9 khi có màn hình quản lý agent.
+  3. **Nếu phase 10 đo thấy DB đồng bộ làm nghẽn vòng lặp sự kiện**, cách sửa đúng là một luồng
+     DB riêng với hàng đợi, **không phải** rải `asyncio.to_thread` — vì bộ đếm giao dịch lồng
+     nhau của `Database` không an toàn khi nhiều luồng dùng chung.
+  4. **`snapshot` mới chỉ được giữ trong bộ nhớ** (`server.latest_snapshots`), chưa ghi DB.
+     Đúng phạm vi phase 3; phase 8 sẽ quyết định có cần lưu bền hay không.
+  5. **Chưa có task nền gọi `dispatcher.scan_deadlines()`.** Hàm đã sẵn sàng và đã có test, nhưng
+     chưa ai gọi định kỳ — gắn vào vòng nền ở phase 6 cùng với `processor.py`.
+  6. **`ConfigMessage` và `broadcast_config()` đã có nhưng chưa nơi nào gọi.** Phase 9 sẽ gọi khi
+     người vận hành đổi tham số nóng trên dashboard.
