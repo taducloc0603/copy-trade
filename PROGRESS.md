@@ -5,7 +5,7 @@
 | Phase | Tên | Trạng thái | Ngày |
 |---|---|---|---|
 | 1 | Khởi tạo | xong | 2026-09-04 |
-| 2 | Database | chưa bắt đầu | |
+| 2 | Database | xong | 2026-09-04 |
 | 3 | Giao thức và TCP server | chưa bắt đầu | |
 | 4 | EA phía Master | chưa bắt đầu | |
 | 5 | EA phía Client và thực thi lệnh | chưa bắt đầu | |
@@ -81,3 +81,71 @@
      Sẽ cần từ phase 3 trở đi; phase 10 mới đóng gói thành dịch vụ.
   5. **`pytest-asyncio` đã cài và `asyncio_mode = "auto"` đã bật nhưng chưa có test async nào.**
      Cấu hình mới thực sự được kiểm chứng ở phase 3.
+
+### Phase 2
+
+- **Đã làm:**
+  - `bridge/db/schema.sql`: đủ 11 bảng nghiệp vụ (`agent`, `client_account`, `symbol_map`,
+    `symbol_spec`, `master_position`, `pair`, `event`, `command`, `reconcile_finding`, `alert`,
+    `system_config`) + `pair_id_seq`, đủ 10 index theo đặc tả, 4 pragma, và 10 giá trị khởi tạo
+    của `system_config`.
+  - Hai ràng buộc quan trọng nhất đã có và **đã được test là thật sự chặn**:
+    `UNIQUE (master_position_id, client_id)` và index một phần
+    `idx_pair_client_pos ON pair(client_id, client_position_id) WHERE client_position_id IS NOT NULL`.
+  - `bridge/db/migrations.py`: runner idempotent, mỗi migration chạy trong một giao dịch,
+    bảng `schema_version`.
+  - `bridge/db/repo.py`: lớp `Database` (pragma + giao dịch **lồng nhau được**) và các hàm
+    theo nghiệp vụ: `create_pending_pair`, `mark_pair_open`, `mark_pair_closed`, `record_event`,
+    `claim_next_pending_event`, `find_pair_by_client_position`, `list_pairs_needing_attention`,
+    `next_pair_id`, cùng các hàm upsert/đọc cho agent, client, symbol map/spec, command, alert,
+    system_config.
+  - `bridge/db/retention.py` + `bridge/db/archive_schema.sql`: xuất `event`/`command` quá hạn
+    sang `data/archive/YYYY-MM.db` rồi mới xoá, tách file theo tháng.
+  - `bridge/clock.py`: chuẩn thời gian dùng chung (UTC, ISO 8601, mili giây, hậu tố `Z`).
+  - Test: `tests/test_db_schema.py` (40), `tests/test_repo.py` (26), `tests/test_retention.py` (9).
+    **Tổng toàn dự án 123 test, tất cả xanh.** `ruff check .` sạch.
+
+- **Lệch so với plan:**
+  1. **`schema.sql` chính là migration version 1**, không tạo thêm bản chép ở
+     `migrations/001_*.sql`. Plan yêu cầu cả hai; giữ một bản duy nhất vì hai bản chép tay
+     chắc chắn sẽ lệch nhau. `migrations/` vẫn tồn tại và nhận file từ version 2 trở đi.
+  2. **Thêm bảng `pair_id_seq`** ngoài danh sách bảng của plan. Cần một bộ đếm reset theo ngày
+     đúng ngay cả khi `next_pair_id()` được gọi mà pair chưa được chèn.
+  3. **Thêm module `bridge/clock.py`** (không có trong plan). Phase 2 cần một chuẩn timestamp
+     duy nhất; để rải rác `datetime.now()` trong repo và retention là cách sinh lệch múi giờ.
+  4. **Thêm `bridge/db/archive_schema.sql`** (không có trong plan). Bảng archive có khoá chính
+     để `INSERT OR IGNORE` làm việc chạy lại retention an toàn.
+  5. **`event.type` và `event.deal_entry` KHÔNG có `CHECK`.** Plan phase 2 ghi rõ `CHECK IN (...)`
+     ở mọi cột nó muốn ràng buộc, và hai cột này không có. Danh sách giá trị hợp lệ nằm ở phase 3,
+     nên siết ở đây là viết code cho phase sau. Xem mục "phát hiện sớm" số 1.
+  6. **`Database` dùng `sqlite3` đồng bộ**, chưa dùng `aiosqlite`. Ngăn xếp ở plan cho phép cả
+     hai; phase 3 sẽ gọi tầng này qua executor.
+  7. **Retention chép và xoá bằng HAI giao dịch tách rời**, không phải một. SQLite không cam kết
+     giao dịch nguyên tử xuyên nhiều database khi database chính chạy WAL — mà D-04 bắt buộc WAL.
+     Thứ tự chép-trước-xoá-sau được giữ đúng, và bước xoá chỉ xoá dòng đã xác nhận có mặt trong
+     archive, nên gián đoạn giữa chừng chỉ gây trùng chứ không gây mất.
+  8. **Repo có nhiều hàm hơn sáu hàm plan nêu tên.** Plan chỉ liệt kê ví dụ, còn tiêu chí hoàn
+     thành đòi dựng được một cặp lệnh từ `PENDING_OPEN` tới `CLOSED` — cần thêm các hàm cho
+     command, alert, master_position, symbol spec/map.
+
+- **Vấn đề còn treo:**
+  - Chưa có `config.toml` thật (từ phase 1, chưa cần tới phase 3).
+  - `bridge/protocol/`, `bridge/engine/`, `bridge/web/` vẫn trống — đúng phạm vi.
+
+- **Phát hiện sớm (ghi lại, không xử lý ở phase này):**
+  1. **`event.type` và `event.deal_entry` cần `CHECK` ở phase 3**, khi danh sách giá trị đã chốt:
+     type ∈ (`position_opened`, `position_closed`, `position_changed`, `order_rejected`),
+     deal_entry ∈ (`IN`, `OUT`, `INOUT`, `OUT_BY`). Thêm bằng `migrations/002_*.sql`.
+  2. **`claim_next_pending_event()` là "xem trước", không phải "giành lấy" thật.** Schema không
+     có trạng thái `IN_PROGRESS`, nên hàm chỉ chọn event `PENDING` cũ nhất; nơi gọi phải chốt
+     bằng `mark_event_processed()`. Đúng với phase 6 (xử lý tuần tự theo từng agent), nhưng nếu
+     sau này chạy nhiều worker thì phải thêm trạng thái.
+  3. **`agent.account_login` chưa `UNIQUE`.** Phase 3 yêu cầu "một token chỉ dùng cho đúng một
+     tài khoản MT5" và kiểm tra `account_login` khi bắt tay — cân nhắc thêm ràng buộc DB ở đó
+     thay vì chỉ kiểm tra bằng code.
+  4. **`pair.last_event_id` cố ý KHÔNG có khoá ngoại tới `event`.** Event bị dọn sau 30 ngày còn
+     pair thì sống mãi (D-17); có FK thì retention sẽ không xoá được. Đừng "sửa" chỗ này ở phase sau.
+  5. **Retention xoá dòng nhưng không thu nhỏ file.** File `bridge.db` sẽ không teo lại sau khi
+     dọn. Phase 10 dùng `VACUUM INTO` cho sao lưu, việc đó xử lý luôn phần này.
+  6. **Chưa có công việc định kỳ gọi `run_retention()`.** Hàm đã sẵn sàng, lịch chạy hàng ngày
+     thuộc phase 10.
