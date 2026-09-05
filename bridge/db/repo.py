@@ -617,6 +617,50 @@ class Database:
             return self.query_all(sql + " ORDER BY created_at")
         return self.query_all(sql + " AND pair_id = ? ORDER BY created_at", (pair_id,))
 
+    # -- reconcile_finding -----------------------------------------------------------------
+
+    def create_finding(self, run_id: str, severity: str, kind: str,
+                       suggested_action: str | None = None, **fields: Any) -> int:
+        """Ghi một dòng sai lệch do đối chiếu phát hiện.
+
+        `evidence_json` phải chứa **cả ba nguồn** (DB nói gì, Master thực tế, Client thực tế).
+        Người vận hành cần thấy bằng chứng để tự phán đoán, không chỉ thấy kết luận.
+        """
+        columns = {
+            "run_id": run_id, "severity": severity, "kind": kind,
+            "suggested_action": suggested_action, "resolution": "PENDING",
+            "created_at": _now(), **fields,
+        }
+        names = ", ".join(columns)
+        holders = ", ".join("?" for _ in columns)
+        with self.transaction() as conn:
+            cur = conn.execute(
+                f"INSERT INTO reconcile_finding ({names}) VALUES ({holders})",
+                tuple(columns.values()))
+            return int(cur.lastrowid or 0)
+
+    def get_finding(self, finding_id: int) -> sqlite3.Row | None:
+        return self.query_one("SELECT * FROM reconcile_finding WHERE id = ?", (finding_id,))
+
+    def list_findings(self, run_id: str | None = None, resolution: str | None = None,
+                      severity: str | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM reconcile_finding WHERE 1 = 1"
+        params: list[Any] = []
+        for cot, gia_tri in (("run_id", run_id), ("resolution", resolution),
+                             ("severity", severity)):
+            if gia_tri is not None:
+                sql += f" AND {cot} = ?"
+                params.append(gia_tri)
+        return self.query_all(sql + " ORDER BY id", tuple(params))
+
+    def resolve_finding(self, finding_id: int, resolution: str,
+                        note: str | None = None) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE reconcile_finding SET resolution = ?, resolved_at = ?, "
+                "resolved_note = ? WHERE id = ?",
+                (resolution, _now(), note, finding_id))
+
     # -- alert -----------------------------------------------------------------------------
 
     def create_alert(self, level: str, code: str, message: str, **fields: Any) -> int:

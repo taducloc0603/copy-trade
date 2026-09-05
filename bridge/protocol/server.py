@@ -617,8 +617,11 @@ class BridgeServer:
         for connection in list(self.connections.values()):
             if now - connection.last_seen_monotonic <= timeout_sec:
                 continue
+            # Master offline là CRITICAL, Client offline là ERROR (plan 8.2). Mất Master
+            # nghĩa là mù hoàn toàn về nguồn lệnh; mất một Client chỉ mất một nhánh copy.
+            muc = "CRITICAL" if connection.role == "MASTER" else "ERROR"
             doi = self._alert_on_transition(
-                connection.agent_id, "OFFLINE", "WARNING", "AGENT_OFFLINE",
+                connection.agent_id, "OFFLINE", muc, "AGENT_OFFLINE",
                 f"Agent {connection.agent_id} khong gui heartbeat qua han",
             )
             if doi:

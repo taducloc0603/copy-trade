@@ -23,6 +23,7 @@ from typing import Any
 from bridge.clock import parse_iso, utc_now, utc_now_iso
 from bridge.db.repo import Database
 from bridge.engine.closing import CloseFlow
+from bridge.engine.reconcile import Reconciler
 from bridge.engine.sizing import (
     SizingInputs,
     compute_client_volume,
@@ -88,6 +89,21 @@ class EventProcessor:
         self._deferred_close: list[str] = []
         #: Toàn bộ ngữ nghĩa đóng lệnh (phase 7). Processor chỉ định tuyến vào đây.
         self.closing = CloseFlow(db, dispatcher, self._alert, server)
+        #: Đối chiếu ba nguồn (phase 8).
+        self.reconciler = Reconciler(db, server, dispatcher, self.closing, self._alert)
+        self._last_reconcile = 0.0
+        self._reconcile_task: asyncio.Task[None] | None = None
+
+        # Đối chiếu khi agent nối lại (plan 8.4). Nối vào sau `CommandDispatcher` chứ không
+        # thay nó: dispatcher cần chạy trước để gửi bù command tồn đọng.
+        truoc = server.on_agent_online
+
+        async def sau_khi_agent_online(agent_id: str) -> None:
+            if truoc is not None:
+                await truoc(agent_id)
+            self.schedule_reconcile("AGENT_ONLINE")
+
+        server.on_agent_online = sau_khi_agent_online
 
         server.on_command_acked = self.on_command_acked
         dispatcher.on_timeout = self.on_command_timeout
@@ -97,9 +113,42 @@ class EventProcessor:
     async def start(self) -> None:
         self._task = asyncio.create_task(self._loop())
 
+    def schedule_reconcile(self, trigger: str) -> None:
+        """Xếp một vòng đối chiếu chạy nền.
+
+        Không chạy thẳng trong đường bắt tay: đối chiếu phải chờ snapshot của **tất cả** agent,
+        mất vài giây, và giữ đường bắt tay lâu như vậy sẽ làm agent tưởng Bridge treo. Cũng gộp
+        nhiều lời gọi liên tiếp thành một — ba agent nối lại cùng lúc chỉ cần một vòng.
+        """
+        if self._reconcile_task is not None and not self._reconcile_task.done():
+            return
+        self._reconcile_task = asyncio.create_task(self._chay_doi_chieu(trigger))
+
+    async def _chay_doi_chieu(self, trigger: str) -> None:
+        """Chờ Master lên rồi mới đối chiếu.
+
+        Agent nào nối trước cũng kích hoạt, mà Client thường nối trước Master. Chạy ngay lúc đó
+        thì không có snapshot Master, vòng đối chiếu vô ích và để lại một alert
+        `RECONCILE_NO_SNAPSHOT` báo giả — thứ làm người vận hành quen với việc bỏ qua alert.
+        """
+        het = asyncio.get_running_loop().time() + 15.0
+        while asyncio.get_running_loop().time() < het:
+            await asyncio.sleep(0.5)
+            master = self.db.query_one("SELECT status FROM agent WHERE role = 'MASTER' LIMIT 1")
+            if master is not None and master["status"] == "ONLINE":
+                break
+        else:
+            log.info("Bo qua vong doi chieu %s: Master chua len sau 15s", trigger)
+            return
+        try:
+            await self.reconciler.run(trigger)
+        except Exception:
+            log.exception("Loi trong vong doi chieu")
+        self._last_reconcile = asyncio.get_running_loop().time()
+
     async def stop(self) -> None:
         await self.closing.stop()
-        for task in (self._task, *self._retry_tasks):
+        for task in (self._task, self._reconcile_task, *self._retry_tasks):
             if task is not None:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -117,6 +166,7 @@ class EventProcessor:
                     self.dispatcher.scan_deadlines()
                     self.scan_correlation_deadlines()
                     await self.check_emergency()
+                    await self.check_reconcile(now)
                     last_scan = now
                 if not processed:
                     await asyncio.sleep(self.poll_interval_sec)
@@ -155,6 +205,14 @@ class EventProcessor:
             return
         self.db.mark_event_processed(event_id, status, error=reason, pair_id=pair_id)
         await self._flush_deferred_close()
+
+    async def check_reconcile(self, now: float) -> None:
+        """Đối chiếu định kỳ mỗi `reconcile_interval_sec` (plan 8.4)."""
+        moi = self.db.get_config_int("reconcile_interval_sec", 60)
+        if moi <= 0 or now - self._last_reconcile < moi:
+            return
+        self._last_reconcile = now
+        await self.reconciler.run(trigger="PERIODIC")
 
     async def check_emergency(self) -> None:
         """`run_mode = EMERGENCY` thì đóng toàn bộ cặp đang quản lý (plan 7.8).

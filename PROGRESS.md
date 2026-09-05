@@ -12,7 +12,7 @@
 | 6 | Luồng mở lệnh | xong | 2026-09-05 |
 | 6b | Mở lệnh qua giao diện MT5 | **xong** | 2026-09-05 |
 | 7 | Luồng đóng lệnh | **xong** | 2026-09-05 |
-| 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
+| 8 | Mất kết nối và đối chiếu | **xong** | 2026-09-05 |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
 | 10 | Đóng gói, vận hành và nghiệm thu | chưa bắt đầu | |
 
@@ -1338,3 +1338,92 @@ Tiêu chí "chạy một phiên 60 phút với chạm SL, bật tắt công tắ
 phần cốt lõi bằng bốn thao tác trên. Cascade (`can_close_master = 1`) và `EMERGENCY` **chỉ được
 kiểm bằng test tự động**, chưa chạy trên demo — cả hai đều cần nhiều Client, mà cấu hình hiện
 tại chỉ có một.
+
+---
+
+## Phase 8 — Mất kết nối và đối chiếu
+
+### `bridge/engine/reconcile.py`
+
+So **ba nguồn**: bảng `pair`, snapshot Master, snapshot Client. Hai nguồn chỉ cho biết "có lệch",
+ba nguồn mới cho biết **lệch ở đâu**. Toàn bộ 12 dòng của ma trận 8.4 đã cài, mỗi dòng một test.
+
+Ba quyết định đáng ghi lại:
+
+- **`Reconciler` cầm `CloseFlow`, không cầm `CommandDispatcher`.** Nhờ vậy nó thừa hưởng mọi cổng
+  an toàn của phase 7 — một lệnh đóng mỗi cặp, cảnh báo cặp ghép suy đoán — thay vì tự tạo
+  command và đi vòng qua chúng. Đây cũng là cách thoả mục checklist "đối chiếu chạy đồng thời
+  với cascade không tạo command trùng" mà không cần thêm cơ chế nào.
+- **`ACK_LOST` không có thẻ là `DECISION`.** Ghép sai ở đó nghĩa là gắn vị thế của người dùng vào
+  một cặp, rồi phase 7 sẽ đóng nó. `accept_all_safe()` không chạm tới được.
+- **Vị thế Client mở tay không mang thẻ thì không vào danh sách.** Nhận dạng theo thẻ và theo
+  bảng `pair`, không theo magic — lệnh mở qua giao diện cũng có `magic = 0` (D-07b), nên nhận
+  dạng bằng magic sẽ lôi cả lệnh của người dùng vào.
+
+Mức alert theo 8.2: **Master offline là CRITICAL, Client offline là ERROR**. Mất Master là mù
+hoàn toàn về nguồn lệnh; mất một Client chỉ mất một nhánh copy.
+
+### Ba lỗi tự tìm ra, đều thuộc loại "làm người vận hành ngừng đọc alert"
+
+Cả ba đều lộ ra khi nhìn dữ liệu demo thật chứ không phải khi viết test.
+
+1. **Cặp `ORPHANED` bị báo lại mỗi 60 giây.** Nhưng `ORPHANED` nghĩa là đã phát hiện, đã có
+   alert, đang chờ người — nhắc lại mỗi phút là vô nghĩa. Đã loại khỏi ma trận.
+2. **Sai lệch chưa xử lý bị ghi lại mỗi vòng.** Thêm cổng lọc trùng: đã có finding cùng loại,
+   cùng khoá, đang `PENDING` thì không ghi thêm. Danh sách finding mà đầy dòng trùng thì người
+   ta ngừng đọc nó, và nó mất luôn tác dụng của chính mình.
+3. **Vòng đối chiếu tự động chạy trước khi Master kịp lên**, để lại alert `RECONCILE_NO_SNAPSHOT`
+   báo giả. Client thường nối trước Master. Đã sửa hai lớp: chờ Master `ONLINE` trước khi chạy,
+   và `_snapshot()` chờ trong hạn thay vì bỏ cuộc ngay khi thấy agent chưa `ONLINE`.
+
+### Một bài học về API, cần cho phase 9
+
+`run()` trả về `run_id`, và phản xạ tự nhiên là liệt kê finding theo `run_id` đó. **Sai** kể từ
+khi có cổng lọc trùng: một sai lệch đã được vòng trước ghi sẽ không xuất hiện trong `run_id` mới.
+Tôi đã tự vấp đúng chỗ này khi viết kịch bản nghiệm thu — nó báo "0 sai lệch" trong khi finding
+nằm sẵn trong DB từ vòng tự động trước đó.
+
+**Dashboard phase 9 phải hiển thị "mọi finding đang `PENDING`", không phải "finding của lần chạy
+gần nhất".**
+
+### Nghiệm thu trên demo: ĐẠT
+
+Dựng sai lệch thật bằng đúng kịch bản checklist yêu cầu: `run_mode = PAUSED`, người dùng đóng tay
+vị thế Master `71489357`. Event tới nơi và bị `IGNORED` với lý do `run_mode = PAUSED` — sổ sách
+vẫn ghi cặp `OPEN` trong khi Master thật đã đóng.
+
+Vòng đối chiếu **tự chạy khi agent nối lại** và sinh đúng một finding:
+
+```
+#1 [SAFE] MASTER_CLOSED_OFFLINE  pair=PAIR-20260905-000026  -> CLOSE_CLIENT
+   DB     : status=OPEN, M71489357, C71489358, volume 0.01/0.01, tag CB5e9a669d8a
+   Master : None
+   Client : {position_id: 71489358, BTCUSD.s, SELL, 0.01, magic: 0, comment: 'CB5e9a669d8a'}
+```
+
+`evidence_json` có đủ cả ba nguồn, đúng yêu cầu "người vận hành phải thấy bằng chứng chứ không
+chỉ thấy kết luận". Sau `accept`: cặp `CLOSED`, `close_source = BOT`, và snapshot sau đó xác nhận
+vị thế `71489358` đã **thực sự biến mất** khỏi terminal Client.
+
+`run_mode` giữ `PAUSED` suốt quá trình — không có đường nào tự chuyển sang `RUNNING` (D-15, 8.6).
+
+### 432 test xanh (+25)
+
+### Chưa nghiệm thu trên demo, chỉ có test tự động
+
+Nhiều mục của checklist cần dựng tình huống mà cấu hình một-Client hiện tại không tạo được, hoặc
+cần ngắt mạng thật:
+
+- `offline_reopen_policy = IF_STILL_OPEN` với giá đã trôi — cần điều khiển giá.
+- Ngắt terminal khỏi broker (giữ kết nối Bridge) để thử `DEGRADED`.
+- Kịch bản hỗn loạn 30 phút của "Tiêu chí hoàn thành".
+
+`CLOSE_MASTER` trong `offline_reopen_policy` **chưa cài** — mới có `NONE` và `IF_STILL_OPEN`
+(bản `IF_STILL_OPEN` hiện dừng ở mức kiểm hai điều kiện rồi cảnh báo, chưa thực sự mở bù, vì
+"được tự động ĐÓNG, không được tự động MỞ" là luật cứng và việc mở bù cần người bấm ở phase 9).
+
+### Trạng thái để lại
+
+`run_mode = PAUSED`, Bridge đã tắt. Còn `PAIR-000025` (`ORPHANED`) và `PAIR-000027`
+(`PARTIALLY_CLOSED`) — giữ lại làm dữ liệu thật. Không đặt lệnh mới nào trong lượt này; nghiệm
+thu dùng đúng một thao tác đóng tay của người dùng.

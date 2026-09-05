@@ -50,6 +50,11 @@ def _master(server: BridgeServer, **kwargs: object) -> MockAgent:
                      account_login=MASTER_LOGIN, **kwargs)
 
 
+def _client(server: BridgeServer, **kwargs: object) -> MockAgent:
+    return MockAgent(host="127.0.0.1", port=server.port, token=CLIENT_TOKEN, role="CLIENT",
+                     account_login=CLIENT_LOGIN, **kwargs)
+
+
 async def _wait_until(predicate, timeout: float = 2.0) -> None:
     """Chờ tới khi điều kiện đúng. Dùng cho các thay đổi xảy ra trong task nền của server."""
     loop = asyncio.get_running_loop()
@@ -401,7 +406,24 @@ async def test_ngung_heartbeat_thi_chuyen_offline_va_co_alert(server: BridgeServ
         await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["status"] == "OFFLINE")
         alerts = [a for a in agents_db.list_open_alerts() if a["code"] == "AGENT_OFFLINE"]
         assert alerts, "Phải có alert khi agent mất kết nối"
-        assert alerts[0]["level"] == "WARNING"
+        # Master offline là CRITICAL, Client offline là ERROR (plan 8.2). Mất Master nghĩa là
+        # mù hoàn toàn về nguồn lệnh; mất một Client chỉ mất một nhánh copy.
+        assert alerts[0]["level"] == "CRITICAL"
+    finally:
+        await agent.kill()
+
+
+async def test_client_offline_la_error_chu_khong_phai_critical(server: BridgeServer,
+                                                               agents_db: Database) -> None:
+    agent = _client(server)
+    await agent.start()
+    try:
+        await agent.send_heartbeat()
+        await _wait_until(lambda: agents_db.get_agent(CLIENT_AGENT)["status"] == "ONLINE")
+        await _wait_until(lambda: agents_db.get_agent(CLIENT_AGENT)["status"] == "OFFLINE")
+        alerts = [a for a in agents_db.list_open_alerts()
+                  if a["code"] == "AGENT_OFFLINE" and a["agent_id"] == CLIENT_AGENT]
+        assert alerts and alerts[0]["level"] == "ERROR"
     finally:
         await agent.kill()
 

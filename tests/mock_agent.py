@@ -42,6 +42,9 @@ class MockPosition:
     ticket: int | None = None
     price_open: float | None = None
     magic: int | None = None
+    #: `POSITION_COMMENT`. Đối chiếu ở phase 8 nhận ra vị thế của bot bằng thẻ trong comment,
+    #: không bằng magic — vị thế mở qua giao diện có `magic = 0` (D-07b).
+    comment: str | None = None
 
     def as_wire(self) -> dict[str, Any]:
         payload = {
@@ -50,7 +53,7 @@ class MockPosition:
             "direction": self.direction,
             "volume": self.volume,
         }
-        for name in ("ticket", "price_open", "magic"):
+        for name in ("ticket", "price_open", "magic", "comment"):
             value = getattr(self, name)
             if value is not None:
                 payload[name] = value
