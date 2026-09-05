@@ -391,6 +391,9 @@ public:
          m_isString[m_count] = isString;
          m_count++;
         }
+      // Khong bao gio toi day: vong lap chi thoat bang return. Trinh bien dich
+      // MQL5 khong suy luan duoc dieu do nen van doi mot lenh return o cuoi ham.
+      return(false);
      }
 
    bool              Has(const string key) const { return(IndexOf(key) >= 0); }
@@ -455,9 +458,25 @@ string CbNowIso()
    datetime now = TimeGMT();
    MqlDateTime dt;
    TimeToStruct(now, dt);
-   // MQL5 khong co dong ho mili giay gan voi TimeGMT(); dung GetTickCount()
-   // de co phan le. Chi de do latency tuong doi, khong dung lam khoa.
-   int ms = (int)(GetTickCount() % 1000);
+
+   // MQL5 khong co dong ho tuong ung mili giay cho gio thuc. Cach lay phan le
+   // dung: neo GetTickCount() vao dung thoi diem TimeGMT() nhay sang giay moi,
+   // roi dem tu do. Sai so bang chu ky goi ham (100ms), thay vi la mot so
+   // ngau nhien trong 0..999 nhu khi lay GetTickCount() % 1000 - cach do cho ra
+   // ca latency AM, tuc la vo nghia.
+   static datetime anchor_sec  = 0;
+   static uint     anchor_tick = 0;
+   uint tick = GetTickCount();
+   if(now != anchor_sec)
+     {
+      anchor_sec  = now;
+      anchor_tick = tick;
+     }
+   int ms = (int)(tick - anchor_tick);
+   if(ms < 0)
+      ms = 0;
+   if(ms > 999)
+      ms = 999;
    return(StringFormat("%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
                        dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec, ms));
   }
@@ -833,8 +852,10 @@ private:
            }
 
          TrimOutbox(m_bridge_last_seq);
-         if(m_seq > m_bridge_last_seq)
-            ResendFrom(m_bridge_last_seq + 1);
+         // CO Y KHONG tu gui bu o day. Bridge phat hien lo hong va gui message
+         // `resend` (phase 3, muc 3.4) - de ca hai ben cung tu quyet dinh thi moi
+         // event bi gui hai lan moi lan noi lai. Rang buoc event_id UNIQUE o Bridge
+         // van bat het, nhung do la lang phi chu khong phai thiet ke.
          SendSymbolSpecs();
          return;
         }

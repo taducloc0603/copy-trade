@@ -7,7 +7,7 @@
 | 1 | Khởi tạo | xong | 2026-09-04 |
 | 2 | Database | xong | 2026-09-04 |
 | 3 | Giao thức và TCP server | xong | 2026-09-04 |
-| 4 | EA phía Master | **code xong, CHƯA nghiệm thu** | 2026-09-04 |
+| 4 | EA phía Master | xong | 2026-09-05 |
 | 5 | EA phía Client và thực thi lệnh | chưa bắt đầu | |
 | 6 | Luồng mở lệnh | chưa bắt đầu | |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
@@ -297,3 +297,95 @@
      thì cần xem lại.
   4. **EA chưa dùng `MagicNumber` để lọc event.** Đúng phạm vi: Master phải báo **mọi** vị thế,
      kể cả lệnh mở tay, để Bridge phân biệt (FR-12). Đừng "sửa" chỗ này thành lọc theo magic.
+
+### Phase 4 — nghiệm thu (2026-09-05)
+
+Phần code đã ghi ở mục trên. Mục này ghi kết quả **chạy thật trên MT5**, sau khi máy đã cài
+hai terminal. Trạng thái phase 4 chuyển từ "chưa nghiệm thu" thành **xong**.
+
+- **Môi trường nghiệm thu:**
+  - Hai terminal MT5: `MetaTrader 5 1` (tài khoản **538216**) và `MetaTrader 5 2` (**538217**),
+    cả hai trên **Connext-Demo**. Đã xác nhận là demo qua log `authorized on Connext-Demo`.
+  - Phase 4 chỉ dùng terminal 1. Terminal 2 để dành cho phase 5.
+  - Market Watch chỉ có **2 symbol**: `BTCUSD.s`, `XAUUSD.s`.
+  - **Biên dịch: 0 lỗi, 0 cảnh báo** (MetaEditor64 `/compile`).
+
+- **Kết quả 11 mục kiểm tra:**
+
+  | # | Mục | Kết quả |
+  |---|---|---|
+  | 1 | Kết nối, `hello_ack`, agent ONLINE | ĐẠT |
+  | 2 | Mở tay → **đúng một** event `position_opened` | ĐẠT — 11 lần mở, mỗi lần đúng 1 |
+  | 3 | Đóng tay → đúng một `position_closed`, `volume_after = 0` | ĐẠT — 11 lần đóng |
+  | 4 | Đóng một phần 30% → `volume_after` = phần còn lại thật | ĐẠT — `delta=0.03` → `volume_after=0.07` |
+  | 5 | Chạm SL → vẫn đúng một event đóng | ĐẠT |
+  | 6 | Tắt Bridge, giao dịch, bật lại → gửi bù đủ, đúng thứ tự | ĐẠT — 8 event tồn, về đủ |
+  | 7 | Tắt EA rồi bật lại → `seq` tiếp tục, không reset | ĐẠT — restart 12:07:44, `seq` tiếp từ 15 |
+  | 8 | Mất kết nối sàn → `broker_connected=false`, DEGRADED | ĐẠT — xảy ra thật 11:44:39, alert ERROR |
+  | 9 | Symbol có ký tự ngoài ASCII | **KHÔNG KIỂM CHỨNG ĐƯỢC** — xem dưới |
+  | 10 | Close By → `deal_entry = OUT_BY` | **KHÔNG KIỂM CHỨNG ĐƯỢC** — xem dưới |
+  | 11 | Tiêu chí hoàn thành: event khớp lịch sử terminal | ĐẠT — **23 deal ↔ 23 event, khớp 1-1** |
+
+  Phân loại 23 event: 11 `position_opened`, 11 `position_closed`, 1 `position_changed`.
+  `seq` liên tục 1..23, không lỗ hổng, không trùng. Độ trễ từ lúc terminal khớp tới lúc Bridge
+  ghi vào DB: **11–21ms**.
+
+- **Ba kết quả phụ đáng ghi:**
+  1. **Ba lần sửa SL sinh ra 0 event.** Sửa SL/TP không tạo deal, nên bộ lọc chỉ nhận
+     `TRADE_TRANSACTION_DEAL_ADD` hoạt động đúng. Nếu lọc sai thì đây đã là 3 event rác.
+  2. **Lệnh `XAUUSD.s` bị từ chối `[Market closed]` sinh ra 0 event.** Không có deal thì không
+     có sự kiện — EA không bịa event từ lệnh thất bại.
+  3. **`filling_mode` EA báo lên khớp với terminal.** EA gửi `filling_mode = 1` (FOK) cho
+     `BTCUSD.s`; hộp thoại đặt lệnh của terminal ghi `Fill policy: Fill or Kill`.
+
+- **Hai lỗi thật tìm được khi chạy thật và đã sửa:**
+  1. **`latency_ms` âm (−761ms).** `CbNowIso()` lấy mili giây từ `GetTickCount() % 1000`, không
+     liên quan gì tới phần giây của `TimeGMT()`. Đã neo `GetTickCount()` vào đúng thời điểm giây
+     nhảy. Sau khi sửa: +14ms, +26ms, +66ms.
+  2. **Mỗi event bị gửi hai lần mỗi lần nối lại.** EA tự gửi bù khi thấy `hello_ack.last_seq`
+     thấp hơn `seq` của mình, **và** Bridge cũng gửi `resend`. Ràng buộc `event_id UNIQUE` bắt
+     hết nên DB vẫn đúng, nhưng đó là ràng buộc cứu chứ không phải thiết kế. Đã bỏ đường tự gửi
+     bù ở EA, trả việc đó về cho Bridge đúng như plan mục 3.4. **Đã kiểm chứng lại sau khi sửa:
+     event 23 được ghi đúng 1 lần, 0 lần dedup.**
+
+  > Lỗi số 2 cũng là lần đầu cơ chế dedup (D-08, FR-31) bị thử bằng một tình huống gửi trùng
+  > **thật** chứ không phải test dựng sẵn. Nó đứng vững: 8 event gửi hai lần, DB có đúng 8 dòng.
+
+  Ngoài ra một lỗi biên dịch: `CJsonReader::Parse()` thiếu `return` ở cuối — trình biên dịch
+  MQL5 không suy luận được rằng `while(true)` chỉ thoát bằng `return`.
+
+- **Vấn đề còn treo:**
+  1. **Mục #10 (Close By) không kiểm chứng được — broker Connext-Demo không hỗ trợ.** Đã xác
+     nhận bằng cách mở hai vị thế ngược chiều cùng symbol rồi mở hộp thoại đặt lệnh: danh sách
+     loại lệnh chỉ có `Market Execution`, `Limit Order`, `Stop Order`, `Stop Limit Order`, không
+     có `Close By`.
+     **→ Đây là RỦI RO ĐÃ BIẾT cho phase 7.** D-12 phải được cài đặt mà **không có dữ liệu thực
+     nghiệm** về việc broker xử lý phần dư thế nào. Mục 7.7 của plan yêu cầu tham khảo ghi chép
+     từ phase 4; ghi chép đó là dòng này. Cách xử lý đề xuất: cài đặt theo đúng D-12 (đóng 2 pair
+     theo `position_id`, đối chiếu ngay, phần dư chỉ cảnh báo và KHÔNG tự copy) — vốn đã là
+     phương án an toàn nhất khi không biết hành vi broker — và kiểm chứng lại nếu sau này đổi
+     sang broker có hỗ trợ.
+  2. **Mục #9 (symbol ngoài ASCII) không kiểm chứng được** — broker chỉ có `BTCUSD.s` và
+     `XAUUSD.s`, đều ASCII thuần. Phần xử lý UTF-8 đã được kiểm chứng ở tầng Python
+     (`test_ky_tu_ngoai_ascii_di_qua_nguyen_ven`) nhưng **chưa qua đường EA thật**. Ghi là chưa
+     kiểm chứng đầu-cuối, không ghi là đạt.
+  3. **`XAUUSD.s` không test được vào cuối tuần** (`[Market closed]`). Mục kiểm tra "nhiều
+     symbol đồng thời" của phase 6 phải chờ ngày thường.
+  4. `config.toml` thật đã tạo. Token của `AG-MASTER` đang nằm trong
+     `MQL5\Presets\CopyBridgeMaster.set` của terminal 1.
+
+- **Phát hiện sớm (bổ sung sau khi chạy thật):**
+  1. **`ts_agent` chỉ chính xác tới ~1 giây trong thực tế.** Sau khi sửa, `CbNowIso()` neo lại
+     mỗi khi `TimeGMT()` nhảy giây, mà heartbeat gọi nó mỗi giây — nên phần mili giây gần như
+     luôn về 0. Giá trị không còn **sai** (không còn âm) nhưng độ phân giải thấp. **Phase 9 đo
+     "độ trễ copy" phải tính ở phía Bridge** (`open_time_master` → `open_time_client` do Bridge
+     ghi), không được tin `ts_agent`.
+  2. **Cấp phát agent/token đang làm bằng script tạm trong scratchpad.** Phase 9 hoặc 10 phải
+     đưa việc này vào sản phẩm (màn hình quản lý agent, hoặc lệnh CLI), kèm thu hồi token.
+  3. **Deal id của MT5 là toàn cục theo trade server, không liên tục theo tài khoản.** Trong
+     phiên nghiệm thu có lúc deal id nhảy từ 19279031 sang 19279042. **Đừng bao giờ dùng
+     khoảng trống deal id để suy ra "có deal bị mất"** — dùng `seq` của agent, đó mới là chuỗi
+     liên tục theo tài khoản.
+  4. **Thêm `bridge/__main__.py`** (ngoài plan) để chạy `python -m bridge`. Chỉ nối các thành
+     phần của phase 1–3, không có logic nghiệp vụ mới. Phase 6 sẽ thêm vòng xử lý event và
+     `scan_deadlines()` vào đây.
