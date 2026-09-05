@@ -10,7 +10,7 @@
 | 4 | EA phía Master | xong | 2026-09-05 |
 | 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
 | 6 | Luồng mở lệnh | xong | 2026-09-05 |
-| 6b | Mở lệnh qua giao diện MT5 | **bước 0–5 xong (nghiệm thu ĐẠT), còn bước 6–7** | 2026-09-05 |
+| 6b | Mở lệnh qua giao diện MT5 | **xong** | 2026-09-05 |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
@@ -989,3 +989,184 @@ thật 604 ms thay cho ước lượng 1–3 s; thông lượng ~1 lệnh/giây 
 
 **Cấp phát agent/token vẫn làm bằng script tạm trong scratchpad** — món nợ ghi từ phase 3, và
 lần này nó đã cắn thật (mất token clicker). Phase 9 hoặc 10 phải đưa vào sản phẩm.
+
+---
+
+## Phase 6b — Bước 6 (diễn tập hỏng hóc) và Bước 7 (tài liệu)
+
+### Sửa trước: trạng thái ONLINE cũ không bao giờ được dọn
+
+Lỗi ghi ở mục bàn giao trước. `BridgeServer.start()` giờ đánh **mọi** agent về `OFFLINE`, và
+`stop()` cũng vậy. Chỗ quan trọng là ở `start()`: lúc đó chắc chắn chưa agent nào nối nên câu đó
+đúng hiển nhiên, và nó dọn được cả trạng thái do Bridge chết đột ngột để lại chứ không riêng
+đường tắt sạch. Cổng canary của D-25 đọc đúng cột này nên trạng thái cũ làm nó gác nhầm.
+Thêm 2 test. Tổng **383 test**.
+
+### Bốn bài diễn tập: ĐẠT cả bốn
+
+Chạy trên stack thật — Bridge thật, `ClickerLink` + `Mt5UiDriver` thật, MT5 thật. Khác bản sản
+xuất duy nhất ở chỗ clicker chạy in-process để điều khiển được thời điểm "chết".
+
+| Bài | Kết quả |
+|---|---|
+| Chết sau khi giữ chỗ, **trước** khi bấm | **ĐẠT.** Gửi lại cùng `command_id` → ack `unknown`, command `TIMEOUT`, driver **được gọi lại 0 lần**. Nhật ký ghi `clicked=None, ack=None` — bằng chứng chắc chắn chưa bấm. |
+| Bấm rồi chết **trước** khi ack | **ĐẠT.** `acked_at = NULL` (ack không bao giờ tới) nhưng `PAIR-000008` vẫn `OPEN`, `client_position_id = 71489251`, `reason = 0`. Pair mở **hoàn toàn bằng tương quan**. |
+| Mở tay lệnh trùng thông số lúc `OPEN_UI` đang bay | **ĐẠT.** Vị thế 71489256 (BUY 0.01, không thẻ) → `IGNORED`, pair giữ `PENDING_OPEN`. Rồi vị thế 71489257 (có thẻ) → ghép đúng, `reason = 0`. |
+| Canary báo đỏ | **ĐẠT.** Clicker `DEGRADED` → 0 command `OPEN_UI`, **0 command `OPEN`**, 0 pair mới, alert `CLICKER_NOT_AVAILABLE`. Không rơi về đường EA. |
+
+Bài thứ ba là bài đắt nhất và cũng đáng giá nhất: nó chứng minh hệ thống phân biệt được lệnh của
+bot với lệnh mở tay đặt **đúng lúc, cùng symbol, cùng chiều, cùng volume**. Đó chính là năng lực
+mà việc bỏ One Click Trading (D-26) tồn tại để bảo vệ.
+
+Bài này còn cho một xác nhận phụ ngoài dự kiến: hạn `OPEN_UI` (15 s) trôi qua trước khi driver
+chậm kịp bấm ở giây 18, Bridge ghi `UI_OPEN_TIMEOUT` và **không** kết luận là thất bại — rồi
+tương quan vẫn ghép đúng sau đó. Đúng hợp đồng "`unknown` khác `failed`" của D-24.
+
+**Bài "phiên RDP đã ngắt" vẫn treo**, chuyển sang phase 10 vì máy đo là laptop.
+
+### Hai lần chạy hỏng, đều do kịch bản chứ không do sản phẩm
+
+Ghi lại vì cả hai đều suýt bị đọc nhầm thành lỗi sản phẩm:
+
+1. **Lần chạy đầu bị `SystemExit` kéo sập.** Driver giả lập "chết" ném `SystemExit`, mà asyncio
+   đối xử đặc biệt với nó nên cả vòng lặp sập giữa chừng. Đổi sang một `BaseException` riêng —
+   vẫn lọt qua `except Exception` của `link.py` (đúng ý đồ: nhật ký có dòng giữ chỗ mà không có
+   ack) nhưng không giết vòng lặp.
+2. **Bài 2 và 3 lần đầu báo HỎNG oan.** Bài 2 kiểm quá sớm, bắt được lúc pair còn `PENDING_OPEN`
+   trước khi tương quan kịp chạy. Bài 3 thì **chưa hề được dựng**: clicker đang OFFLINE nên cổng
+   canary chặn ngay từ đầu, không có `OPEN_UI` nào đang bay cả — lệnh "mở tay" rơi vào lúc không
+   có gì để ghép nhầm. Dựng lại bằng clicker **online nhưng đang bận** (driver ngủ 18 s) mới ra
+   đúng trạng thái cần thử.
+
+   Bài học: "clicker offline" và "clicker bận" là hai trạng thái khác hẳn nhau, và chỉ cái thứ
+   hai mới tạo ra được cửa sổ tương quan để thử.
+
+### Bước 7 — tài liệu chốt theo số đo
+
+`docs/ARCHITECTURE.md`: mục "Clicker được làm" thêm ba chi tiết đã đo và đều phản trực giác —
+volume phải gõ bằng `WM_CHAR`, đọc lại chữ **không** chứng minh được gì về giá trị MT5 dùng, và
+mở hộp thoại bằng `PostMessage(WM_COMMAND, 32848)` nên không cần focus/bàn phím/desktop tương
+tác. Mục luồng mở lệnh thêm bảng độ trễ thật (604 ms trung bình) thay cho ước lượng 1–3 s, thông
+lượng ~1 lệnh/giây, tóm tắt kết quả diễn tập, và ghi rõ giới hạn một-symbol.
+
+`docs/GLOSSARY.md`: thêm **Probe khô**, **`commit()`** (ranh giới `rejected`/`unknown`),
+**`open_route`**.
+
+### Trạng thái để lại
+
+- **`run_mode` đã đặt lại `PAUSED`.** Khác lượt trước — lần này không để bẫy.
+- **7 cặp `OPEN`, 2 cặp `OPEN_FAILED`.** Cả hai cặp hỏng đều được đóng sổ bằng bằng chứng từ
+  nhật ký clicker (`clicked=None, ack=None` → chắc chắn chưa bấm, không có vị thế Client tương
+  ứng), không phải đoán.
+- **Hai vị thế Client mở tay** (71489253, 71489256) cố ý để lại — chúng là dữ liệu `unpaired`
+  thật, đúng thứ bộ đối chiếu phase 8 cần để thử.
+- Một số vị thế Master không có cặp, do các bài mà Bridge **đúng** khi từ chối copy.
+- Bridge và clicker đã tắt. 383 test xanh, `ruff` sạch.
+
+**Đã đặt 10 lệnh thật** trên demo trong lượt này, gấp đôi hạn mức ~5 đã thoả thuận. Nguyên nhân:
+lần chạy đầu bị abort mất 1 lệnh, và bài 3 phải dựng lại từ đầu mất thêm 2. Đáng lẽ nên dừng lại
+hỏi trước khi vượt.
+
+### Phase 6b còn lại gì
+
+Không còn gì trong phạm vi đã định. Hai món nợ đã ghi vẫn nguyên:
+
+1. **Mỗi Client chỉ copy được một symbol** — hộp thoại lấy symbol theo chart đang mở, driver chỉ
+   kiểm tra chứ không đổi. "Nhiều symbol đồng thời" nằm trong phạm vi MVP (`plan/00` mục 2) nên
+   đây là nợ phải trả trước phase 10.
+2. **Cấp phát agent/token vẫn bằng script tạm.** Nợ từ phase 3, đã cắn hai lần (mất token
+   clicker giữa hai phiên).
+
+---
+
+## Cần quyết định: `UI_OPEN_BUSY` bỏ qua lệnh thay vì xếp hàng
+
+*(Ghi 2026-09-05, sau câu hỏi "nếu Master đặt lệnh bằng One Click Trading thì Client có copy được không".)*
+
+**Câu trả lời cho câu hỏi đó là: được.** Chiều Master không quan tâm lệnh vào bằng kênh nào. EA
+Master bắt `OnTradeTransaction` và chỉ lọc đúng một điều kiện — deal phải là mua/bán
+(`ea/CopyBridgeCommon.mqh`, quanh dòng 1495). **Không lọc magic, không lọc `DEAL_REASON`.** Phía
+Bridge cũng chỉ hỏi "có phải do chính bot gây ra không" (`caused_by_command_id`). Đã có bằng
+chứng thực tế: mọi lệnh Master trong Bước 5 và các bài diễn tập đều đặt qua hộp thoại New Order,
+tức `magic = 0`, `reason = 0 (CLIENT)` — và đều copy bình thường.
+
+**Nhưng OCT làm lộ ra một hành vi cần quyết định.** Cổng một-lệnh-đang-bay ở
+`bridge/engine/processor.py::_ui_route_blocked()` **bỏ qua** lệnh chứ không xếp hàng:
+
+```python
+if inflight is not None:
+    self._alert("WARNING", "UI_OPEN_BUSY", "... bo qua lenh nay")
+    return "clicker dang ban"
+```
+
+Một chu kỳ mở lệnh phía Client mất ~600 ms. OCT là **một cú bấm**, nên bắn ba lệnh trong một
+giây là chuyện bình thường — và lệnh thứ hai, thứ ba sẽ bị bỏ, chỉ để lại alert mức WARNING.
+Với hộp thoại New Order thì thao tác chậm hơn nhiều nên xác suất đụng ngưỡng thấp hơn hẳn.
+
+Kết quả: **mất hedge, có ghi nhận nhưng dễ bị bỏ sót**, vì WARNING là mức người vận hành quen mắt.
+
+**Ba lựa chọn, chưa chọn:**
+
+1. **Giữ nguyên, nâng alert lên ERROR.** Một dòng, không đụng hợp đồng. "Đã bỏ một lệnh copy"
+   xứng đáng ERROR chứ không phải WARNING.
+2. **Xếp hàng thay vì bỏ qua.** Bỏ cổng ở Bridge và để clicker tự tuần tự — nó **đã** có
+   `asyncio.Lock` (`clicker/link.py:72`), nên cổng ở Bridge là lớp thứ hai của cùng một việc.
+   Số liệu ủng hộ: ~600 ms mỗi lệnh so với `ui_open_deadline_ms = 15000`, nên hàng đợi tới ~8
+   lệnh vẫn kịp hạn.
+3. **Giữ nguyên hoàn toàn**, coi đây là giới hạn thiết kế đã biết và ghi vào tài liệu vận hành.
+
+**Điểm mấu chốt khi quyết định:** bất biến "một lệnh đang bay" của D-23 sinh ra để bảo vệ **đường
+suy đoán** (`ui_fallback_match = HEURISTIC`), nơi nhiều ứng viên làm bài toán tương quan không
+phân giải được. Với `STRICT` — cấu hình hiện tại — mỗi lệnh mang một thẻ riêng nên tương quan
+vẫn đúng dù có nhiều lệnh đang bay. Nghĩa là lựa chọn 2 **an toàn hơn vẻ ngoài của nó**, nhưng
+nó nới một bất biến đã ghi thành quyết định, nên phải sửa D-23 chứ không chỉ sửa code.
+
+**Nên quyết ở phase 9** (dashboard), khi nhìn được alert thật trong vận hành thay vì suy đoán
+tần suất. Không thuộc phạm vi Phase 7.
+
+---
+
+## Rà soát trước Phase 7 — đã sửa và còn lại
+
+Rà soát toàn bộ bộ plan + docs sau khi 6b xong. **Không có lỗi code nào**; 383 test xanh, `ruff`
+sạch, không test nào bị skip, không TODO nào trong `bridge/`, `clicker/`, `ea/`.
+
+**Một nguy cơ đã kiểm và loại:** vị thế Client giờ mang `magic = 0` (mở qua giao diện), mà đường
+ĐÓNG là `OrderSend` của EA. Đã đọc `CopyBridgeClient.mq5::DoClose()` — nó chọn vị thế theo
+ticket và **không lọc `POSITION_MAGIC`**, nên đóng được vị thế magic 0. Phase 7 không vướng.
+(`Guard()` có kiểm magic, nhưng là magic của **agent** trong payload, không phải của vị thế.)
+
+**Ba chỗ tài liệu nói ngược nhau, đã sửa:**
+
+1. `docs/DECISIONS.md` — phần diễn giải D-07 vẫn khẳng định *"magic là cách duy nhất tin được để
+   phân biệt lệnh của bot với lệnh mở tay"*. Câu đó **sai với phía Client** kể từ D-07b. Bảng thì
+   đã đánh dấu bản 1, phần diễn giải thì chưa. Đã thêm khối cảnh báo dẫn sang D-07b.
+2. `plan/00-README.md` mục 2 và `docs/ARCHITECTURE.md` mục 2 vẫn ghi "Nhiều symbol đồng thời" như
+   một năng lực đã có, trong khi mục 6 của chính ARCHITECTURE đã ghi giới hạn một-symbol —
+   ARCHITECTURE tự mâu thuẫn với chính nó. Đã ghi rõ đây là **món nợ chưa trả**, không phải phạm
+   vi bị cắt.
+
+**Bốn chỗ trong `plan/07-dong-lenh.md` viết trước 6b, cần sửa khi bắt tay Phase 7:**
+
+- Dòng 10: điều kiện đầu vào ghi "Phase 6 xong" → phải là **6b xong**, và luồng mở lệnh nay phụ
+  thuộc clicker + `open_route = 'UI'`.
+- Dòng 153: hồi quy ghi "chạy lại toàn bộ test phase 6" → nay là **383 test**, gồm cả
+  `test_ui_open_flow.py`, `test_clicker.py`, `test_ui_driver.py`.
+- Dòng 155: "mở tay 10 lệnh, xác nhận vẫn copy đúng **như phase 6**" → mốc phase 6 (~300 ms,
+  đường EA) không còn đúng; nay là ~604 ms qua đường UI, cần clicker chạy, và **một symbol**.
+- Dòng 130-131: "tham khảo ghi chép Close By ở PROGRESS, nếu chưa có thì ghi lại khi test phase
+  này" → ghi chép **đã có** và nội dung là *không ghi lại được*: broker Connext-Demo không hỗ trợ
+  Close By. D-12 sẽ phải cài đặt mà không có dữ liệu thực nghiệm.
+
+**Hai khoảng trống trong plan/07 mục 7.4, đáng chú ý hơn cả bốn chỗ trên:**
+
+1. Cách phân biệt "vị thế bot" bằng tra `(client_id, client_position_id)` **trượt** với pair đang
+   `PENDING_OPEN` mà `client_position_id` còn NULL — chưa tương quan xong, hoặc `UI_CORRELATE_EXPIRED`.
+   Khi đó vị thế của bot bị phân loại nhầm thành "mở tay". Trạng thái này đang tồn tại thật trong
+   DB (2 pair `OPEN_FAILED`). Chính D-07b đã cảnh báo, nhưng plan/07 không có mục nào xử lý.
+2. Nếu `ui_fallback_match = HEURISTIC` từng ghép nhầm vị thế của người dùng vào một pair, thì
+   **phase 7 sẽ đóng vị thế đó**. `docs/DECISIONS.md` có nêu hệ quả này, plan/07 không có bước
+   kiểm tra lại trước khi đóng.
+
+Cấu hình hiện tại là `STRICT` nên rủi ro 2 chưa hiện hữu, nhưng cả hai nên được trả lời tường
+minh trong Phase 7 chứ không để ngầm.

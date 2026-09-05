@@ -44,3 +44,10 @@ Chép từ mục 5 của `plan/00-README.md`, bổ sung dần khi gặp thuật 
   qua giao diện. Clicker gõ vào ô Comment, EA đọc lại và báo lên, Bridge dùng để ghép vị thế
   với cặp lệnh. Dùng **một lần** rồi vứt — không phải nguồn sự thật lâu dài (D-07b).
 - **Unpaired** — vị thế tồn tại thật trên terminal nhưng không thuộc pair nào trong sổ sách.
+- **Probe khô** — mở hộp thoại New Order, đọc lại các ô, bấm ESC. Chứng minh toàn tuyến điều
+  khiển giao diện còn sống mà **không đặt lệnh nào**. Chỉ chạy khi không có `OPEN_UI` đang bay.
+- **`commit()`** — hàm duy nhất dẫn tới nút gửi lệnh của clicker. Điền → đọc lại → so → lệch thì
+  huỷ. Nó là **ranh giới giữa `rejected` và `unknown`**: trước nó, "chưa bấm" là sự thật chứng
+  minh được nên được retry; sau nó thì không còn gì chứng minh được nữa (D-24).
+- **`open_route`** — cột trên `client_account`: `EA` thì lệnh mở đi bằng `OrderSend`, `UI` thì đi
+  qua giao diện MT5 (D-21). Clicker hỏng **không** làm nó tự rơi về `EA` (D-25).

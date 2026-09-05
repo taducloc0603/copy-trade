@@ -22,6 +22,10 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
 - Chỉ Market Order BUY/SELL. Không copy Pending Order, không copy giá SL/TP.
   Khi một bên bị đóng bởi SL/TP, bot đồng bộ theo sự kiện đóng thực tế.
 - Nhiều symbol đồng thời, có bảng ánh xạ symbol giữa hai sàn.
+  **Chưa đạt kể từ phase 6b:** lệnh MỞ phía Client đi qua hộp thoại New Order, mà hộp
+  thoại lấy symbol theo chart đang mở. Driver chỉ *kiểm tra* symbol chứ không đổi (đổi
+  qua ComboBox chưa được đo), nên mỗi terminal Client hiện chỉ copy được **một symbol**.
+  Đây là món nợ phải trả trước phase 10, không phải phạm vi đã bị cắt.
 - Chạy trên Windows.
 
 ## 3. Sơ đồ hệ thống
@@ -94,6 +98,21 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
 bấm. Nó tồn tại vì `DEAL_REASON` do máy chủ broker gán theo *kênh* gửi lệnh, mà `OrderSend`
 của EA luôn cho ra `EXPERT` (D-21).
 
+Ba chi tiết đã **đo trên terminal thật**, không suy ra, và cả ba đều phản trực giác:
+
+- **Ô volume phải gõ bằng `WM_CHAR` từng ký tự.** `WM_SETTEXT` đổi chữ hiển thị nhưng không cập
+  nhật trạng thái nội bộ của MT5; lệnh gửi đi mang volume cũ. Và vì MT5 giữ volume nội bộ qua
+  các lần mở hộp thoại, hỏng kiểu này gửi đi kích thước của **lệnh trước** chứ không phải một
+  giá trị mặc định dễ nhận ra.
+- **Đọc lại chữ trong ô không chứng minh được gì** về giá trị MT5 sẽ dùng. Việc đọc lại vẫn cần
+  — nó bắt ô sai, hộp thoại sai, symbol sai — nhưng bằng chứng duy nhất là deal thật.
+- **Mở hộp thoại bằng `PostMessage(WM_COMMAND, 32848)`**, chính là `Tools → New Order`. Không
+  cần focus, không cần bàn phím, không cần desktop tương tác — đó là điều kiện để sống qua
+  phiên RDP đã ngắt.
+
+Không dùng One Click Trading dù nó nhanh hơn: bảng OCT không có ô Comment, mà thẻ trong comment
+là cơ chế tương quan duy nhất (D-26).
+
 Clicker **không** đọc database, **không** sinh event, **không** nhận lệnh đóng, và **không**
 tính toán gì. Nó không biết `pair` là gì. Việc ghép vị thế vừa mở vào cặp lệnh do Bridge làm,
 bằng cách tương quan với event `position_opened` mà EA báo lên (D-23).
@@ -151,6 +170,20 @@ Master khớp lệnh
    → Bridge: khớp thẻ → pair.status = OPEN
    Ack của clicker KHÔNG mang position_id; event của EA mới là nguồn sự thật (D-23).
 ```
+
+**Số đo trên demo Connext, BTCUSD.s** (phase 6b bước 5, n = 5): độ trễ copy Master khớp → Client
+có vị thế là min 553 / trung vị 616 / max 648 / **trung bình 604 ms**. Đường EA ở phase 6 là
+~300 ms, nên cái giá của việc đổi kênh là khoảng gấp đôi — thấp hơn nhiều mức 1–3 s dự kiến khi
+lập kế hoạch. Cổng một-lệnh-đang-bay cho thông lượng khoảng **một lệnh mỗi giây mỗi Client**.
+
+Đã diễn tập và xác nhận: ack không bao giờ về thì pair vẫn mở được bằng tương quan; gửi lại cùng
+`command_id` sau khi clicker chết thì **không** phát sinh lệnh thứ hai; và một lệnh mở tay trùng
+symbol/chiều/volume đặt **đúng lúc** `OPEN_UI` đang bay thì không bị ghép nhầm.
+
+> **Giới hạn hiện tại:** hộp thoại New Order lấy symbol theo chart đang mở, và driver chỉ *kiểm
+> tra* symbol chứ không đổi. Vì vậy mỗi terminal Client hiện chỉ copy được **một symbol** — đúng
+> cái chart đang mở. Đổi symbol qua ComboBox chưa được đo. Đây là món nợ phải trả trước khi dùng
+> nhiều symbol, vốn nằm trong phạm vi MVP ở mục 2.
 
 ### Đóng lệnh
 

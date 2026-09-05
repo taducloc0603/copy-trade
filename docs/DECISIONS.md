@@ -81,6 +81,11 @@ bền suốt vòng đời vị thế. Dùng ticket làm khoá là cách mất d�
 
 ### D-07 — Lệnh do bot mở phải mang magic number cố định. Không dựa vào comment.
 
+> **Bản 1, đã bị D-07b thu hẹp phạm vi ở phase 6b. Đọc cả hai mục.** Phần dưới đây chỉ còn đúng
+> với **Master**. Với **Client**, câu "magic là cách duy nhất tin được" đã sai kể từ khi lệnh MỞ
+> đi qua giao diện: vị thế mang `magic = 0`, và việc nhận dạng chuyển sang **sự tồn tại của
+> `(client_id, client_position_id)` trong bảng `pair`**.
+
 **Lý do:** Nhiều broker cắt, sửa hoặc xoá hẳn trường comment. Magic number thì không bị đụng tới
 và là cách duy nhất tin được để phân biệt lệnh của bot với lệnh mở tay (FR-12).
 

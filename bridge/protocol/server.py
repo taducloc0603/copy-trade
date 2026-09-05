@@ -143,6 +143,7 @@ class BridgeServer:
         return int(self._server.sockets[0].getsockname()[1])
 
     async def start(self) -> None:
+        self._mark_all_offline("Bridge vua khoi dong")
         self._server = await asyncio.start_server(
             self._handle_client, self.config.host, self.config.port
         )
@@ -165,6 +166,27 @@ class BridgeServer:
             with contextlib.suppress(Exception):
                 await self._server.wait_closed()
             self._server = None
+        self._mark_all_offline("Bridge dung")
+
+    def _mark_all_offline(self, ly_do: str) -> None:
+        """Đánh mọi agent về `OFFLINE`.
+
+        Gọi lúc **khởi động** chứ không chỉ lúc dừng, và đó mới là chỗ quan trọng: lúc khởi động
+        thì chắc chắn chưa agent nào nối, nên câu này đúng một cách hiển nhiên — và nó dọn được
+        cả trạng thái cũ do Bridge chết đột ngột để lại, không riêng đường tắt sạch.
+
+        Vì sao cần: `check_heartbeats()` chỉ duyệt `self.connections`, mà danh sách đó rỗng lúc
+        khởi động, nên một dòng `ONLINE` cũ sẽ **không bao giờ** được sửa cho tới khi chính agent
+        đó nối lại. Cổng canary của D-25 đọc đúng cột này, nên trạng thái cũ làm nó gác nhầm:
+        Bridge tưởng clicker còn sống, tạo pair và gửi `OPEN_UI` vào hư không.
+        """
+        with self.db.transaction() as conn:
+            so = conn.execute(
+                "UPDATE agent SET status = 'OFFLINE', updated_at = ? WHERE status <> 'OFFLINE'",
+                (utc_now_iso(),),
+            ).rowcount
+        if so:
+            log.info("%s: dat %d agent ve OFFLINE", ly_do, so)
 
     async def __aenter__(self) -> BridgeServer:
         await self.start()

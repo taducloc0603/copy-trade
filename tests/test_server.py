@@ -630,3 +630,35 @@ async def test_agent_offline_chi_log_mot_lan(server: BridgeServer,
         assert len(im_lang) <= 1, f"In {len(im_lang)} lan cho cung mot lan chuyen OFFLINE"
     finally:
         await agent.kill()
+
+
+async def test_trang_thai_online_cu_bi_don_khi_bridge_khoi_dong(agents_db: Database) -> None:
+    """Bridge chết đột ngột để lại `ONLINE` trong DB; lần khởi động sau phải dọn.
+
+    `check_heartbeats()` chỉ duyệt `self.connections` — rỗng lúc khởi động — nên nếu không dọn
+    ở đây thì dòng `ONLINE` cũ **không bao giờ** được sửa cho tới khi chính agent đó nối lại.
+    Cổng canary của D-25 đọc đúng cột này, nên trạng thái cũ làm nó gác nhầm.
+    """
+    with agents_db.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE'")
+    assert agents_db.get_agent(MASTER_AGENT)["status"] == "ONLINE"
+
+    instance = BridgeServer(agents_db, ServerConfig(host="127.0.0.1", port=0))
+    await instance.start()
+    try:
+        assert agents_db.get_agent(MASTER_AGENT)["status"] == "OFFLINE"
+        assert agents_db.get_agent(CLIENT_AGENT)["status"] == "OFFLINE"
+    finally:
+        await instance.stop()
+
+
+async def test_agent_ve_offline_khi_bridge_dung(server: BridgeServer,
+                                                agents_db: Database) -> None:
+    agent = _master(server)
+    await agent.start()
+    await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["status"] == "ONLINE")
+    await server.stop()
+    try:
+        assert agents_db.get_agent(MASTER_AGENT)["status"] == "OFFLINE"
+    finally:
+        await agent.kill()

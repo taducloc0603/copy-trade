@@ -22,6 +22,10 @@ Tài liệu này là điểm vào. Đọc hết file này trước khi bắt đ�
 - Chỉ Market Order BUY/SELL. Không copy Pending Order, không copy giá SL/TP.
   Khi một bên bị đóng bởi SL/TP, bot đồng bộ theo sự kiện đóng thực tế.
 - Nhiều symbol đồng thời, có bảng ánh xạ symbol giữa hai sàn.
+  **Chưa đạt kể từ phase 6b:** lệnh MỞ phía Client đi qua hộp thoại New Order, mà hộp
+  thoại lấy symbol theo chart đang mở. Driver chỉ *kiểm tra* symbol chứ không đổi (đổi
+  qua ComboBox chưa được đo), nên mỗi terminal Client hiện chỉ copy được **một symbol**.
+  Đây là món nợ phải trả trước phase 10, không phải phạm vi đã bị cắt.
 - Chạy trên Windows.
 
 ## 3. Kiến trúc
