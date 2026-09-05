@@ -11,7 +11,7 @@
 | 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
 | 6 | Luồng mở lệnh | xong | 2026-09-05 |
 | 6b | Mở lệnh qua giao diện MT5 | **xong** | 2026-09-05 |
-| 7 | Luồng đóng lệnh | chưa bắt đầu | |
+| 7 | Luồng đóng lệnh | **xong** | 2026-09-05 |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
 | 10 | Đóng gói, vận hành và nghiệm thu | chưa bắt đầu | |
@@ -1238,3 +1238,103 @@ khác đều sinh event như nhau.
 
 `run_mode = PAUSED`, Bridge và clicker đã tắt. Thêm `PAIR-20260905-000010` đang `OPEN` — giữ lại
 làm dữ liệu cho Phase 7.
+
+---
+
+## Phase 7 — Luồng đóng lệnh
+
+### Việc đầu tiên: sửa `plan/07` cho khớp thực tế sau 6b
+
+Bốn chỗ viết trước phase 6b: điều kiện đầu vào là **6b xong** chứ không phải 6 (luồng mở nay cần
+clicker + canary xanh); mốc hồi quy là **383 test** gồm cả bộ test đường giao diện; mốc độ trễ là
+**604 ms đường UI** chứ không phải ~300 ms đường EA, và chỉ **một symbol**; ghi chú Close By đổi
+từ "nếu chưa có thì ghi lại khi test" thành **"không có dữ liệu và sẽ không có"** — broker
+Connext-Demo không hỗ trợ Close By, nên D-12 phải cài đặt mà không thử được trên sàn hiện tại.
+
+Thêm mục **7.4b** trả lời tường minh hai lỗ hổng của phép tra `(client_id, client_position_id)`:
+
+1. **Cặp `PENDING_OPEN` chưa có `client_position_id`.** Master đóng đúng lúc đó thì không có
+   địa chỉ để đóng, và nếu lệnh mở Client đã khớp thì ta để lại vị thế không đối ứng. Cách bịt
+   **không cần thêm cột**: ghi *ý định* đóng vào `close_time_master`; bộ tương quan của phase 6b
+   khi ghép được vị thế sẽ thấy nó và đóng ngay. Cột giữ đúng nghĩa tên của nó.
+2. **Cặp ghép bằng suy đoán.** Với `HEURISTIC`, bộ tương quan có thể gắn vị thế **người dùng tự
+   mở** vào một cặp — và phase 7 sẽ đóng nó. Không sửa được ở đây; việc của phase 7 là **đừng im
+   lặng**: tra `alert` theo `pair_id` tìm `UI_CORRELATE_HEURISTIC`, có thì alert
+   `CLOSING_HEURISTIC_PAIR` mức ERROR rồi mới đóng. Vẫn đóng, vì để nguyên nghĩa là giữ mãi một
+   vị thế mà sổ sách tin là hedge trong khi Master đã đóng.
+
+### Code
+
+Toàn bộ ngữ nghĩa đóng nằm ở **`bridge/engine/closing.py`** mới. `processor.py` đã 865 dòng;
+nhồi 7.1–7.8 vào đó sẽ vượt 1400 và bắt người đọc nhảy qua lại giữa đường mở và đường đóng.
+`processor.py` chỉ định tuyến: event đóng, ack, timeout, và chỗ tương quan phải đóng ngay.
+
+Đáng ghi lại vài quyết định:
+
+- `SYNC_CLOSE_MODES` gồm cả `PAUSE_NEW_ENTRIES` — tắt đồng bộ đóng ở chế độ đó là bỏ rơi vị thế
+  đang mở, đúng như plan 7.8 cảnh báo.
+- Lệnh đóng gửi tới `client_account.agent_id` (**EA**), không phải `clicker_agent_id`. Clicker
+  chỉ nhận `OPEN_UI` và schema không có `CLOSE_UI`, nên định tuyến sai bị chặn hai lớp.
+- Cascade chờ Master xác nhận rồi mới đóng các Client còn lại. Hết hạn thì **KHÔNG** cascade:
+  mọi cặp chuyển `ORPHANED`, các Client khác **vẫn giữ** vị thế (D-10).
+- `EMERGENCY` tự kích hoạt một lần mỗi lần vào chế độ, không lặp mỗi vòng quét — gọi lại liên
+  tục sẽ làm ngập alert đúng lúc người vận hành cần đọc alert nhất.
+
+### Test: 406 xanh (+23)
+
+`tests/test_close_flow.py` phủ toàn bộ checklist. Đáng nói nhất là
+`test_khong_co_cau_sql_nao_dong_lenh_theo_symbol` — nó soi thẳng mã nguồn tìm câu SQL đóng lệnh
+theo `symbol` (FR-11). Bản đầu bắt được đúng một dòng, và dòng đó là **docstring nói rằng làm
+vậy là bug**; đã sửa để chỉ soi dòng SQL thật.
+
+### Nghiệm thu trên demo: ĐẠT
+
+Trước khi nghiệm thu phải dọn một sai lệch: DB ghi **21 cặp `OPEN`** trong khi **cả hai terminal
+báo 0 vị thế**. Nguyên nhân đúng như thiết kế dự đoán — người dùng đóng tay lúc `run_mode = PAUSED`
+và Phase 7 chưa tồn tại, nên event đóng bị `IGNORED` và cặp nằm lại vĩnh viễn. Đã đóng sổ 21 cặp
+với `close_source = MANUAL` kèm lý do đầy đủ, và 30 vị thế Master. Đây chính là loại sai lệch mà
+bộ đối chiếu phase 8 sinh ra để tự dọn.
+
+Mở 4 cặp mới rồi người dùng thao tác tay ba việc:
+
+| Kiểm | Kết quả |
+|---|---|
+| Master đóng hẳn → Client đóng | `PAIR-000024` `CLOSED`, `close_source = MASTER`, hai bên về 0 |
+| Client đóng, `can_close_master = 0` | `PAIR-000025` `ORPHANED`, `orphan_side = MASTER`, Master **giữ nguyên** 0.01, alert ERROR `ORPHANED_MASTER` |
+| Cặp đối chứng cùng symbol | `PAIR-000026` **không bị động tới** — chứng minh tra cứu theo `position_id` chứ không theo symbol (FR-11) |
+| Master đóng bớt 0.02/0.05 | `PAIR-000027` `PARTIALLY_CLOSED`, Master 0.03, Client 0.05 → **0.03** |
+
+Cross-check hai journal:
+
+```
+22:51:18.822 Master sell 0.01 (dong 71489353)  ->  22:51:19.218 Client buy 0.01   396 ms
+22:51:47.487 Client sell 0.01 (dong 71489356)  ->  KHONG co deal Master nao       dung D-20
+22:52:57.503 Master sell 0.02 (dong bot)       ->  22:52:57.965 Client buy 0.02   462 ms
+```
+
+**Độ trễ đồng bộ đóng ~400–460 ms** — nhanh hơn đường mở (604 ms) vì không phải qua giao diện.
+
+### Một lỗi nghiệm thu bắt được, không phải do nghĩ ra
+
+`client_current_volume` ra **0.030000000000000002** thay vì 0.03. Phép trừ volume còn lại dùng
+float; `0.05 - 0.02` trong nhị phân không đúng 0.03, và sai số **tích luỹ** qua nhiều lần đóng
+một phần liên tiếp — đúng thứ mục 7.3 yêu cầu tính chính xác. Đã đổi sang `Decimal` như tầng
+`sizing` vẫn làm, kèm test khoá lại bằng `repr()`.
+
+Đây là lý do nghiệm thu trên demo không thay thế được bằng test: bộ test dùng số tròn nên không
+lộ ra sai số này.
+
+### Trạng thái để lại
+
+- `run_mode = PAUSED`, Bridge và clicker đã tắt.
+- Còn mở: `PAIR-000026` (`OPEN`, cặp đối chứng), `PAIR-000027` (`PARTIALLY_CLOSED`, 0.03 hai
+  bên), và vị thế Master 71489355 mồ côi từ `PAIR-000025`. **Cố ý giữ** — đây là dữ liệu
+  `ORPHANED` và `PARTIALLY_CLOSED` thật, đúng thứ bộ đối chiếu phase 8 cần để thử.
+- Đã đặt **4 lệnh thật** trong lượt này, dưới hạn mức 10.
+
+### Chưa làm, thuộc phase sau
+
+Tiêu chí "chạy một phiên 60 phút với chạm SL, bật tắt công tắc giữa chừng" mới nghiệm thu được
+phần cốt lõi bằng bốn thao tác trên. Cascade (`can_close_master = 1`) và `EMERGENCY` **chỉ được
+kiểm bằng test tự động**, chưa chạy trên demo — cả hai đều cần nhiều Client, mà cấu hình hiện
+tại chỉ có một.

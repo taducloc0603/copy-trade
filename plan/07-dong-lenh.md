@@ -7,7 +7,9 @@
 
 ## Điều kiện đầu vào
 
-Phase 6 xong. Mở lệnh tự động chạy ổn định trên demo.
+**Phase 6b xong** (không phải phase 6). Luồng mở lệnh chạy ổn định trên demo, và nó nay đi qua
+`open_route = 'UI'`: cần clicker chạy và canary xanh thì Client mới mở được lệnh. Nghĩa là mọi
+bài kiểm tra của phase này cần **ba** tiến trình, không phải hai: Bridge, hai EA, và clicker.
 
 ---
 
@@ -37,6 +39,9 @@ do chính bot gây ra → cập nhật trạng thái, **không lan truyền ti�
 2. Nếu `caused_by_command_id` khác NULL → đây là hệ quả của cascade đang chạy, xử lý ở 7.5.
 3. Tìm **tất cả** pair có `master_position_id` này và `status` chưa kết thúc.
 4. Với mỗi pair: chuyển `CLOSING`, tạo command `CLOSE` cho Client tương ứng.
+   > **Gửi tới `client_account.agent_id` (EA), không phải `clicker_agent_id`.** Phase 6b thêm
+   > agent thứ hai cho mỗi Client, và clicker chỉ nhận `OPEN_UI`. Schema cũng không cho phép
+   > loại `CLOSE_UI`, nên định tuyến sai sẽ bị chặn — nhưng viết ra để không ai phải suy luận.
 5. Nhận ack thành công → `pair.status = CLOSED`, ghi `close_time_client`, `close_source = MASTER`.
 6. Ack `already_closed` → cũng là `CLOSED`, không phải lỗi.
 7. Ack thất bại → giữ `CLOSING`, retry theo bảng retcode, hết lượt thì `ORPHANED`
@@ -73,6 +78,45 @@ client_đóng     = làm_tròn_xuống_theo_step(client_đóng_thô)
 3. Không tìm thấy → lệnh mở tay, bỏ qua hoàn toàn (FR-12). Không đóng gì cả.
    > Việc tra cứu này là **toàn bộ** cách phân biệt lệnh của bot với lệnh người dùng mở tay
    > ở phía Client. Không dùng magic: vị thế mở qua giao diện có `magic = 0` (D-07b).
+
+#### 7.4b Hai lỗ hổng của phép tra cứu ở bước 2, và cách bịt
+
+Phép tra `(client_id, client_position_id)` là đúng, nhưng nó có hai chỗ trượt mà phase 6b tạo ra.
+Cả hai phải được xử lý tường minh, không để ngầm.
+
+**Lỗ hổng 1 — pair `PENDING_OPEN` chưa có `client_position_id`.**
+
+Trong cửa sổ tương quan (tới `ui_open_deadline_ms` + `ui_correlate_grace_ms`), cột
+`client_position_id` còn NULL. Nếu Master đóng đúng lúc đó, bước 3 của **7.2** không có gì để
+đóng, và nếu lệnh mở phía Client thực ra đã khớp thì ta để lại một vị thế Client **không có đối
+ứng** — đúng thứ hệ thống tồn tại để tránh.
+
+Cách xử lý, không cần thêm cột:
+
+1. Master đóng mà pair đang `PENDING_OPEN` → **không** gửi `CLOSE` (chưa có `position_id`), giữ
+   nguyên `PENDING_OPEN`, ghi `close_time_master` và `close_source = 'MASTER'`, alert **CRITICAL**
+   mã `MASTER_CLOSED_WHILE_PENDING`.
+2. Khi bộ tương quan của phase 6b ghép được vị thế vào cặp đó, nó phải kiểm `close_time_master`.
+   Khác NULL nghĩa là Master đã đóng trong lúc chờ → **đóng ngay** vị thế vừa ghép.
+
+`close_time_master` đóng vai "ý định đóng đang chờ địa chỉ". Dùng lại cột sẵn có thay vì thêm
+cột mới, và ngữ nghĩa vẫn đúng nguyên văn tên cột.
+
+**Lỗ hổng 2 — cặp được ghép bằng suy đoán.**
+
+Với `ui_fallback_match = HEURISTIC`, bộ tương quan có thể gắn **vị thế người dùng tự mở** vào một
+cặp. Khi đó phase này sẽ đóng vị thế đó — bot đóng lệnh của người dùng, không phải lệnh của mình.
+
+Không có cách nào sửa việc ghép nhầm ở đây; nó phải được ngăn ở phase 6b. Việc của phase 7 là
+**đừng làm nó im lặng**: trước khi tạo command đóng, kiểm xem cặp này có alert
+`UI_CORRELATE_HEURISTIC` không (tra `alert` theo `pair_id`). Có → alert thêm mức **ERROR** mã
+`CLOSING_HEURISTIC_PAIR` ghi rõ đang đóng một cặp ghép bằng suy đoán, rồi vẫn đóng.
+
+Vẫn đóng chứ không dừng, vì lựa chọn còn lại — để nguyên — nghĩa là giữ mãi một vị thế mà sổ
+sách tin là hedge trong khi Master đã đóng. Nhưng nó phải hiện lên đỏ.
+
+> Đây là lý do `ui_fallback_match` mặc định là `STRICT`. Bật `HEURISTIC` là chấp nhận rủi ro
+> này một cách có ý thức, không phải một tuỳ chọn vô hại.
 4. `can_close_master = 0` → **không đóng Master**.
 5. `pair.status = ORPHANED`, `orphan_side = MASTER`, `close_source = CLIENT`.
 6. Alert mức ERROR: Master đang phơi nhiễm bao nhiêu lot trên symbol nào.
@@ -127,8 +171,14 @@ Nhận event có `deal_entry = OUT_BY`.
 3. Tìm thấy vị thế Master không thuộc pair nào → `master_position.status = UNPAIRED`,
    alert ERROR mã `UNPAIRED_MASTER`. **Không tự copy sang Client.**
 
-> Hành vi của broker với phần dư không thống nhất giữa các build. Tham khảo ghi chép ở
-> `PROGRESS.md` từ phase 4. Nếu chưa có, ghi lại khi test phase này.
+> **Không có dữ liệu thực nghiệm, và sẽ không có.** Ghi chép ở `PROGRESS.md` từ phase 4 đã trả
+> lời: broker Connext-Demo **không hỗ trợ Close By** — menu chuột phải trên vị thế không có mục
+> đó. Nên D-12 phải cài đặt mà không thử được trên sàn hiện tại.
+>
+> Hệ quả cho cách viết code: phần `OUT_BY` phải chạy đúng **nhờ nguyên tắc chung** (tra cứu theo
+> `position_id`, xử lý như hai sự kiện đóng độc lập) chứ không nhờ một nhánh đặc biệt được tinh
+> chỉnh theo hành vi quan sát được. Test bằng cách bơm event `OUT_BY` giả qua mock agent. Khi nào
+> đổi sang sàn có hỗ trợ Close By thì phải kiểm lại thật.
 
 ### 7.8 Ba chế độ dừng
 
@@ -150,9 +200,13 @@ nhưng vẫn bảo vệ các cặp đang chạy — tắt cả đồng bộ đó
 ## Kiểm tra lại phần cũ
 
 - [ ] Toàn bộ test phase 1–3 xanh.
-- [ ] **Chạy lại toàn bộ test phase 6.** Việc thêm logic đóng rất dễ làm hỏng luồng mở.
+- [ ] **Chạy lại toàn bộ 383 test đang có.** Việc thêm logic đóng rất dễ làm hỏng luồng mở.
+      Đặc biệt gồm `tests/test_ui_open_flow.py`, `tests/test_clicker.py`,
+      `tests/test_ui_driver.py` — đường mở lệnh qua giao diện của phase 6b.
 - [ ] Test bất biến phase 5 vẫn xanh.
-- [ ] Mở tay 10 lệnh trên demo, xác nhận vẫn copy đúng như phase 6.
+- [ ] Mở tay 5 lệnh trên demo, xác nhận vẫn copy đúng. Mốc so sánh là **phase 6b**: độ trễ
+      trung vị ~604 ms qua đường UI (không phải ~300 ms của đường EA ở phase 6), và **chỉ một
+      symbol** — hộp thoại New Order lấy symbol theo chart đang mở.
 
 ## Kiểm tra phần mới
 

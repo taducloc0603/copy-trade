@@ -22,6 +22,7 @@ from typing import Any
 
 from bridge.clock import parse_iso, utc_now, utc_now_iso
 from bridge.db.repo import Database
+from bridge.engine.closing import CloseFlow
 from bridge.engine.sizing import (
     SizingInputs,
     compute_client_volume,
@@ -79,6 +80,14 @@ class EventProcessor:
         self.deadline_scan_sec = deadline_scan_sec
         self._task: asyncio.Task[None] | None = None
         self._retry_tasks: set[asyncio.Task[None]] = set()
+        #: Đã chạy đóng khẩn cấp cho lần vào `EMERGENCY` này chưa. Đặt lại khi rời chế độ,
+        #: để lần vào `EMERGENCY` sau vẫn chạy — nhưng không lặp lại mỗi vòng quét.
+        self._emergency_done = False
+        #: Cặp vừa tương quan xong nhưng Master đã đóng từ trước — phải đóng ngay (plan 7.4b).
+        #: Xếp hàng thay vì gọi thẳng, để việc đóng nằm ngoài giao dịch DB của bước ghép.
+        self._deferred_close: list[str] = []
+        #: Toàn bộ ngữ nghĩa đóng lệnh (phase 7). Processor chỉ định tuyến vào đây.
+        self.closing = CloseFlow(db, dispatcher, self._alert, server)
 
         server.on_command_acked = self.on_command_acked
         dispatcher.on_timeout = self.on_command_timeout
@@ -89,6 +98,7 @@ class EventProcessor:
         self._task = asyncio.create_task(self._loop())
 
     async def stop(self) -> None:
+        await self.closing.stop()
         for task in (self._task, *self._retry_tasks):
             if task is not None:
                 task.cancel()
@@ -106,6 +116,7 @@ class EventProcessor:
                 if now - last_scan >= self.deadline_scan_sec:
                     self.dispatcher.scan_deadlines()
                     self.scan_correlation_deadlines()
+                    await self.check_emergency()
                     last_scan = now
                 if not processed:
                     await asyncio.sleep(self.poll_interval_sec)
@@ -143,6 +154,32 @@ class EventProcessor:
                                  agent_id=event["agent_id"])
             return
         self.db.mark_event_processed(event_id, status, error=reason, pair_id=pair_id)
+        await self._flush_deferred_close()
+
+    async def check_emergency(self) -> None:
+        """`run_mode = EMERGENCY` thì đóng toàn bộ cặp đang quản lý (plan 7.8).
+
+        Chạy **một lần** cho mỗi lần vào chế độ. `emergency_close_all()` tự bỏ qua cặp đã đóng
+        và cặp đang có lệnh chạy, nhưng gọi lại mỗi vòng quét sẽ làm ngập alert đúng lúc người
+        vận hành cần đọc alert nhất.
+        """
+        mode = self.db.get_config("run_mode", "PAUSED")
+        if mode != "EMERGENCY":
+            self._emergency_done = False
+            return
+        if self._emergency_done:
+            return
+        self._emergency_done = True
+        await self.closing.emergency_close_all()
+
+    async def _flush_deferred_close(self) -> None:
+        """Đóng những cặp vừa biết `client_position_id` mà Master đã đóng từ trước."""
+        while self._deferred_close:
+            pair_id = self._deferred_close.pop(0)
+            pair = self.db.get_pair(pair_id)
+            if pair is None or pair["status"] not in ("OPEN", "PARTIALLY_CLOSED"):
+                continue
+            await self.closing.close_pair_now(pair, pair["close_source"] or "MASTER")
 
     async def _route(self, event: sqlite3.Row) -> tuple[str, str | None, str | None]:
         """Quyết định xử lý một event thế nào. Trả về (process_status, lý do, pair_id)."""
@@ -150,9 +187,13 @@ class EventProcessor:
         if agent is None:
             return "ERROR", f"Khong biet agent {event['agent_id']}", None
 
+        if event["type"] in ("position_closed", "position_changed"):
+            if agent["role"] == "MASTER":
+                return await self.closing.on_master_close(event, agent)
+            return await self.closing.on_client_close(event, agent)
+
         if event["type"] != "position_opened":
-            # Đóng lệnh là phase 7. Ở phase 6, Master đóng thì Client KHÔNG đóng — đúng phạm vi.
-            return "IGNORED", f"Phase 6 chua xu ly loai event {event['type']}", None
+            return "IGNORED", f"Chua xu ly loai event {event['type']}", None
 
         if agent["role"] != "MASTER":
             # Vị thế mở trên Client. KHÔNG bao giờ copy ngược lên Master — chiều copy chỉ đi
@@ -379,6 +420,11 @@ class EventProcessor:
 
     async def on_command_acked(self, command: sqlite3.Row, message: Any) -> None:
         """Hook được `BridgeServer` gọi sau khi ghi ack vào DB."""
+        if command["type"] in ("CLOSE", "CLOSE_PARTIAL"):
+            if command["pair_id"]:
+                await self.closing.on_close_acked(command, message)
+            return
+
         if command["type"] not in ("OPEN", "OPEN_UI") or not command["pair_id"]:
             return
         pair = self.db.get_pair(command["pair_id"])
@@ -508,6 +554,10 @@ class EventProcessor:
         **Không tự động thử lại** (D-13): không biết lệnh đã khớp hay chưa, và mở thêm là hành
         động tăng rủi ro. Để đối chiếu ở phase 8 dọn.
         """
+        if command["type"] in ("CLOSE", "CLOSE_PARTIAL"):
+            self.closing.on_close_timeout(command)
+            return
+
         if command["type"] not in ("OPEN", "OPEN_UI") or not command["pair_id"]:
             return
         pair = self.db.get_pair(command["pair_id"])
@@ -762,6 +812,15 @@ class EventProcessor:
                         "event_id": event["event_id"]})
 
         self._check_ui_result(pair_id, candidate, data, reason)
+
+        # Lỗ hổng 1 của plan 7.4b: Master có thể đã đóng trong lúc lệnh mở này còn đang bay.
+        # `close_time_master` khác NULL chính là "ý định đóng đang chờ địa chỉ" — giờ đã có
+        # `client_position_id` thì đóng ngay, nếu không ta để lại một vị thế Client không đối ứng.
+        if pair is not None and pair["close_time_master"]:
+            log.critical("Cap %s vua tuong quan xong nhung Master da dong tu truoc, dong ngay",
+                         pair_id, extra={"pair_id": pair_id})
+            self._deferred_close.append(pair_id)
+
         return "DONE", None, pair_id
 
     def _check_ui_result(self, pair_id: str, candidate: sqlite3.Row, data: dict[str, Any],

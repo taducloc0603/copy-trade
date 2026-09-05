@@ -440,8 +440,13 @@ async def test_event_do_bot_gay_ra_khong_lan_truyen(env: Env) -> None:
     assert env.db.get_event("EVT-BOT")["process_status"] == "IGNORED"
 
 
-async def test_event_dong_lenh_chua_xu_ly_o_phase_6(env: Env) -> None:
-    """Phase 6 chưa đồng bộ đóng — Master đóng thì Client không đóng. Đúng phạm vi."""
+async def test_master_dong_thi_client_dong_theo(env: Env) -> None:
+    """Phase 7 đã đồng bộ đóng.
+
+    Test này ở phase 6 khẳng định điều **ngược lại** — rằng event đóng bị bỏ qua vì chưa tới
+    phạm vi. Giữ nguyên bối cảnh cũ nhưng đảo kỳ vọng, để nếu ai đó vô tình gỡ mất định tuyến
+    đóng trong `_route()` thì test này bắt được ngay.
+    """
     await env.copy(900001, 1.0)
     await env.wait_pair("OPEN")
 
@@ -454,5 +459,8 @@ async def test_event_dong_lenh_chua_xu_ly_o_phase_6(env: Env) -> None:
     await _wait_until(lambda: env.db.get_event("EVT-CLOSE") is not None)
     await env.run_processor()
 
-    assert env.db.get_event("EVT-CLOSE")["process_status"] == "IGNORED"
-    assert env.pairs(status="OPEN"), "Pair van OPEN vi phase 6 chua dong bo dong"
+    assert env.db.get_event("EVT-CLOSE")["process_status"] == "DONE"
+    await _wait_until(lambda: bool(env.pairs(status="CLOSED")), timeout=3.0)
+    cap = env.pairs(status="CLOSED")[0]
+    assert cap["close_source"] == "MASTER"
+    assert env.db.get_master_position(900001)["status"] == "CLOSED"
