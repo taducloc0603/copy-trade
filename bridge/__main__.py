@@ -16,6 +16,7 @@ import signal
 
 from bridge.config import ConfigError, load_config
 from bridge.db.repo import Database
+from bridge.engine.processor import EventProcessor
 from bridge.logging_setup import get_logger, setup_logging
 from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
@@ -39,8 +40,10 @@ async def run() -> int:
         log.warning("run_mode dang la %s chu khong phai PAUSED", run_mode)
 
     server = BridgeServer(db, ServerConfig(host=config.bridge.host, port=config.bridge.port))
-    CommandDispatcher(db, server)
+    dispatcher = CommandDispatcher(db, server)
+    processor = EventProcessor(db, server, dispatcher)
     await server.start()
+    await processor.start()
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -54,6 +57,7 @@ async def run() -> int:
         pass
     finally:
         log.info("Bridge dung lai")
+        await processor.stop()
         await server.stop()
         db.close()
     return 0

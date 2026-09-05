@@ -122,6 +122,8 @@ class BridgeServer:
         self.latest_snapshots: dict[str, SnapshotMessage] = {}
         #: Đặt bởi `CommandDispatcher` để server gửi command tồn đọng ngay sau khi bắt tay.
         self.on_agent_online: Any = None
+        #: Đặt bởi `EventProcessor` (phase 6). Được await sau khi ack đã ghi vào DB.
+        self.on_command_acked: Any = None
 
     # -- vòng đời --------------------------------------------------------------------------
 
@@ -357,7 +359,7 @@ class BridgeServer:
         elif isinstance(message, EventMessage):
             await self._handle_event(connection, message)
         elif isinstance(message, AckMessage):
-            self._handle_ack(connection, message)
+            await self._handle_ack(connection, message)
         elif isinstance(message, SymbolSpecsMessage):
             self._handle_symbol_specs(connection, message)
         elif isinstance(message, SnapshotMessage):
@@ -462,7 +464,8 @@ class BridgeServer:
                     extra={"agent_id": connection.agent_id})
         await connection.send(ResendMessage(from_seq=from_seq, ts=utc_now_iso()))
 
-    def _handle_ack(self, connection: AgentConnection, message: AckMessage) -> None:
+    async def _handle_ack(self, connection: AgentConnection,
+                          message: AckMessage) -> None:
         command = self.db.get_command(message.command_id)
         if command is None:
             log.warning("Agent %s ack command %s không có trong DB", connection.agent_id,
@@ -498,6 +501,10 @@ class BridgeServer:
                  message.retcode, extra={"agent_id": connection.agent_id,
                                          "command_id": message.command_id,
                                          "pair_id": command["pair_id"]})
+
+        # Tầng nghiệp vụ quyết định làm gì tiếp. Tầng giao thức không biết `pair` là gì.
+        if self.on_command_acked is not None:
+            await self.on_command_acked(self.db.get_command(message.command_id), message)
 
     def _handle_symbol_specs(self, connection: AgentConnection,
                              message: SymbolSpecsMessage) -> None:

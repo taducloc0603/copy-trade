@@ -50,6 +50,8 @@ class CommandDispatcher:
     def __init__(self, db: Database, server: BridgeServer) -> None:
         self.db = db
         self.server = server
+        #: Đặt bởi `EventProcessor` (phase 6): gọi cho từng command bị đánh TIMEOUT.
+        self.on_timeout: Any = None
         # Agent vừa bắt tay xong thì đẩy ngay các command còn tồn.
         server.on_agent_online = self.on_agent_online
 
@@ -96,6 +98,21 @@ class CommandDispatcher:
                         extra={"agent_id": target_agent_id, "command_id": command_id,
                                "pair_id": pair_id})
         return sent
+
+    async def send_existing(self, command_id: str) -> bool:
+        """Gửi một command **đã có sẵn trong DB**.
+
+        Phase 6 tạo `pair` và `command` trong cùng một giao dịch rồi mới gửi, nên nó cần tách
+        bước gửi ra khỏi bước ghi — khác `dispatch()` vốn làm cả hai.
+        """
+        row = self.db.get_command(command_id)
+        if row is None:
+            log.error("Khong tim thay command %s de gui", command_id,
+                      extra={"command_id": command_id})
+            return False
+        payload = json.loads(row["payload_json"]) if row["payload_json"] else {}
+        return await self._send(command_id, row["target_agent_id"], row["type"], row["pair_id"],
+                                payload, row["deadline_at"])
 
     async def on_agent_online(self, agent_id: str) -> None:
         """Agent vừa kết nối: yêu cầu snapshot rồi đẩy nốt các command còn tồn."""
@@ -155,4 +172,6 @@ class CommandDispatcher:
             log.error("Command %s quá hạn mà chưa có ack, chuyển TIMEOUT", command_id,
                       extra={"command_id": command_id, "pair_id": row["pair_id"],
                              "agent_id": row["target_agent_id"]})
+            if self.on_timeout is not None:
+                self.on_timeout(self.db.get_command(command_id))
         return len(rows)

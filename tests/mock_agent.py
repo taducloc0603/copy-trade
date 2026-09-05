@@ -75,6 +75,9 @@ class MockAgent:
     positions: dict[int, MockPosition] = field(default_factory=dict)
     #: `retcode` trả về cho command kế tiếp; None nghĩa là thành công (10009).
     next_retcode: int | None = None
+    #: Chuỗi `retcode` ép theo thứ tự, mỗi command thực thi lấy một phần tử. Hết chuỗi thì
+    #: quay về `next_retcode`. Dùng để dựng kịch bản "hỏng N lần rồi thành công".
+    retcode_sequence: list[int] = field(default_factory=list)
     #: Trễ khớp lệnh giả lập, tính bằng giây.
     execution_delay_sec: float = 0.0
     #: Tự động trả ack khi nhận command. Tắt để test tình huống Bridge không nhận được ack.
@@ -352,9 +355,11 @@ class MockAgent:
             if refused:
                 return ack("rejected", retmsg=refused)
 
-        # `next_retcode` cho phép test ép một mã lỗi bất kỳ, kể cả mã dừng hẳn.
-        if self.next_retcode is not None and self.next_retcode != 10009:
-            return ack("failed", retcode=self.next_retcode, retmsg="forced by test")
+        # Cho phép test ép mã lỗi, kể cả mã dừng hẳn. `retcode_sequence` được ưu tiên để
+        # dựng kịch bản nhiều bước; hết chuỗi thì rơi về `next_retcode`.
+        forced = self.retcode_sequence.pop(0) if self.retcode_sequence else self.next_retcode
+        if forced is not None and forced != 10009:
+            return ack("failed", retcode=forced, retmsg="forced by test")
 
         if command["type"] == "OPEN":
             position_id = self._next_position_id()

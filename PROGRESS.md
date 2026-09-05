@@ -9,7 +9,7 @@
 | 3 | Giao thức và TCP server | xong | 2026-09-04 |
 | 4 | EA phía Master | xong | 2026-09-05 |
 | 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
-| 6 | Luồng mở lệnh | chưa bắt đầu | |
+| 6 | Luồng mở lệnh | xong | 2026-09-05 |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
@@ -482,3 +482,81 @@ hai terminal. Trạng thái phase 4 chuyển từ "chưa nghiệm thu" thành **
      `<login>_commands.ndjson`.
   4. **Cần script gửi command tay cho tới hết phase 5.** `scratchpad/phase5_acceptance.py` và
      `phase5_restart.py` đóng vai trò đó. Từ phase 6 Bridge tự sinh command nên không cần nữa.
+
+### Phase 6
+
+- **Đã làm:**
+  - `bridge/engine/sizing.py`: tám bước tính volume của mục 6.3, **toàn bộ là hàm thuần** —
+    không đọc DB, không gửi lệnh. Mọi phép tính chạy bằng `Decimal` khởi tạo từ **chuỗi**;
+    `float` chỉ xuất hiện ở biên vào/ra.
+  - `bridge/engine/processor.py`: vòng xử lý event tuần tự theo `id`, sáu điều kiện lọc của
+    mục 6.2, tạo `pair` + `command` trong **đúng một giao dịch** rồi mới gửi socket, phân loại
+    `retcode` thành nhóm retry và nhóm dừng, ba chính sách `open_fail_policy`, timeout →
+    `OPEN_FAILED` và **không tự gửi lại** (D-13).
+  - Nối hook: `BridgeServer.on_command_acked` (async) và `CommandDispatcher.on_timeout`. Tầng
+    giao thức vẫn không biết `pair` là gì — nó chỉ gọi ngược lên tầng nghiệp vụ.
+  - `CommandDispatcher.send_existing()`: gửi một command đã có sẵn trong DB, để phase 6 tách
+    được bước ghi khỏi bước gửi.
+  - `bridge/__main__.py` chạy thêm `EventProcessor`, trong đó có cả vòng quét `scan_deadlines()`
+    — xử lý xong mục "phát hiện sớm" số 5 của phase 3.
+  - `tests/mock_agent.py`: thêm `retcode_sequence` để dựng kịch bản "hỏng N lần rồi thành công".
+  - Test: `test_sizing.py` (34), `test_open_flow.py` (24). **Tổng 319 test xanh**, `ruff` sạch.
+
+- **Nghiệm thu trên hai terminal demo thật** (Master 538216 → Client 538217, khác chiều,
+  hệ số 0.5). Bốn lệnh mở tay trên Master:
+
+  | Master | Client | Độ trễ copy |
+  |---|---|---|
+  | BUY 0.10 | SELL 0.05 | 323 ms |
+  | SELL 0.10 | BUY 0.05 | 227 ms |
+  | BUY 0.06 | SELL 0.03 | 368 ms |
+  | BUY 0.01 | **không copy** — 0.005 làm tròn xuống ra 0.00, dưới `volume_min` → bỏ qua + `VOLUME_BELOW_MIN` (D-18) | — |
+
+  Đối chiếu log terminal Client: đúng **3 deal mới**, không có deal thứ tư. Không event nào
+  `PENDING` hay `ERROR` còn lại. **Độ trễ copy 227–368 ms, đạt yêu cầu dưới 1 giây.**
+
+  Ngoài ý muốn nhưng có giá trị: khi Bridge khởi động lần đầu với `run_mode = PAUSED`, nó xử lý
+  toàn bộ event tồn từ phase 4–5 và **ghi nhận 13 vị thế Master mà không copy cái nào** — đúng
+  hành vi "vẫn ghi nhận nhưng không copy" của mục 6.2, kiểm chứng trên dữ liệu thật.
+
+- **Lệch so với plan:**
+  1. **Tuổi sự kiện tính từ `ts_agent`, không phải `received_at`.** Một event gửi bù sau khi
+     Bridge chết 20 phút thì `received_at` vẫn mới tinh, mà lệnh thì đã cũ — dùng `received_at`
+     sẽ vô hiệu hoá chính hàng rào này (plan 8.3 nói rõ ý đó).
+  2. **`deadline_ms` của command OPEN có sàn `MIN_DEADLINE_MS = 2000`.** Plan 6.4 nói
+     `deadline_at = now + max_event_age_ms`. Hàng rào hạn lệnh phía EA có độ phân giải một giây
+     và sai về phía từ chối (phát hiện ở phase 5), nên `max_event_age_ms` nhỏ sẽ làm EA từ chối
+     oan. Với mặc định 5000ms thì không đổi gì.
+  3. **Độ trễ copy không được lưu thành cột riêng.** Plan 6.5 nói "tính và ghi độ trễ copy để
+     dashboard dùng"; schema không có cột đó. `open_time_master` và `open_time_client` đều đã
+     lưu (cả hai theo **đồng hồ Bridge**, không phải `ts_agent`), nên phase 9 tính hiệu là ra —
+     không cần đổi schema.
+  4. **Vị thế Master được ghi nhận trong MỌI chế độ vận hành**, kể cả `PAUSED`. Ghi sổ không
+     phải là hành động giao dịch, và phase 8 cần biết Master đang có gì.
+
+- **Vấn đề còn treo:**
+  1. **`master_position` của các vị thế đã đóng vẫn mang `status = OPEN`.** Phase 6 chưa xử lý
+     event đóng nên không có gì cập nhật chúng. Sau phiên nghiệm thu, bảng có 16 dòng `OPEN`
+     trong khi terminal chỉ còn vài vị thế. **Phase 7 sẽ sửa phần lớn, phần còn lại là việc của
+     đối chiếu ở phase 8** — đây chính là loại sai lệch mà `reconcile_finding` sinh ra để bắt.
+  2. **Còn 3 cặp đang mở trên hai tài khoản demo** sau nghiệm thu. Phase 6 chưa đồng bộ đóng nên
+     đóng Master sẽ **không** đóng Client. Cần đóng tay ở **cả hai** terminal, hoặc để lại làm
+     dữ liệu đầu vào cho phase 7.
+  3. **`run_mode` đã đặt lại về `PAUSED` sau nghiệm thu.** Để `RUNNING` khi chưa có đồng bộ đóng
+     là trạng thái nguy hiểm: mở thì copy, đóng thì không, và cặp thành mất hedge ngay.
+  4. Từ các phase trước: `retcode 10019` và nhánh filling IOC/RETURN chưa ép được; Close By
+     broker không hỗ trợ; symbol ngoài ASCII không có để thử.
+
+- **Phát hiện sớm (ghi lại, không xử lý ở phase này):**
+  1. **`_open_for_client()` chạy tuần tự cho từng Client, và mỗi lần gửi command đều `await`.**
+     Với 1 Client thì không sao. Với N Client, Client thứ N phải chờ N−1 lần gửi trước đó — làm
+     lệch độ trễ copy giữa các Client. Phase 10 mô phỏng 5 Client sẽ đo được; nếu lệch đáng kể
+     thì gửi song song **phần socket** (phần ghi DB vẫn phải tuần tự).
+  2. **Retry đang lên lịch bằng `asyncio.create_task` + `sleep`.** Bridge chết giữa lúc chờ thì
+     lần retry đó mất, và pair nằm lại `PENDING_OPEN`. Không nguy hiểm (đối chiếu ở phase 8 sẽ
+     bắt), nhưng phase 8 phải biết trạng thái này tồn tại.
+  3. **`open_fail_policy = RETRY_CLOSE_MASTER` gửi lệnh đóng Master ngay ở phase 6**, trước khi
+     phase 7 có luồng đóng đầy đủ. Lệnh đó **không** tạo pair mới và **không** cascade sang
+     Client khác — phase 7 phải kiểm tra lại đường này khi cascade đã có, để nó không đi hai lần.
+  4. **Chưa có cách tắt copy cho riêng một symbol khi đang chạy** ngoài việc sửa
+     `symbol_map.enabled` trực tiếp trong DB. Phase 9 cần nút đó trên giao diện.
