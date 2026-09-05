@@ -1170,3 +1170,71 @@ ticket và **không lọc `POSITION_MAGIC`**, nên đóng được vị thế ma
 
 Cấu hình hiện tại là `STRICT` nên rủi ro 2 chưa hiện hữu, nhưng cả hai nên được trả lời tường
 minh trong Phase 7 chứ không để ngầm.
+
+---
+
+## Xác minh: One Click Trading trên Master → copy sang Client
+
+*(2026-09-05, sau khi Phase 6b xong, trước Phase 7.)*
+
+Người dùng bấm Buy bằng OCT trên Master và thấy Client không mở lệnh, nghi có vấn đề.
+
+**Không phải lỗi.** Ba thứ đều đang tắt, cả ba do lượt trước tôi chủ động dừng để trả máy về
+trạng thái sạch: Bridge (hai EA đang quay vòng `SYN_SENT`), clicker, và `run_mode = PAUSED`.
+
+Bằng chứng EA vẫn làm đúng việc — hàng đợi cục bộ `MQL5/Files/copybridge/538216_outbox.ndjson`:
+
+```
+seq=52  position_opened  position_id=71489280  BUY 0.01 BTCUSD.s  magic=0  reason=0
+```
+
+Đúng lệnh OCT đó (`order #71489280` khớp journal). EA **ghi vào hàng đợi trước khi gửi**, đúng
+thiết kế phòng khi Bridge chết. Khi Bridge bật lên, event chảy vào và được ghi `IGNORED` với lý
+do `run_mode = PAUSED`.
+
+> **Bài học vận hành:** bật lại Bridge **không** làm những lệnh cũ được copy. `max_event_age_ms`
+> là 5000, mà lệnh trong hàng đợi đã hơn hai phút tuổi — chúng được ghi nhận nhưng cố ý không
+> copy, vì mở một vị thế hedge theo giá của hai phút trước là mất tiền. Muốn thử thì phải bấm
+> lệnh **mới** khi cả stack đã sẵn sàng.
+
+### Phép đo đầu-cuối, kênh OCT
+
+Trước đó **chưa từng đo OCT**: mọi lệnh Master ở Bước 5 và các bài diễn tập đều do driver đặt qua
+hộp thoại New Order — cùng cho `magic = 0` và `reason = 0` nên gần như chắc chắn giống nhau,
+nhưng "gần như chắc chắn" đúng là thứ phase 6b đã dạy là không đủ.
+
+Bật lại stack theo thứ tự: Bridge lên khi vẫn `PAUSED` để backlog chảy hết thành `IGNORED`
+(sạch hơn là để chúng bị `EVENT_TOO_OLD` gây nhiễu alert), rồi clicker, kiểm canary xanh, rồi
+mới `RUNNING`. Người dùng bấm đúng một lệnh OCT.
+
+| Kiểm | Kết quả |
+|---|---|
+| EA Master bắt lệnh OCT | `seq=54`, pos 71489282, `magic=0`, `reason=0` → `DONE` |
+| Pair | `PAIR-20260905-000010`, `OPEN`, thẻ `CB4bfd8f78a5` |
+| Vị thế Client | 71489283, SELL 0.01 (OPPOSITE) |
+| `client_open_reason` | **0 (CLIENT)** |
+| Alert mới | **không có** |
+
+Cross-check hai journal khớp tuyệt đối:
+
+```
+Master 538216  22:05:02.616  deal #19281252  buy  0.01  order #71489282
+Client 538217  22:05:03.819  deal #19281253  sell 0.01  order #71489283
+```
+
+**Độ trễ 1234 ms** — nhưng là **một mẫu, và là lệnh đầu tiên của clicker vừa khởi động**. Ở Bước 4
+lệnh đầu cũng mất 871 ms so với 470–540 ms các lệnh sau, do lần mở hộp thoại đầu phải chờ MT5
+dựng nó. Không so được với trung vị 604 ms của 5 mẫu đã ấm. Muốn con số thật cho đường OCT thì
+cần vài lệnh liên tiếp — chưa làm.
+
+### Vì sao chiều Master không quan tâm kênh nào
+
+`ea/CopyBridgeCommon.mqh` bắt `OnTradeTransaction` và lọc đúng một điều kiện: deal phải là
+mua/bán. **Không lọc magic, không lọc `DEAL_REASON`.** Bridge chỉ hỏi thêm "có phải do chính bot
+gây ra không" (`caused_by_command_id`). Nên OCT, hộp thoại New Order, app điện thoại hay một EA
+khác đều sinh event như nhau.
+
+### Trạng thái để lại
+
+`run_mode = PAUSED`, Bridge và clicker đã tắt. Thêm `PAIR-20260905-000010` đang `OPEN` — giữ lại
+làm dữ liệu cho Phase 7.
