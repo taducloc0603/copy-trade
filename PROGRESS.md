@@ -8,7 +8,7 @@
 | 2 | Database | xong | 2026-09-04 |
 | 3 | Giao thức và TCP server | xong | 2026-09-04 |
 | 4 | EA phía Master | xong | 2026-09-05 |
-| 5 | EA phía Client và thực thi lệnh | chưa bắt đầu | |
+| 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
 | 6 | Luồng mở lệnh | chưa bắt đầu | |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
@@ -389,3 +389,96 @@ hai terminal. Trạng thái phase 4 chuyển từ "chưa nghiệm thu" thành **
   4. **Thêm `bridge/__main__.py`** (ngoài plan) để chạy `python -m bridge`. Chỉ nối các thành
      phần của phase 1–3, không có logic nghiệp vụ mới. Phase 6 sẽ thêm vòng xử lý event và
      `scan_deadlines()` vào đây.
+
+### Phase 5
+
+- **Đã làm:**
+  - `ea/CopyBridgeClient.mq5`: lớp `CClientAgent` kế thừa `CBridgeAgent`, thực thi `OPEN`,
+    `CLOSE`, `CLOSE_PARTIAL`. Không copy-paste dòng nào từ EA Master — toàn bộ phần bắt sự kiện,
+    heartbeat, hàng đợi, symbol specs dùng lại nguyên vẹn từ `CopyBridgeCommon.mqh`.
+  - Tự chọn filling mode theo `SYMBOL_FILLING_MODE`, thứ tự FOK → IOC → RETURN, thử lại **đúng
+    một lần** khi `retcode = 10030`.
+  - Hàng rào an toàn phía EA (5.4), đủ bốn mục: hạn lệnh đã qua, `magic` lệch, `volume` ≤ 0,
+    `symbol` không tồn tại. Thêm một mục ngoài plan: từ chối khi Auto Trading đang tắt.
+  - **Sửa thứ tự ghi bộ nhớ command trong `CopyBridgeCommon.mqh`.** Bản phase 4 gọi
+    `RememberCommand()` **sau** khi thực thi; plan 5.2 yêu cầu ghi file **trước** khi gọi
+    `OrderSend`. Đã tách thành `ReserveCommand()` (giữ chỗ, ack rỗng) và `SetCommandAck()`
+    (ghi kết quả). File bộ nhớ command là append-only, khi đọc lại thì dòng sau thắng dòng trước.
+  - `tests/mock_agent.py` mở rộng (5.5): giữ danh sách vị thế thật, mô phỏng `OPEN`/`CLOSE`/
+    `CLOSE_PARTIAL`, `already_closed`, ép `retcode` bất kỳ, độ trễ khớp lệnh, nhận command trùng,
+    và áp cùng bộ hàng rào an toàn như EA thật.
+  - `tests/test_client_execution.py`: **26 test mới**. Tổng toàn dự án **261 test xanh**,
+    `ruff check .` sạch. Cả hai EA biên dịch **0 lỗi, 0 cảnh báo**.
+
+- **Nghiệm thu trên hai terminal demo thật** (538216 Master, 538217 Client, Connext-Demo),
+  chạy bằng `scratchpad/phase5_acceptance.py` — **20/20 mục đạt**:
+
+  | Mục kiểm tra | Kết quả |
+  |---|---|
+  | `OPEN` → Client mở đúng symbol, chiều, volume, magic | ĐẠT |
+  | **Gửi lại cùng `command_id` → không mở lệnh thứ hai** | ĐẠT |
+  | **Khởi động lại EA rồi gửi lại cùng `command_id` → vẫn không mở lệnh thứ hai** | ĐẠT |
+  | `CLOSE` vị thế đã đóng → `already_closed`, không phải ERROR | ĐẠT |
+  | `CLOSE_PARTIAL` volume lớn hơn phần còn lại → đóng hết, ack ghi đúng `executed_volume` | ĐẠT — yêu cầu 5.0, thực đóng 0.03 |
+  | Command quá hạn → EA từ chối, không đặt lệnh | ĐẠT (sau khi sửa lỗi, xem dưới) |
+  | `magic` lệch → từ chối | ĐẠT |
+  | `volume` = 0 → từ chối | ĐẠT |
+  | Symbol không tồn tại → ack lỗi, không sập EA | ĐẠT |
+  | Ép lỗi → ack mang `retcode` nguyên bản | ĐẠT — `10014 Invalid volume` |
+  | `caused_by_command_id` trên event do command sinh ra | ĐẠT — 10/10 event |
+
+  **Hồi quy EA Master sau khi file dùng chung thay đổi**: nạp lại EA Master, mở và đóng một lệnh
+  → đúng 2 event. Đối chiếu toàn phiên: **25 deal ↔ 25 event, khớp 1-1**, không thiếu không thừa
+  không trùng. Tính chất "một hành động, một event" vẫn nguyên.
+
+- **Lỗi thật tìm được khi chạy trên terminal thật và đã sửa:**
+  1. **Hàng rào "lệnh quá hạn" không chặn được lệnh quá hạn.** Gửi command với hạn 1ms, EA vẫn
+     thực thi và mở lệnh thật (`retmsg = "Request executed"`). Nguyên nhân: MQL5 không có đồng hồ
+     thực theo mili giây nên `CbIsoToTime()` cắt bỏ phần lẻ; hạn `08:10:00.001` thành `08:10:00`,
+     bằng đúng `TimeGMT()` lúc đó, nên phép so `>` cho `false`. Đã đổi thành `>=`.
+     **26 test Python đều xanh trước khi sửa** — mock agent so chuỗi ISO đầy đủ nên không mất
+     phần mili giây như MQL5. Đây là lớp lỗi chỉ terminal thật mới lộ ra.
+
+- **Lệch so với plan:**
+  1. **Thêm trạng thái ack `unknown` vào giao thức.** Plan 5.2 mô tả tình huống terminal chết sau
+     khi giữ chỗ `command_id` nhưng trước khi biết kết quả: EA không được thực thi lại. Nhưng nó
+     cũng không được báo `failed` — Bridge sẽ retry và mở lệnh thứ hai. Bridge ánh xạ `unknown`
+     thành `command.status = TIMEOUT` kèm alert **CRITICAL**; `TIMEOUT` đúng nghĩa "không biết",
+     và plan 6.6 đã quy định không tự động thử lại sau `TIMEOUT`. **Không phải đổi schema DB.**
+  2. **Payload command dùng `direction` thay vì `type` cho chiều lệnh**, nhất quán với `event.data`
+     đã chốt ở phase 3. Quy ước xuyên suốt: `type` luôn là *loại* (loại event, loại command),
+     `direction` luôn là BUY/SELL.
+  3. **Thêm hàng rào thứ năm ngoài bốn mục của 5.4**: từ chối command khi Auto Trading đang tắt.
+     Rẻ tiền, và không có nó thì `OrderSend` thất bại với mã lỗi khó hiểu hơn nhiều.
+  4. **Ba test cũ của phase 3 phải sửa payload.** Mock agent trước đây là hộp câm nên các test
+     dispatcher gửi payload `{"volume": 0.5}` không có symbol. Giờ mock áp hàng rào như EA thật
+     nên payload đó bị từ chối đúng. Đã sửa thành payload đầy đủ. **Không sửa dòng code sản phẩm
+     nào** — chỉ làm test phản ánh đúng thứ Bridge thật sẽ gửi.
+  5. **Test `test_ea_master_khong_dat_lenh` đổi thành `test_chi_ea_client_duoc_dat_lenh`.**
+     Ở phase 4 quy tắc là "không EA nào đặt lệnh"; từ phase 5 quy tắc đúng là "chỉ EA Client đặt
+     lệnh, file dùng chung và EA Master thì không".
+
+- **Vấn đề còn treo:**
+  1. **`retcode = 10019` (thiếu margin) không ép được.** Tài khoản demo có ~1.000.000 USD và
+     `BTCUSD.s` chặn ở 10 lot, nên không cách nào làm cạn margin. Đã dùng volume vượt `volume_max`
+     để lấy `10014` thay thế — cùng nhóm "dừng hẳn" và chứng minh được `retcode` đi qua nguyên
+     vẹn. **Phase 6 vẫn phải cài đặt đúng nhánh 10019 theo bảng ở mục 5.3**, chỉ là chưa có dữ
+     liệu thực nghiệm.
+  2. **Nhánh dự phòng filling mode IOC/RETURN chưa chạy thật.** Cả hai symbol của broker này chỉ
+     hỗ trợ FOK (`filling_mode = 1`), nên `retcode = 10030` không kích hoạt được. Mã có, chưa thử.
+  3. Từ phase 4: Close By không kiểm chứng được (broker không hỗ trợ), symbol ngoài ASCII không
+     kiểm chứng được, `XAUUSD.s` không test được cuối tuần.
+
+- **Phát hiện sớm (ghi lại, không xử lý ở phase này):**
+  1. **Hàng rào hạn lệnh có độ phân giải MỘT GIÂY và sai về phía từ chối.** Khi hạn rơi đúng vào
+     giây hiện tại, EA từ chối. Với hạn mặc định 5000ms thì không ảnh hưởng, nhưng **phase 6 đừng
+     đặt `deadline_ms` dưới ~2000ms** — command sẽ bị từ chối oan.
+  2. **`OnCommand()` của Client chạy đồng bộ trong `OnTimer`.** `OrderSend` chặn tới vài trăm ms
+     (đo được 250–340ms trên broker này). Trong lúc đó EA không đọc socket và không gửi heartbeat.
+     Với `heartbeat_timeout_ms = 5000` thì an toàn, nhưng nếu phase 7 gửi một chuỗi nhiều command
+     liên tiếp thì cần xem lại — hoặc chỉ xử lý một command mỗi lần `Poll()`.
+  3. **Bộ nhớ command giữ 24 giờ, nhưng `command_id` là UUID nên file chỉ tăng.** Với tần suất
+     giao dịch thật thì không đáng kể; phase 10 kiểm thử tải 24 giờ nên nhìn lại kích thước file
+     `<login>_commands.ndjson`.
+  4. **Cần script gửi command tay cho tới hết phase 5.** `scratchpad/phase5_acceptance.py` và
+     `phase5_restart.py` đóng vai trò đó. Từ phase 6 Bridge tự sinh command nên không cần nữa.

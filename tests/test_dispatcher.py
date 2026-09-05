@@ -44,6 +44,11 @@ async def stack(agents_db: Database) -> AsyncIterator[tuple[BridgeServer, Comman
         await server.stop()
 
 
+#: Payload OPEN đầy đủ, đúng như Bridge sẽ gửi ở phase 6: mọi thông số đã tính sẵn.
+OPEN_PAYLOAD = {"symbol": "XAUUSDm", "direction": "SELL", "volume": 0.5,
+                "deviation": 20, "magic": 770001}
+
+
 def _client(server: BridgeServer, **kwargs: object) -> MockAgent:
     return MockAgent(host="127.0.0.1", port=server.port, token=CLIENT_TOKEN, role="CLIENT",
                      account_login=CLIENT_LOGIN, **kwargs)
@@ -130,7 +135,7 @@ async def test_ack_thanh_cong_duoc_ghi_vao_db(stack, agents_db: Database) -> Non
     agent = _client(server)
     await agent.start()
     try:
-        command_id = await dispatcher.dispatch(CLIENT_AGENT, "OPEN", payload={"volume": 0.5})
+        command_id = await dispatcher.dispatch(CLIENT_AGENT, "OPEN", payload=OPEN_PAYLOAD)
         await _wait_until(
             lambda: agents_db.get_command(command_id)["status"] == "ACK_OK", timeout=3.0
         )
@@ -148,7 +153,9 @@ async def test_ack_that_bai_giu_nguyen_retcode(stack, agents_db: Database) -> No
     agent = _client(server, next_retcode=10019)
     await agent.start()
     try:
-        command_id = await dispatcher.dispatch(CLIENT_AGENT, "OPEN", payload={"volume": 100.0})
+        command_id = await dispatcher.dispatch(
+            CLIENT_AGENT, "OPEN", payload={**OPEN_PAYLOAD, "volume": 100.0}
+        )
         await _wait_until(
             lambda: agents_db.get_command(command_id)["status"] == "ACK_FAILED", timeout=3.0
         )
@@ -221,14 +228,21 @@ async def test_command_pending_qua_han_khong_bi_danh_timeout(stack,
 
 
 async def test_command_da_co_ack_khong_bi_danh_timeout(stack, agents_db: Database) -> None:
+    """Đã có ack rồi thì quá hạn cũng không được đánh TIMEOUT."""
     server, dispatcher = stack
     agent = _client(server)
     await agent.start()
     try:
-        command_id = await dispatcher.dispatch(CLIENT_AGENT, "CLOSE", deadline_ms=1)
+        command_id = await dispatcher.dispatch(CLIENT_AGENT, "CLOSE", deadline_ms=60000)
         await _wait_until(
             lambda: agents_db.get_command(command_id)["status"] == "ACK_OK", timeout=3.0
         )
+        # Đẩy hạn về quá khứ sau khi đã có ack.
+        with agents_db.transaction() as conn:
+            conn.execute(
+                "UPDATE command SET deadline_at = '2000-01-01T00:00:00.000Z' "
+                "WHERE command_id = ?", (command_id,)
+            )
         assert dispatcher.scan_deadlines() == 0
         assert agents_db.get_command(command_id)["status"] == "ACK_OK"
     finally:

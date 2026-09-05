@@ -482,6 +482,43 @@ string CbNowIso()
   }
 
 //+------------------------------------------------------------------+
+//| Doc chuoi ISO 8601 UTC do Bridge sinh ra: 2026-09-05T04:48:08.282Z |
+//| Tra ve 0 neu chuoi khong doc duoc.                                |
+//+------------------------------------------------------------------+
+datetime CbIsoToTime(const string text)
+  {
+   if(StringLen(text) < 19)
+      return(0);
+   MqlDateTime dt;
+   dt.year = (int)StringToInteger(StringSubstr(text, 0, 4));
+   dt.mon  = (int)StringToInteger(StringSubstr(text, 5, 2));
+   dt.day  = (int)StringToInteger(StringSubstr(text, 8, 2));
+   dt.hour = (int)StringToInteger(StringSubstr(text, 11, 2));
+   dt.min  = (int)StringToInteger(StringSubstr(text, 14, 2));
+   dt.sec  = (int)StringToInteger(StringSubstr(text, 17, 2));
+   if(dt.year < 2000 || dt.mon < 1 || dt.mon > 12 || dt.day < 1 || dt.day > 31)
+      return(0);
+   return(StructToTime(dt));
+  }
+
+//| Mot moc thoi gian ISO da qua chua? Chuoi hong thi tra ve false: tu choi mot
+//| lenh chi vi khong doc duoc timestamp la bien loi phu thanh loi chinh.
+//|
+//| DO PHAN GIAI LA MOT GIAY. MQL5 khong co dong ho thuc theo mili giay, va
+//| CbIsoToTime() cat bo phan le. Dung >= chu khong phai > la CO Y: khi han roi
+//| vao dung giay hien tai, ta TU CHOI. Sai lech toi da khoang mot giay, va sai
+//| ve phia tu choi mot lenh gan het han - an toan hon nhieu so voi thuc thi mot
+//| lenh da qua han. Mot lenh bi tu choi thi nhin thay duoc; mot lenh cu duoc
+//| thuc thi muon la tien.
+bool CbIsoIsPast(const string text)
+  {
+   datetime moment = CbIsoToTime(text);
+   if(moment == 0)
+      return(false);
+   return(TimeGMT() >= moment);
+  }
+
+//+------------------------------------------------------------------+
 //| 5. Ghi log                                                       |
 //|                                                                  |
 //| KHONG BAO GIO log token. Khong them ham nao lam viec do.          |
@@ -675,10 +712,22 @@ private:
          datetime at = (datetime)reader.GetInt("at", 0);
          if(at < cutoff)
             continue;   // qua 24 gio thi bo
+         string id = reader.GetStr("command_id");
+
+         // File la append-only: mot command_id co the co hai dong, dong dau la
+         // luc GIU CHO (ack rong) va dong sau la ket qua that. Dong sau thang.
+         int existing = FindCommand(id);
+         if(existing >= 0)
+           {
+            m_cmd_acks[existing] = reader.GetStr("ack");
+            m_cmd_at[existing]   = at;
+            continue;
+           }
+
          ArrayResize(m_cmd_ids, m_cmd_count + 1);
          ArrayResize(m_cmd_acks, m_cmd_count + 1);
          ArrayResize(m_cmd_at, m_cmd_count + 1);
-         m_cmd_ids[m_cmd_count]  = reader.GetStr("command_id");
+         m_cmd_ids[m_cmd_count]  = id;
          m_cmd_acks[m_cmd_count] = reader.GetStr("ack");
          m_cmd_at[m_cmd_count]   = at;
          m_cmd_count++;
@@ -905,23 +954,44 @@ private:
       int known = FindCommand(command_id);
       if(known >= 0)
         {
-         CbLog("INFO", "Command " + command_id + " da xu ly truoc do, tra lai ack cu");
-         SendLine(m_cmd_acks[known]);
+         if(StringLen(m_cmd_acks[known]) > 0)
+           {
+            CbLog("INFO", "Command " + command_id + " da xu ly truoc do, tra lai ack cu");
+            SendLine(m_cmd_acks[known]);
+            return;
+           }
+         // Da GIU CHO nhung chua co ket qua: terminal chet giua luc dat lenh.
+         // KHONG thuc thi lai. Tra ve status "unknown" de Bridge biet la khong
+         // ro lenh da khop hay chua, va de doi chieu o phase 8 don. Tra ve
+         // "failed" o day moi la nguy hiem: Bridge se retry va mo lenh thu hai.
+         CbLog("ERROR", "Command " + command_id + " da duoc giu cho nhung khong co ket qua. " +
+               "Khong thuc thi lai, bao unknown de doi chieu xu ly.");
+         string unknown_ack = SendAck(command_id, "unknown", 0,
+                                      "Command reserved but result unknown after restart",
+                                      -1, 0, 1);
+         m_cmd_acks[known] = unknown_ack;
+         AppendCommandRecord(command_id, unknown_ack);
          return;
         }
 
       if(type == "REQUEST_SNAPSHOT")
         {
+         // Snapshot chi doc, khong dat lenh, nen khong can giu cho truoc.
          string ack = SendSnapshot(command_id);
          RememberCommand(command_id, ack);
          return;
         }
 
+      // GIU CHO TRUOC KHI THUC THI. Neu terminal crash ngay sau OrderSend ma
+      // truoc khi ghi, ta se mo lenh hai lan khi Bridge gui lai. Ghi truoc thi
+      // te nhat la mot command_id bi danh dau da xu ly nhung thuc ra chua -
+      // mot lenh THIEU an toan hon nhieu so voi mot lenh THUA.
+      ReserveCommand(command_id);
+
       // Cac loai con lai do lop con xu ly (EA Client o phase 5). EA Master
       // khong thuc thi lenh mo hay dong.
       string ack = OnCommand(command_id, type, reader);
-      if(StringLen(ack) > 0)
-         RememberCommand(command_id, ack);
+      SetCommandAck(command_id, ack);
      }
 
    int               FindCommand(const string command_id) const
@@ -950,12 +1020,71 @@ protected:
       m_cmd_acks[m_cmd_count] = ack_line;
       m_cmd_at[m_cmd_count]   = TimeGMT();
       m_cmd_count++;
+      AppendCommandRecord(command_id, ack_line);
+     }
 
+   //| Ghi mot dong vao file bo nho command. File la append-only; khi doc lai,
+   //| dong sau cua cung mot command_id de len dong truoc.
+   void              AppendCommandRecord(const string command_id, const string ack_line)
+     {
       CJsonWriter writer;
       writer.Str("command_id", command_id);
       writer.Int("at", (long)TimeGMT());
       writer.Str("ack", ack_line);
       CbFileAppendLine(m_path_commands, writer.Build());
+     }
+
+   //+---------------------------------------------------------------+
+   //| Giu cho mot command TRUOC khi thuc thi, voi ack rong.           |
+   //|                                                                |
+   //| Ghi xuong dia ngay lap tuc. Doc kip la muc dich: neu terminal   |
+   //| chet giua chung, lan khoi dong sau se thay command_id nay voi   |
+   //| ack rong va biet la "da dat lenh hay chua thi khong ro".        |
+   //+---------------------------------------------------------------+
+   void              ReserveCommand(const string command_id)
+     {
+      RememberCommand(command_id, "");
+     }
+
+   //| Ghi ket qua that vao cho da giu.
+   void              SetCommandAck(const string command_id, const string ack_line)
+     {
+      if(StringLen(ack_line) == 0)
+         return;
+      int index = FindCommand(command_id);
+      if(index >= 0)
+         m_cmd_acks[index] = ack_line;
+      AppendCommandRecord(command_id, ack_line);
+     }
+
+   //+---------------------------------------------------------------+
+   //| Dung va gui mot ack. Tra ve dong da gui de ghi vao bo nho.      |
+   //|                                                                |
+   //| `executed_volume` am hoac `result_position_id` bang 0 nghia la  |
+   //| khong co gia tri, va truong do se duoc bo han khoi message.     |
+   //+---------------------------------------------------------------+
+   string            SendAck(const string command_id, const string status, const int retcode,
+                             const string retmsg, const double executed_volume,
+                             const long result_position_id, const int attempt)
+     {
+      CJsonWriter ack;
+      ack.Int("v", COPYBRIDGE_PROTOCOL_VERSION);
+      ack.Str("kind", "ack");
+      ack.Str("ts", CbNowIso());
+      ack.Str("command_id", command_id);
+      ack.Str("status", status);
+      if(retcode > 0)
+         ack.Int("retcode", retcode);
+      if(StringLen(retmsg) > 0)
+         ack.Str("retmsg", retmsg);
+      if(executed_volume >= 0.0)
+         ack.Dbl("executed_volume", executed_volume);
+      if(result_position_id > 0)
+         ack.Int("result_position_id", result_position_id);
+      ack.Int("attempt", attempt);
+      string line = ack.Build();
+      SendLine(line);
+      return(line);
      }
 
    //+---------------------------------------------------------------+
@@ -1303,17 +1432,8 @@ public:
                                CJsonReader &reader)
      {
       CbLog("WARNING", "Agent role " + m_role + " khong thuc thi command loai " + type);
-      CJsonWriter ack;
-      ack.Int("v", COPYBRIDGE_PROTOCOL_VERSION);
-      ack.Str("kind", "ack");
-      ack.Str("ts", CbNowIso());
-      ack.Str("command_id", command_id);
-      ack.Str("status", "rejected");
-      ack.Str("retmsg", "Command type not supported by this agent role");
-      ack.Int("attempt", 1);
-      string line = ack.Build();
-      SendLine(line);
-      return(line);
+      return(SendAck(command_id, "rejected", 0,
+                     "Command type not supported by this agent role", -1, 0, 1));
      }
 
    virtual void      OnConfig(CJsonReader &reader) { }

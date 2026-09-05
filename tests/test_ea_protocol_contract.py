@@ -266,12 +266,19 @@ def test_heartbeat_luon_mang_broker_connected() -> None:
     assert "TERMINAL_CONNECTED" in source
 
 
-def test_ea_master_khong_dat_lenh() -> None:
-    """Phase 4: EA Master chỉ gửi, chưa thực thi command nào ngoài REQUEST_SNAPSHOT."""
-    for path in _ea_sources():
-        assert "OrderSend(" not in _code_only(path), (
-            f"{path.name} không được đặt lệnh ở phase 4"
+def test_chi_ea_client_duoc_dat_lenh() -> None:
+    """Ranh giới D-01: chỉ EA Client đặt lệnh.
+
+    EA Master **chỉ gửi** sự kiện. File dùng chung cũng không được đặt lệnh — nếu `OrderSend`
+    lọt vào đó thì EA Master sẽ có khả năng giao dịch mà không ai chủ ý cho phép.
+    """
+    for name in ("CopyBridgeCommon.mqh", "CopyBridgeMaster.mq5"):
+        assert "OrderSend(" not in _code_only(EA_DIR / name), (
+            f"{name} không được đặt lệnh"
         )
+    assert "OrderSend(" in _code_only(EA_DIR / "CopyBridgeClient.mq5"), (
+        "EA Client phải đặt được lệnh"
+    )
 
 
 def test_ea_chi_ho_tro_tai_khoan_hedging() -> None:

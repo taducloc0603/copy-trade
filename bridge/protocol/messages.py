@@ -29,7 +29,11 @@ EventType: TypeAlias = Literal[
     "position_opened", "position_closed", "position_changed", "order_rejected"
 ]
 CommandType: TypeAlias = Literal["OPEN", "CLOSE", "CLOSE_PARTIAL", "REQUEST_SNAPSHOT"]
-AckStatus: TypeAlias = Literal["ok", "failed", "already_closed", "rejected"]
+#: Trạng thái ack. ``unknown`` là trường hợp đặc biệt và nguy hiểm nhất: EA đã **giữ chỗ**
+#: `command_id` trước khi đặt lệnh rồi terminal chết giữa chừng, nên nó không biết lệnh đã khớp
+#: hay chưa. EA cố ý KHÔNG thực thi lại. Bridge phải coi đây là "chưa biết", không phải "thất
+#: bại" — coi là thất bại thì chính sách retry sẽ mở lệnh thứ hai.
+AckStatus: TypeAlias = Literal["ok", "failed", "already_closed", "rejected", "unknown"]
 
 #: Event bắt buộc phải mang `volume_after` (D-14).
 NEEDS_VOLUME_AFTER: frozenset[str] = frozenset({"position_closed", "position_changed"})

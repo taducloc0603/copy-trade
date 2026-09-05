@@ -469,7 +469,26 @@ class BridgeServer:
                         message.command_id, extra={"agent_id": connection.agent_id,
                                                    "command_id": message.command_id})
             return
-        status = "ACK_OK" if message.status in ("ok", "already_closed") else "ACK_FAILED"
+        if message.status == "unknown":
+            # EA khong biet lenh da khop hay chua. Danh TIMEOUT chu KHONG danh
+            # ACK_FAILED: ACK_FAILED se kich hoat chinh sach retry o phase 6 va co
+            # the mo lenh thu hai. TIMEOUT dung nghia "khong biet", va phase 6 da
+            # quy dinh khong tu dong thu lai sau TIMEOUT (D-13).
+            status = "TIMEOUT"
+            self.db.create_alert(
+                "CRITICAL", "ACK_UNKNOWN",
+                f"Agent {connection.agent_id} khong biet ket qua cua command "
+                f"{message.command_id}. Can doi chieu truoc khi lam gi tiep.",
+                pair_id=command["pair_id"], agent_id=connection.agent_id,
+            )
+            log.critical(
+                "Command %s tra ve unknown: agent da giu cho nhung khong biet ket qua",
+                message.command_id,
+                extra={"agent_id": connection.agent_id, "command_id": message.command_id,
+                       "pair_id": command["pair_id"]},
+            )
+        else:
+            status = "ACK_OK" if message.status in ("ok", "already_closed") else "ACK_FAILED"
         self.db.mark_command_acked(
             message.command_id, status, retcode=message.retcode, retmsg=message.retmsg,
             executed_volume=message.executed_volume,

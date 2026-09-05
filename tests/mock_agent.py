@@ -81,6 +81,15 @@ class MockAgent:
     auto_ack: bool = True
     #: `command_id` đã xử lý, để mô phỏng tính bất biến của EA thật (phase 5).
     handled_commands: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Sau khi thực thi command, có tự sinh event như EA thật không.
+    emit_events: bool = True
+    #: Có áp dụng hàng rào an toàn phía EA (hạn, magic, volume, symbol) không.
+    enforce_guards: bool = True
+    #: None nghĩa là chấp nhận mọi symbol. Đặt một tập để test symbol không tồn tại.
+    known_symbols: set[str] | None = None
+    #: Nhật ký cho test: command nào đã THỰC SỰ thực thi, command nào bị nhận trùng.
+    executed_commands: list[str] = field(default_factory=list)
+    duplicate_commands: list[str] = field(default_factory=list)
 
     reader: asyncio.StreamReader | None = None
     writer: asyncio.StreamWriter | None = None
@@ -88,6 +97,7 @@ class MockAgent:
     inbox: list[dict[str, Any]] = field(default_factory=list)
     agent_id: str | None = None
     last_seq_from_bridge: int = 0
+    _position_counter: int = 900000
     _pump_task: asyncio.Task[None] | None = None
     #: Hàm tuỳ chọn để test can thiệp vào cách trả ack.
     on_command: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
@@ -301,30 +311,119 @@ class MockAgent:
         except Exception:
             return
 
+
+    # -- thực thi command giả lập (phase 5) ------------------------------------------------
+
+    def _next_position_id(self) -> int:
+        self._position_counter += 1
+        return self._position_counter
+
+    def _guard(self, command: dict[str, Any]) -> str:
+        """Hàng rào an toàn giống EA thật. Trả về lý do từ chối, hoặc chuỗi rỗng."""
+        payload = command.get("payload") or {}
+        deadline = command.get("deadline_ts")
+        if deadline and deadline < utc_now_iso():
+            return f"Command deadline has passed: {deadline}"
+        if "magic" in payload and payload["magic"] != self.magic:
+            return f"Magic mismatch: payload {payload['magic']} vs EA {self.magic}"
+        if command["type"] in ("OPEN", "CLOSE_PARTIAL") and (payload.get("volume") or 0) <= 0:
+            return f"Volume must be positive, got {payload.get('volume')}"
+        if command["type"] == "OPEN":
+            symbol = payload.get("symbol")
+            if not symbol:
+                return "Missing symbol in payload"
+            if self.known_symbols is not None and symbol not in self.known_symbols:
+                return f"Symbol does not exist on this terminal: {symbol}"
+        return ""
+
+    async def _execute(self, command: dict[str, Any]) -> dict[str, Any]:
+        """Mô phỏng OPEN / CLOSE / CLOSE_PARTIAL. Trả về dict ack."""
+        command_id = command["command_id"]
+        payload = command.get("payload") or {}
+
+        def ack(status: str, **fields: Any) -> dict[str, Any]:
+            base = {"v": 1, "kind": "ack", "ts": utc_now_iso(), "command_id": command_id,
+                    "status": status, "attempt": 1}
+            base.update({k: v for k, v in fields.items() if v is not None})
+            return base
+
+        if self.enforce_guards:
+            refused = self._guard(command)
+            if refused:
+                return ack("rejected", retmsg=refused)
+
+        # `next_retcode` cho phép test ép một mã lỗi bất kỳ, kể cả mã dừng hẳn.
+        if self.next_retcode is not None and self.next_retcode != 10009:
+            return ack("failed", retcode=self.next_retcode, retmsg="forced by test")
+
+        if command["type"] == "OPEN":
+            position_id = self._next_position_id()
+            volume = payload["volume"]
+            self.positions[position_id] = MockPosition(
+                position_id=position_id, symbol=payload["symbol"],
+                direction=payload["direction"], volume=volume,
+                ticket=position_id, magic=payload.get("magic", self.magic),
+            )
+            if self.emit_events:
+                await self.send_event(
+                    "position_opened", caused_by_command_id=command_id,
+                    position_id=position_id, deal_entry="IN", symbol=payload["symbol"],
+                    direction=payload["direction"], volume_delta=volume, volume_after=volume,
+                )
+            return ack("ok", retcode=10009, executed_volume=volume,
+                       result_position_id=position_id)
+
+        position_id = payload.get("position_id")
+        position = self.positions.get(position_id)
+        if position is None:
+            # Không phải lỗi: hai bên cùng đóng gần như đồng thời là chuyện bình thường.
+            return ack("already_closed", executed_volume=0.0)
+
+        if command["type"] == "CLOSE":
+            volume = position.volume
+        else:
+            # Yêu cầu lớn hơn phần còn lại thì đóng hết, ack ghi đúng volume thật.
+            volume = min(payload.get("volume", 0.0), position.volume)
+
+        remaining = round(position.volume - volume, 8)
+        if remaining <= 0:
+            del self.positions[position_id]
+        else:
+            position.volume = remaining
+
+        if self.emit_events:
+            await self.send_event(
+                "position_closed" if remaining <= 0 else "position_changed",
+                caused_by_command_id=command_id,
+                position_id=position_id, deal_entry="OUT", symbol=position.symbol,
+                direction=position.direction, volume_delta=volume, volume_after=remaining,
+            )
+        return ack("ok", retcode=10009, executed_volume=volume,
+                   result_position_id=position_id)
+
     async def _auto_ack(self, command: dict[str, Any]) -> None:
         command_id = command["command_id"]
+
+        # Tính bất biến: command đã xử lý thì trả lại đúng ack cũ, KHÔNG thực thi lần hai.
+        if command_id in self.handled_commands:
+            self.duplicate_commands.append(command_id)
+            await self.send_raw(self.handled_commands[command_id])
+            return
+
         if self.execution_delay_sec:
             await asyncio.sleep(self.execution_delay_sec)
 
         if command["type"] == "REQUEST_SNAPSHOT":
             await self.send_snapshot(command_id)
-            await self.send_ack(command_id, status="ok", retcode=10009)
-            return
-
-        # Tính bất biến: command đã xử lý thì trả lại đúng ack cũ, không thực thi lần hai.
-        if command_id in self.handled_commands:
-            await self.send_raw(self.handled_commands[command_id])
-            return
+            ack = {"v": 1, "kind": "ack", "ts": utc_now_iso(), "command_id": command_id,
+                   "status": "ok", "retcode": 10009, "attempt": 1}
+        else:
+            self.executed_commands.append(command_id)
+            ack = await self._execute(command)
 
         override = self.on_command(command) if self.on_command is not None else None
-        retcode = self.next_retcode if self.next_retcode is not None else 10009
-        ack = {
-            "v": 1, "kind": "ack", "ts": utc_now_iso(), "command_id": command_id,
-            "status": "ok" if retcode == 10009 else "failed", "retcode": retcode,
-            "executed_volume": command.get("payload", {}).get("volume"),
-            "attempt": 1,
-        }
         if override:
             ack.update(override)
+
         self.handled_commands[command_id] = ack
         await self.send_raw(ack)
