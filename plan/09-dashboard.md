@@ -34,6 +34,11 @@ Từ trên xuống:
 **Thanh trạng thái.** Chế độ vận hành hiển thị nổi bật bằng nhãn tiếng Việt.
 Trạng thái từng agent: kết nối / mất kết nối / mất kết nối sàn. Đồng hồ.
 
+Với agent role `CLICKER`, nhãn "mất kết nối sàn" mang nghĩa khác: **không điều khiển được
+giao diện** (D-25). Hiển thị thêm thời điểm canary chạy thành công gần nhất — một clicker
+ONLINE nhưng canary đã cũ vài phút là dấu hiệu sắp hỏng, và đó chính là loại trạng thái
+"trông vẫn khoẻ" mà `broker_connected` sinh ra để bắt.
+
 **Bốn ô chỉ số.** Độ trễ copy p50, độ trễ copy p95, số cặp đang hedge, số cặp cần can thiệp.
 
 > Độ trễ copy là khoảng cách từ lúc Master khớp tới lúc Client khớp — không phải độ trễ mạng.
@@ -44,6 +49,9 @@ Trạng thái từng agent: kết nối / mất kết nối / mất kết nối 
 > Ô "cần can thiệp" chỉ tô đỏ khi khác 0. Nếu luôn đỏ, mắt sẽ quen và bỏ qua.
 
 **Bảng cặp lệnh.** Cột: Cặp, Symbol, Chiều (`BUY→SELL`), Vol M/C (`1.00 / 0.50`), Trạng thái.
+
+- Cặp mở qua giao diện mà `client_open_reason` khác `CLIENT` phải nổi bật — đó là dấu hiệu
+  phase 6b đã ngừng hoạt động, không phải một sai lệch giao dịch thông thường.
 
 - **Sắp theo mức nghiêm trọng, không theo thời gian.** `ORPHANED` và `OPEN_FAILED` lên đầu,
   rồi `PARTIALLY_CLOSED`, rồi `OPEN`. Khi có 40 cặp và 2 cặp mất hedge, sắp theo thời gian
@@ -109,6 +117,10 @@ Vấn đề lớn nhất không phải bố cục mà là **thời điểm có h
   Thứ không được phép tắt thì không nên trông giống thứ tắt được.
 - Công tắc `can_close_master` cần hộp xác nhận nêu rõ hậu quả cascade, và cảnh báo đậm hơn
   khi nhóm có nhiều hơn một Client.
+
+Trang cấu hình Client cần thêm ô **`open_route`** (`EA` / `UI`). Đổi sang `UI` bắt buộc phải
+chỉ đích danh một clicker đang ONLINE, và phải có hộp xác nhận nêu rõ: thông lượng giảm còn
+khoảng một lệnh mỗi 2–4 giây, và độ trễ copy tăng từ vài trăm mili giây lên vài giây.
 
 **Bảng ánh xạ symbol** phải có nút kiểm tra thực sự gọi xuống agent để xác nhận symbol tồn tại
 trên sàn Client và lấy về spec. **Không cho lưu mapping chưa kiểm tra** (`verified_at` NULL).

@@ -29,17 +29,21 @@ Tài liệu này là điểm vào. Đọc hết file này trước khi bắt đ�
 ```
 MT5 Master + EA  ──TCP/NDJSON──┐
                                ├──►  BRIDGE (Python)  ──►  SQLite
-MT5 Client + EA  ──TCP/NDJSON──┘         │
-                                         └──►  Dashboard web (FastAPI + WebSocket)
+MT5 Client + EA  ──TCP/NDJSON──┤         │
+                               │         └──►  Dashboard web (FastAPI + WebSocket)
+clicker (Python) ──TCP/NDJSON──┘
+   │
+   └── PostMessage ──► MT5 Client   (chỉ lệnh MỞ, xem plan/06b)
 ```
 
-**Ba vai trò tách bạch:**
+**Bốn vai trò tách bạch:**
 
 | Vai trò | Là gì | Được làm gì |
 |---|---|---|
 | EA (MQL5) | Agent mỏng gắn vào chart mỗi terminal | Bắt sự kiện, thực thi lệnh, gửi heartbeat |
 | Bridge (Python) | Tiến trình độc lập, nguồn sự thật duy nhất | Toàn bộ logic nghiệp vụ, ghi DB |
 | Dashboard | Web phục vụ bởi chính Bridge | Hiển thị và điều khiển |
+| Clicker | Tiến trình Python cạnh terminal Client | **Chỉ** mở lệnh qua giao diện MT5 (D-21) |
 
 **EA không chứa logic nghiệp vụ.** EA không tính volume, không ánh xạ symbol, không biết Pair ID
 là gì ngoài việc echo lại, không biết database tồn tại. Ngoại lệ duy nhất: EA tự chọn filling mode
@@ -64,7 +68,8 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 | D-04 | Database là SQLite chạy cục bộ trên máy Bridge, bật WAL, `synchronous=FULL`. |
 | D-05 | Không dùng cloud database. Xem từ xa bằng cách vào dashboard qua Tailscale. |
 | D-06 | Khoá định danh vị thế là `POSITION_IDENTIFIER`, không phải ticket. |
-| D-07 | Lệnh do bot mở phải mang magic number cố định. Không dựa vào trường comment. |
+| D-07 | *(bản 1, đã thay bằng D-07b)* Lệnh do bot mở phải mang magic number cố định. Không dựa vào trường comment. |
+| D-07b | Trên **Master**, lệnh của bot mang magic cố định. Trên **Client**, lệnh MỞ đi qua giao diện nên `magic = 0` và không đặt được. Định danh "lệnh của bot" phía Client là **sự tồn tại của `(client_id, client_position_id)` trong bảng `pair`**. Comment chỉ là thẻ tương quan tạm thời, dùng một lần trong cửa sổ chờ khớp lệnh, không bao giờ là nguồn sự thật lâu dài. |
 | D-08 | Chống vòng lặp đóng bằng `caused_by_command_id` trên sự kiện, không bằng cờ trạng thái. |
 | D-09 | Client đóng hoàn toàn (cờ bật) → đóng Master → **chờ xác nhận** → mới cascade sang các Client khác. |
 | D-10 | Timeout chờ Master xác nhận trước khi cascade: cấu hình được, mặc định 15000ms. Hết hạn thì KHÔNG cascade. |
@@ -78,6 +83,11 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 | D-18 | Làm tròn volume mặc định là làm tròn **xuống**. Nếu kết quả dưới mức tối thiểu của sàn thì **bỏ qua lệnh và cảnh báo**, không tự nâng volume. |
 | D-19 | `effective_multiplier` (tỷ lệ thực tế sau làm tròn) được khoá tại thời điểm mở cặp và dùng cho mọi phép tính đóng một phần về sau. |
 | D-20 | Cờ `can_close_master` đặt theo từng Client, mặc định TẮT. |
+| D-21 | Lệnh **MỞ** phía Client đi qua giao diện MT5 để mang `DEAL_REASON_CLIENT`. Đường **ĐÓNG** vẫn dùng `OrderSend` của EA. |
+| D-22 | Kênh mở lệnh là tiến trình riêng `clicker`, cùng giao thức NDJSON/TCP, role `CLICKER`, token riêng. Loại command riêng `OPEN_UI` để EA không thể lặng lẽ đặt lệnh `EXPERT` khi định tuyến sai. |
+| D-23 | `position_id` của vị thế Client xác định bằng **tương quan tại Bridge** giữa `OPEN_UI` và event `position_opened` của EA. Event của EA là nguồn sự thật, ack của clicker là thông tin phụ. Nhiều ứng viên thì KHÔNG đoán. |
+| D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
+| D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
 
 ## 5. Thuật ngữ
 
@@ -91,6 +101,10 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 - **Cascade** — chuỗi đóng lan truyền: Client A đóng → Master đóng → các Client khác đóng.
 - **Reconciliation** — đối chiếu giữa DB, vị thế thực trên Master và vị thế thực trên Client.
 - **Orphaned** — cặp lệnh mà một bên còn vị thế nhưng bên kia không còn.
+- **Clicker** — tiến trình Python cạnh terminal Client, mở lệnh bằng cách điều khiển giao diện
+  MT5 để lệnh mang `DEAL_REASON_CLIENT`.
+- **Thẻ tương quan** — chuỗi ngắn Bridge sinh cho mỗi lệnh mở qua giao diện, clicker gõ vào ô
+  Comment, EA đọc lại và báo lên để Bridge ghép được vị thế với cặp lệnh.
 
 ## 6. Cách dùng bộ plan này
 
@@ -104,6 +118,7 @@ Các file được đánh số theo thứ tự thực hiện. **Làm tuần tự
 04-ea-master.md              EA phía Master
 05-ea-client.md              EA phía Client, thực thi lệnh
 06-mo-lenh.md                luồng mở lệnh đầu-cuối
+06b-mo-lenh-qua-giao-dien.md mở lệnh Client qua giao diện MT5 (D-21…D-25)
 07-dong-lenh.md              luồng đóng lệnh, cascade, chống vòng lặp
 08-ket-noi-doi-chieu.md      mất kết nối, gửi bù, reconciliation
 09-dashboard.md              giao diện web
@@ -134,4 +149,5 @@ Các file được đánh số theo thứ tự thực hiện. **Làm tuần tự
 
 - Python 3.11+, `asyncio`, `pydantic` v2, `aiosqlite` hoặc `sqlite3` với executor, `FastAPI`, `uvicorn`, `pytest`, `pytest-asyncio`, `ruff`.
 - MQL5, biên dịch bằng MetaEditor. Không dùng thư viện ngoài, không import DLL.
+  Ràng buộc này áp cho **MQL5**; `clicker` là Python và được phép gọi `user32.dll` qua `ctypes`.
 - Không dùng ORM. Viết SQL trực tiếp — schema nhỏ và các ràng buộc là phần quan trọng nhất.

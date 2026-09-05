@@ -16,6 +16,9 @@ Phase 9 xong. Toàn bộ hệ thống chạy được đầu-cuối với giao d
 ### 10.1 Chạy như dịch vụ Windows
 
 - Đóng gói Bridge bằng PyInstaller, hoặc chạy trực tiếp bằng Python đã cài sẵn.
+- **`clicker` đóng gói riêng và chạy như Scheduled Task theo phiên đăng nhập, KHÔNG phải
+  Windows Service** — service chạy ở session 0 và không thấy cửa sổ của phiên người dùng.
+  Cần bật autologon để phiên tồn tại sau khi máy khởi động lại, và tắt sleep/hibernate.
 - Đăng ký dịch vụ bằng NSSM hoặc `pywin32`. Tự khởi động khi máy bật.
 - Ghi log ra `logs/` với xoay vòng theo ngày, giữ 30 ngày.
 - Dịch vụ khởi động ở `run_mode = PAUSED` (D-15). Không có ngoại lệ nào cho việc này,
@@ -90,6 +93,9 @@ Chạy toàn bộ trên **tài khoản demo**, ghi kết quả vào `docs/ACCEPT
 | TEST-20 | Symbol trong mapping không tồn tại trên sàn Client | Không lưu được cấu hình, không có lệnh nào bị gửi |
 | TEST-21 | Nút đóng khẩn cấp | Đóng hết cặp đang quản lý, Client trước Master sau |
 | TEST-22 | `PAUSE_NEW_ENTRIES` | Không copy lệnh mới, vẫn đồng bộ đóng cặp đang chạy |
+| TEST-23 | **Mọi vị thế do bot mở trên Client** | `DEAL_REASON == CLIENT` cho **tất cả**, không trừ cái nào. Kiểm tra **tự động** bằng truy vấn lịch sử deal, không nhìn bằng mắt |
+| TEST-24 | Clicker mất khả năng điều khiển giao diện | Bridge chuyển `DEGRADED`, ngừng gửi `OPEN_UI`, alert ERROR, **không** rơi về đường EA |
+| TEST-25 | Giết clicker giữa lúc giữ chỗ và bấm, rồi gửi lại cùng `command_id` | Không có lệnh thứ hai, ack `unknown`, alert CRITICAL |
 
 TEST-19 phải thực hiện bằng cách **rút điện thật hoặc tắt máy ảo đột ngột**, không phải
 dừng dịch vụ êm. Đây là lý do `synchronous = FULL` tồn tại.
@@ -119,7 +125,9 @@ dừng dịch vụ êm. Đây là lý do `synchronous = FULL` tồn tại.
 - [ ] Chặn mạng tới Telegram → luồng giao dịch không bị chậm hay lỗi.
 - [ ] 24 giờ liên tục: bộ nhớ không tăng đều, file WAL không phình vô hạn.
 - [ ] 5 Client mô phỏng: mở một lệnh Master → 5 pair, đóng Master → cả 5 đóng.
-- [ ] Toàn bộ 22 mục nghiệm thu ở trên đạt, có ghi chép trong `docs/ACCEPTANCE.md`.
+- [ ] Toàn bộ 25 mục nghiệm thu ở trên đạt, có ghi chép trong `docs/ACCEPTANCE.md`.
+- [ ] **Bộ migration đã được chạy thật ít nhất một lần trên database có dữ liệu.** Tới phase 6b
+      nó vẫn chưa từng chạy quá version 1 — đây là rủi ro phải đóng trước khi dữ liệu trở nên quý.
 
 ---
 

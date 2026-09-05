@@ -35,4 +35,12 @@ Chép từ mục 5 của `plan/00-README.md`, bổ sung dần khi gặp thuật 
   trong toàn hệ thống, **không phải** ticket (D-06).
 - **`run_mode`** — chế độ vận hành của Bridge: `RUNNING`, `PAUSE_NEW_ENTRIES`, `PAUSED`,
   `EMERGENCY`. Khởi động luôn ở `PAUSED` (D-15).
+- **Clicker** — tiến trình Python chạy cạnh terminal Client, mở lệnh bằng cách điều khiển
+  giao diện MT5 để lệnh mang `DEAL_REASON_CLIENT` thay vì `DEAL_REASON_EXPERT` (D-21).
+- **`DEAL_REASON`** — trường do **máy chủ broker** gán cho mỗi deal, cho biết lệnh đi vào
+  bằng kênh nào: `CLIENT` (terminal desktop), `EXPERT` (chương trình MQL5), `SL`, `TP`, `SO`…
+  Không đặt được từ MQL5.
+- **Thẻ tương quan** — chuỗi ngắn dạng `CB<hậu tố command_id>` mà Bridge sinh cho mỗi lệnh mở
+  qua giao diện. Clicker gõ vào ô Comment, EA đọc lại và báo lên, Bridge dùng để ghép vị thế
+  với cặp lệnh. Dùng **một lần** rồi vứt — không phải nguồn sự thật lâu dài (D-07b).
 - **Unpaired** — vị thế tồn tại thật trên terminal nhưng không thuộc pair nào trong sổ sách.

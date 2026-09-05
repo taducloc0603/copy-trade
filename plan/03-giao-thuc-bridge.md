@@ -79,6 +79,8 @@ Luồng bắt tay:
 Sau bắt tay:
 - Nhận `symbol_specs` và ghi đè bảng `symbol_spec` cho agent đó.
 - Yêu cầu `snapshot` ngay (gửi command `REQUEST_SNAPSHOT`). Phase này chỉ lưu lại, chưa xử lý.
+  > Từ phase 6b: **chỉ gửi cho role `MASTER` và `CLIENT`**. Agent role `CLICKER` không có
+  > vị thế nào để báo cáo.
 
 ### 3.4 Chuỗi sự kiện và gửi bù
 
@@ -104,6 +106,10 @@ Sau bắt tay:
 - Ghi command vào bảng `command` với `status = PENDING` **trước**, rồi mới gửi qua socket,
   rồi cập nhật `SENT`. Không bao giờ gửi một command chưa có trong DB.
 - Agent offline → command ở lại `PENDING`, gửi khi nối lại.
+  > **Nhưng phải kiểm hạn trước khi gửi bù.** Command `PENDING` quá `deadline_at` thì chuyển
+  > `CANCELLED` kèm alert, **không gửi**. Nếu không, agent offline mười phút rồi nối lại sẽ
+  > nhận một lệnh mở đã cũ. Lưu ý `scan_deadlines()` cố ý chỉ quét `SENT`, nên `PENDING`
+  > không bao giờ tự hết hạn — phải kiểm ngay tại chỗ gửi bù.
 - Task nền quét command `SENT` quá `deadline_at` mà chưa có ack → chuyển `TIMEOUT`, tạo alert.
 
 ### 3.7 Mock agent

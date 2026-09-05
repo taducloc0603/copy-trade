@@ -67,7 +67,7 @@ Tạo các file sau trong `docs/` (trừ `PROGRESS.md` và `README.md` ở gốc
 **`README.md`** — tổng quan ngắn: hệ thống làm gì, cách chạy, cách chạy test. Dưới 60 dòng.
 
 **`docs/ARCHITECTURE.md`** — chép lại mục 1, 2, 3 của `plan/00-README.md`, có thể mở rộng thêm.
-Vẽ sơ đồ luồng bằng ASCII. Ghi rõ ba vai trò và ranh giới trách nhiệm.
+Vẽ sơ đồ luồng bằng ASCII. Ghi rõ các vai trò và ranh giới trách nhiệm.
 
 **`docs/DECISIONS.md`** — chép **nguyên văn** bảng 20 quyết định D-01…D-20 ở mục 4 của
 `plan/00-README.md`. Mỗi quyết định thêm một dòng "Lý do" ngắn nếu suy ra được từ ngữ cảnh.

@@ -24,6 +24,11 @@ code có câu SQL đóng lệnh mà điều kiện là `WHERE symbol = ?`, đó 
 **Chống vòng lặp bằng `caused_by_command_id`** (D-08). Event có trường này khác NULL nghĩa là
 do chính bot gây ra → cập nhật trạng thái, **không lan truyền tiếp**.
 
+> Đường ĐÓNG **không đổi gì** so với phase 5–6: lệnh đóng vẫn do EA gọi `OrderSend`, nên
+> `RememberCause` vẫn chạy và `caused_by_command_id` vẫn do EA gắn. Phase 6b chỉ đổi đường MỞ.
+> Riêng event `position_opened` của Client thì `caused_by_command_id` do **Bridge** gắn lúc
+> tương quan, không phải EA.
+
 ### 7.2 Master đóng hoàn toàn (FR-13)
 
 Đây là chức năng bắt buộc, luôn bật khi bot chạy.
@@ -66,6 +71,8 @@ client_đóng     = làm_tròn_xuống_theo_step(client_đóng_thô)
 1. Nhận `position_closed` từ Client, `caused_by_command_id = NULL`.
 2. Tìm pair theo `(client_id, client_position_id)`.
 3. Không tìm thấy → lệnh mở tay, bỏ qua hoàn toàn (FR-12). Không đóng gì cả.
+   > Việc tra cứu này là **toàn bộ** cách phân biệt lệnh của bot với lệnh người dùng mở tay
+   > ở phía Client. Không dùng magic: vị thế mở qua giao diện có `magic = 0` (D-07b).
 4. `can_close_master = 0` → **không đóng Master**.
 5. `pair.status = ORPHANED`, `orphan_side = MASTER`, `close_source = CLIENT`.
 6. Alert mức ERROR: Master đang phơi nhiễm bao nhiêu lot trên symbol nào.

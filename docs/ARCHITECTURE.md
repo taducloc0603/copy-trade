@@ -38,8 +38,18 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
    └────────────────────┘      │
               ...              │
    ┌────────────────────┐      │
-   │  MT5 Client #N     │──────┘
+   │  MT5 Client #N     │──────┤
    └────────────────────┘      │
+                               │
+   ┌────────────────────┐      │
+   │  clicker (Python)  │──────┘
+   │  cạnh MT5 Client   │      │
+   └─────────┬──────────┘      │
+             │ PostMessage     │
+             ▼                 │
+     hộp thoại New Order       │
+     của MT5 Client            │
+     (chỉ lệnh MỞ, D-21)       │
                                ▼
                     ┌─────────────────────────┐
                     │   BRIDGE  (Python)      │
@@ -59,13 +69,14 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
                     └─────────────────────────┘
 ```
 
-## 4. Ba vai trò và ranh giới trách nhiệm
+## 4. Bốn vai trò và ranh giới trách nhiệm
 
 | Vai trò | Là gì | Được làm gì |
 |---|---|---|
 | EA (MQL5) | Agent mỏng gắn vào chart mỗi terminal | Bắt sự kiện, thực thi lệnh, gửi heartbeat |
 | Bridge (Python) | Tiến trình độc lập, nguồn sự thật duy nhất | Toàn bộ logic nghiệp vụ, ghi DB |
 | Dashboard | Web phục vụ bởi chính Bridge | Hiển thị và điều khiển |
+| Clicker | Tiến trình Python cạnh terminal Client | **Chỉ** mở lệnh qua giao diện MT5 (D-21) |
 
 ### EA được làm
 
@@ -76,6 +87,16 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
 - Gửi heartbeat kèm `broker_connected`, `equity`, `margin_level`.
 - Đẩy `symbol_specs` của terminal mình lên Bridge.
 - Từ chối command hết hạn, sai magic, volume ≤ 0, hoặc symbol không tồn tại.
+
+### Clicker được làm
+
+Đúng một việc: nhận `OPEN_UI`, điền hộp thoại New Order của MT5, đọc lại để xác nhận, rồi
+bấm. Nó tồn tại vì `DEAL_REASON` do máy chủ broker gán theo *kênh* gửi lệnh, mà `OrderSend`
+của EA luôn cho ra `EXPERT` (D-21).
+
+Clicker **không** đọc database, **không** sinh event, **không** nhận lệnh đóng, và **không**
+tính toán gì. Nó không biết `pair` là gì. Việc ghép vị thế vừa mở vào cặp lệnh do Bridge làm,
+bằng cách tương quan với event `position_opened` mà EA báo lên (D-23).
 
 ### EA **không** được làm
 
@@ -118,9 +139,17 @@ Master khớp lệnh
    → Bridge: ghi `event` vào DB TRƯỚC
    → engine: lọc điều kiện copy → ánh xạ symbol → tính volume → khoá effective_multiplier
    → một giao dịch DB: upsert `master_position` + insert `pair` (PENDING_OPEN) + insert `command` (PENDING)
-   → gửi command OPEN qua socket
+   → gửi command qua socket
+
+   Đường EA (open_route = 'EA'):
    → EA Client: kiểm tra command_id đã xử lý chưa → ghi vào file → OrderSend → ack
-   → Bridge: ack thành công → pair.status = OPEN
+   → Bridge: ack thành công, có result_position_id → pair.status = OPEN
+
+   Đường giao diện (open_route = 'UI', phase 6b):
+   → clicker: giữ chỗ command_id + fsync → điền hộp thoại kèm thẻ → đọc lại → bấm → ack "ok"
+   → EA Client vẫn thấy deal và gửi event `position_opened` kèm position_id thật + thẻ
+   → Bridge: khớp thẻ → pair.status = OPEN
+   Ack của clicker KHÔNG mang position_id; event của EA mới là nguồn sự thật (D-23).
 ```
 
 ### Đóng lệnh
@@ -146,6 +175,7 @@ bridge/
   engine/           processor, sizing, reconcile             (phase 6, 7, 8)
   web/              FastAPI + WebSocket                      (phase 9)
 ea/                 CopyBridgeCommon.mqh, Master, Client     (phase 4, 5)
+clicker/            mở lệnh qua giao diện MT5, chạy cạnh terminal Client  (phase 6b)
 tests/              conftest.py, mock_agent.py               (mock agent: phase 3)
 data/               SQLite và archive — trong .gitignore
 logs/               log xoay vòng theo ngày — trong .gitignore
@@ -158,4 +188,5 @@ plan/               kế hoạch triển khai theo phase
 - Python 3.11+, `asyncio`, `pydantic` v2, `aiosqlite` hoặc `sqlite3` với executor,
   `FastAPI`, `uvicorn`, `pytest`, `pytest-asyncio`, `ruff`.
 - MQL5, biên dịch bằng MetaEditor. Không dùng thư viện ngoài, không import DLL.
+  Ràng buộc này áp cho **MQL5**; `clicker` là Python và gọi `user32.dll` qua `ctypes`.
 - Không dùng ORM. Viết SQL trực tiếp — schema nhỏ và các ràng buộc là phần quan trọng nhất.

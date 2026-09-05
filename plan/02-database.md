@@ -32,7 +32,7 @@ qua mất điện đột ngột. Đây là tiền thật, không đánh đổi �
 **Các bảng:**
 
 `agent` — mỗi terminal MT5 một dòng.
-`agent_id` TEXT PK, `role` CHECK IN ('MASTER','CLIENT'), `token_hash`, `account_login`,
+`agent_id` TEXT PK, `role` CHECK IN ('MASTER','CLIENT','CLICKER'), `token_hash`, `account_login`,
 `broker_server`, `terminal_build`, `magic_number` NOT NULL, `enabled`, `status`
 CHECK IN ('OFFLINE','ONLINE','DEGRADED'), `broker_connected` INTEGER, `last_seen_at`,
 `last_seq` DEFAULT 0, `latency_ms`, `equity`, `margin_level`, `created_at`, `updated_at`.
@@ -43,6 +43,7 @@ CHECK IN ('OFFLINE','ONLINE','DEGRADED'), `broker_connected` INTEGER, `last_seen
 
 `client_account` — cấu hình nghiệp vụ từng Client.
 `client_id` PK, `agent_id` FK, `display_name`, `enabled`,
+`open_route` CHECK IN ('EA','UI') DEFAULT 'EA', `clicker_agent_id` FK NULL,
 `copy_mode` CHECK IN ('SAME','OPPOSITE') DEFAULT 'OPPOSITE',
 `volume_multiplier` REAL CHECK > 0 DEFAULT 1.0,
 `rounding_mode` CHECK IN ('DOWN','NEAREST') DEFAULT 'DOWN',
@@ -77,6 +78,7 @@ PK kép `(agent_id, symbol)`. Các cột: `digits`, `point`, `volume_min`, `volu
 `master_current_volume`, `client_current_volume`, `effective_multiplier`,
 `status` CHECK IN ('PENDING_OPEN','OPEN','PARTIALLY_CLOSED','CLOSING','CLOSED','OPEN_FAILED','ORPHANED'),
 `orphan_side` CHECK IN ('MASTER','CLIENT'),
+`open_tag`, `client_open_reason`,
 `open_time_master`, `open_time_client`, `close_time_master`, `close_time_client`,
 `close_source`, `last_event_id`, `retry_count`, `error_code`, `error_message`,
 `created_at`, `updated_at`.
@@ -109,7 +111,7 @@ khi sự kiện đến hai lần.
 
 `command` — outbox.
 `command_id` TEXT PK, `target_agent_id` FK, `pair_id` FK,
-`type` CHECK IN ('OPEN','CLOSE','CLOSE_PARTIAL','REQUEST_SNAPSHOT'),
+`type` CHECK IN ('OPEN','OPEN_UI','CLOSE','CLOSE_PARTIAL','REQUEST_SNAPSHOT'),
 `payload_json`, `status` CHECK IN ('PENDING','SENT','ACK_OK','ACK_FAILED','TIMEOUT','CANCELLED'),
 `attempt`, `retcode`, `retmsg`, `executed_volume`, `result_position_id`,
 `deadline_at`, `sent_at`, `acked_at`, `created_at`, `updated_at`.

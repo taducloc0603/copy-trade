@@ -19,7 +19,8 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-04 | Database là SQLite chạy cục bộ trên máy Bridge, bật WAL, `synchronous=FULL`. |
 | D-05 | Không dùng cloud database. Xem từ xa bằng cách vào dashboard qua Tailscale. |
 | D-06 | Khoá định danh vị thế là `POSITION_IDENTIFIER`, không phải ticket. |
-| D-07 | Lệnh do bot mở phải mang magic number cố định. Không dựa vào trường comment. |
+| D-07 | *(bản 1, đã thay bằng D-07b)* Lệnh do bot mở phải mang magic number cố định. Không dựa vào trường comment. |
+| D-07b | Trên **Master**, lệnh của bot mang magic cố định. Trên **Client**, lệnh MỞ đi qua giao diện nên `magic = 0` và không đặt được. Định danh "lệnh của bot" phía Client là **sự tồn tại của `(client_id, client_position_id)` trong bảng `pair`**. Comment chỉ là thẻ tương quan tạm thời, dùng một lần trong cửa sổ chờ khớp lệnh, không bao giờ là nguồn sự thật lâu dài. |
 | D-08 | Chống vòng lặp đóng bằng `caused_by_command_id` trên sự kiện, không bằng cờ trạng thái. |
 | D-09 | Client đóng hoàn toàn (cờ bật) → đóng Master → **chờ xác nhận** → mới cascade sang các Client khác. |
 | D-10 | Timeout chờ Master xác nhận trước khi cascade: cấu hình được, mặc định 15000ms. Hết hạn thì KHÔNG cascade. |
@@ -33,6 +34,11 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-18 | Làm tròn volume mặc định là làm tròn **xuống**. Nếu kết quả dưới mức tối thiểu của sàn thì **bỏ qua lệnh và cảnh báo**, không tự nâng volume. |
 | D-19 | `effective_multiplier` (tỷ lệ thực tế sau làm tròn) được khoá tại thời điểm mở cặp và dùng cho mọi phép tính đóng một phần về sau. |
 | D-20 | Cờ `can_close_master` đặt theo từng Client, mặc định TẮT. |
+| D-21 | Lệnh **MỞ** phía Client đi qua giao diện MT5 để mang `DEAL_REASON_CLIENT`. Đường **ĐÓNG** vẫn dùng `OrderSend` của EA. |
+| D-22 | Kênh mở lệnh là tiến trình riêng `clicker`, cùng giao thức NDJSON/TCP, role `CLICKER`, token riêng. Loại command riêng `OPEN_UI` để EA không thể lặng lẽ đặt lệnh `EXPERT` khi định tuyến sai. |
+| D-23 | `position_id` của vị thế Client xác định bằng **tương quan tại Bridge** giữa `OPEN_UI` và event `position_opened` của EA. Event của EA là nguồn sự thật, ack của clicker là thông tin phụ. Nhiều ứng viên thì KHÔNG đoán. |
+| D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
+| D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
 
 ---
 
@@ -76,6 +82,28 @@ bền suốt vòng đời vị thế. Dùng ticket làm khoá là cách mất d�
 
 **Lý do:** Nhiều broker cắt, sửa hoặc xoá hẳn trường comment. Magic number thì không bị đụng tới
 và là cách duy nhất tin được để phân biệt lệnh của bot với lệnh mở tay (FR-12).
+
+### D-07b — Sửa đổi phạm vi ở phase 6b
+
+**Nội dung:** Trên **Master**, D-07 giữ nguyên. Trên **Client**, lệnh MỞ đi qua giao diện MT5
+(D-21) nên `magic = 0` và không đặt được — hộp thoại New Order không có ô magic. Định danh
+"lệnh của bot" phía Client chuyển thành **sự tồn tại của `(client_id, client_position_id)` trong
+bảng `pair`**. Comment chỉ là **thẻ tương quan tạm thời**, tiêu thụ một lần trong cửa sổ chờ khớp
+lệnh rồi vứt.
+
+**Vì sao đây không phải là vi phạm bản 1.** Lệnh cấm ban đầu là *"đừng dựa vào comment"*, vì sàn
+có thể cắt, sửa hoặc xoá nó. Bản 2 không dựa vào comment: comment được dùng một lần rồi thay
+ngay bằng `position_id` bền vững (D-06). Nếu sàn phá comment thì tương quan thất bại **ồn ào**
+(`unknown` + alert CRITICAL) chứ không âm thầm ghép sai. Đó là khác biệt giữa "dựa vào comment"
+và "dùng comment như một gợi ý có kiểm chứng".
+
+**Rủi ro đã biết, phải ghi ra chứ không để trong đầu ai đó.** Bỏ magic phía Client có nghĩa là
+một vị thế của bot bị mất dấu hoàn toàn — sàn xoá comment **và** mất ack **và** mất event — sẽ bị
+phân loại nhầm thành lệnh người dùng mở tay và không được đối chiếu. Đó là cái giá phải trả.
+
+**Đã đo trên Connext-Demo (phase 6b):** comment gửi qua `OrderSend` sống sót nguyên vẹn trong
+`DEAL_COMMENT`, không cắt, không bị chèn thêm chữ. Nên trên sàn này khớp theo thẻ là đường chính
+và suy đoán chỉ là lưới an toàn. **Con số này phải đo lại nếu đổi sàn.**
 
 ### D-08 — Chống vòng lặp đóng bằng `caused_by_command_id` trên sự kiện, không bằng cờ trạng thái.
 
@@ -152,3 +180,54 @@ tức tỷ lệ thật là 0.2857. Dùng 0.33 để tính đóng một phần s�
 
 **Lý do:** Chiều copy chính thức là Master → Client. Cho Client đóng ngược Master là mở đường
 cascade tới mọi Client khác, nên phải là lựa chọn có ý thức của từng Client, không phải mặc định.
+
+### D-21 — Lệnh MỞ phía Client đi qua giao diện MT5
+
+**Lý do:** `DEAL_REASON` do máy chủ broker gán theo *kênh* gửi lệnh. `MqlTradeRequest` không có
+trường `reason` và MQL5 không có API nào đặt được nó, nên mọi lệnh do `OrderSend()` gửi đều là
+`EXPERT`. Muốn ra `CLIENT` thì phải đổi kênh chứ không phải đổi tham số.
+
+Đường ĐÓNG giữ nguyên `OrderSend` vì đóng phải nhắm đúng một `position_id` và phải đóng được một
+phần theo volume chính xác (D-06, FR-11, FR-17) — những thứ giao diện làm rất tệ. Hệ quả đã chấp
+nhận: deal đóng vẫn mang `EXPERT`, còn `POSITION_REASON` thì lấy từ deal mở nên vẫn là `CLIENT`.
+
+### D-22 — Clicker là tiến trình riêng, và `OPEN_UI` là loại command riêng
+
+**Lý do tách tiến trình:** MQL5 không tự động hoá được giao diện nếu không import DLL, mà điều đó
+bị cấm ở mục 7 của `plan/00-README.md`. Bridge lại có thể nằm ở máy khác với terminal Client.
+
+**Lý do tách loại command:** nếu định tuyến sai mà EA nhận `OPEN`, nó sẽ **lặng lẽ đặt lệnh
+`EXPERT`** — đúng thứ D-21 tồn tại để làm cho bất khả thi. Với `OPEN_UI`, EA trả `rejected`.
+Payload `OPEN_UI` cũng cố ý không có `magic` nên `Guard()` của EA chặn thêm một lớp độc lập.
+
+### D-23 — `position_id` xác định bằng tương quan tại Bridge
+
+**Lý do:** giao diện không trả về giá trị nào. Nhưng EA vẫn chạy trên terminal Client và
+`OnTradeTransaction` báo mọi deal kèm `POSITION_IDENTIFIER` thật trong 11–21ms. Không cần giao
+diện trả về gì — dùng chính event của EA làm đường về.
+
+**Event của EA là nguồn sự thật; ack của clicker là thông tin phụ.** Ack `ok` chỉ nói "tôi đã
+bấm", không nói "vị thế nào". Thiết kế không được phụ thuộc vào thứ tự đến của ack và event.
+
+Nhiều ứng viên cùng khớp thì **không đoán**: alert CRITICAL và chờ người. Đoán sai ở đây nghĩa là
+gắn vị thế của người dùng vào một cặp, rồi phase 7 sẽ đóng nó.
+
+### D-24 — Trên đường giao diện, chỉ `rejected` mới được retry
+
+**Lý do:** không có giá trị trả về nên "thất bại" và "không biết" rất khó phân biệt. Retry một
+lệnh mà không chắc đã gửi hay chưa là mở lệnh thứ hai với xác suất khác không.
+
+`rejected` có nghĩa hẹp và phải **chứng minh được**: clicker đọc ngược các trường từ hộp thoại
+trước khi bấm, thấy lệch thì huỷ. Mọi trường hợp còn lại là `unknown`.
+
+### D-25 — Không gửi lệnh cho clicker chưa chứng minh còn điều khiển được giao diện
+
+**Lý do:** đây là bài học của mục 8.1 áp dụng lại. Thứ nguy hiểm nhất không phải thành phần đã
+chết, mà là thành phần **trông vẫn khoẻ** trong khi đã mất khả năng làm việc. Clicker vẫn giữ
+được kết nối TCP và vẫn gửi heartbeat đều trong khi cửa sổ MT5 đã đóng.
+
+Clicker chạy canary định kỳ và báo kết quả qua `broker_connected`; hỏng thì `DEGRADED` và luồng
+mở lệnh bỏ qua Client đó.
+
+**Không tự rơi về đường EA khi clicker hỏng** — làm vậy là lặng lẽ vi phạm chính D-21. Thà không
+copy: không copy thì thấy được và sửa được, copy sai kênh thì không ai biết cho tới khi quá muộn.

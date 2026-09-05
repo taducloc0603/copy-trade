@@ -61,12 +61,26 @@ Ma trận sai lệch — cài đặt đúng từng dòng:
 | OPEN | không | có | `MASTER_CLOSED_OFFLINE` | SAFE | Đóng Client |
 | OPEN | có | không | `CLIENT_CLOSED_OFFLINE` | DECISION | `ORPHANED`, **không** tự đóng Master |
 | OPEN | không | không | `BOTH_CLOSED` | SAFE | Cập nhật sổ sách sang `CLOSED` |
-| PENDING_OPEN | có | có | `ACK_LOST` | SAFE | Ghép lại theo magic, chuyển `OPEN` |
+| PENDING_OPEN | có | có, **có thẻ** | `ACK_LOST` | SAFE | Ghép lại theo thẻ, chuyển `OPEN` |
+| PENDING_OPEN | có | có, **không thẻ** | `ACK_LOST` | **DECISION** | Chỉ ghép được bằng suy đoán (symbol, chiều, volume, cửa sổ thời gian) — xem cảnh báo dưới bảng |
 | PENDING_OPEN | có | không | `CLIENT_NOT_OPENED` | DECISION | Áp `offline_reopen_policy` |
 | Không có | có | — | `UNPAIRED_MASTER` | DECISION | Cảnh báo, **không** copy |
-| Không có | — | có, magic bot | `UNPAIRED_CLIENT` | DECISION | Cảnh báo, **không** tự đóng |
-| Không có | — | có, không magic | — | — | Lệnh mở tay, bỏ qua (FR-12) |
+| Không có | — | có, **còn thẻ** của một `OPEN_UI` đã biết | `UNPAIRED_CLIENT` | DECISION | Cảnh báo, **không** tự đóng |
+| Không có | — | có, **không thẻ** | — | — | Lệnh mở tay, bỏ qua (FR-12) |
+| bất kỳ | — | mở qua giao diện mà `reason != CLIENT` | `UI_REASON_MISMATCH` | DECISION | Cảnh báo — thiết kế phase 6b đã ngừng hoạt động |
 | bất kỳ | volume lệch tỷ lệ | | `VOLUME_MISMATCH` | DECISION | Cảnh báo |
+
+> **Nhận dạng phía Client không còn dùng magic** (D-07b). Vị thế Client mở qua giao diện có
+> `magic = 0`, giống hệt lệnh người dùng mở tay. Thứ tự nhận dạng: (1) có mặt trong `pair` —
+> nguồn sự thật; (2) thẻ tương quan trong comment — gợi ý, dùng một lần; (3) suy đoán theo
+> (symbol, chiều, volume) — chỉ khi có **đúng một** ứng viên.
+>
+> Vì vậy `ACK_LOST` **không có thẻ** phải hạ từ SAFE xuống **DECISION**: ghép sai ở đây nghĩa là
+> gắn vị thế của người dùng vào một cặp, rồi phase 7 sẽ đóng nó. `accept_all_safe()` tuyệt đối
+> không được chạm tới loại này.
+>
+> Đọc `POSITION_MAGIC` từ snapshot, **không phải** magic của deal — deal đóng tay một vị thế do
+> bot mở vẫn có `magic = 0` (đo được ở phase 6b).
 
 Quy luật xuyên suốt cột hành động, nâng thành luật cứng của hệ thống:
 
@@ -147,7 +161,10 @@ Các hàm cho phase 9 gọi:
 - [ ] Ngắt Client, đóng vài lệnh Client, nối lại → finding `CLIENT_CLOSED_OFFLINE` mức DECISION.
       **Master không bị đóng dù `can_close_master = 1`.**
 - [ ] Tạo vị thế Master không có trong DB → `UNPAIRED_MASTER`, không có command OPEN nào sinh ra.
-- [ ] Tạo vị thế Client mở tay không mang magic bot → **không** xuất hiện trong danh sách finding.
+- [ ] Tạo vị thế Client mở tay **không mang thẻ tương quan** → **không** xuất hiện trong danh
+      sách finding (nhận dạng theo thẻ và theo bảng `pair`, không theo magic — D-07b).
+- [ ] Vị thế mở qua giao diện mà `client_open_reason != CLIENT` → sinh finding
+      `UI_REASON_MISMATCH` mức DECISION.
 - [ ] Giết Bridge giữa lúc đang gửi command OPEN, khởi động lại → finding `ACK_LOST`,
       ghép lại đúng, không mở lệnh thứ hai.
 - [ ] Bridge khởi động luôn ở `PAUSED`, không tự sang `RUNNING` dù không có finding nào.

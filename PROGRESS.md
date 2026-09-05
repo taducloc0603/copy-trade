@@ -10,6 +10,7 @@
 | 4 | EA phía Master | xong | 2026-09-05 |
 | 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
 | 6 | Luồng mở lệnh | xong | 2026-09-05 |
+| 6b | Mở lệnh qua giao diện MT5 | **đã lập kế hoạch, chưa viết code** | 2026-09-05 |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
@@ -560,3 +561,109 @@ hai terminal. Trạng thái phase 4 chuyển từ "chưa nghiệm thu" thành **
      Client khác — phase 7 phải kiểm tra lại đường này khi cascade đã có, để nó không đi hai lần.
   4. **Chưa có cách tắt copy cho riêng một symbol khi đang chạy** ngoài việc sửa
      `symbol_map.enabled` trực tiếp trong DB. Phase 9 cần nút đó trên giao diện.
+
+### Phase 6b — lập kế hoạch và rà soát (2026-09-05)
+
+Chưa viết dòng code sản phẩm nào. Mục này ghi lại **quyết định đổi hợp đồng**, số liệu đo được,
+và kết quả rà soát toàn bộ plan.
+
+- **Yêu cầu mới của người chủ dự án:** lệnh **MỞ** trên Client phải mang `DEAL_REASON_CLIENT`
+  chứ không phải `DEAL_REASON_EXPERT`.
+
+  `DEAL_REASON` do **máy chủ broker** gán theo *kênh* gửi lệnh. `MqlTradeRequest` không có trường
+  `reason` và MQL5 không có API nào đặt được nó. Không sửa được bằng cách sửa EA — phải đổi kênh.
+
+  Người chủ dự án đã chọn hướng **tự động hoá giao diện MT5**, sau khi được trình bày bốn hướng
+  kèm đánh giá. Đã chốt thêm: **chỉ đường MỞ**, đường ĐÓNG vẫn do EA gọi `OrderSend`; bên kiểm tra
+  chỉ nhìn vị thế / lệnh mở, mà `POSITION_REASON` lấy từ deal mở nên như vậy là đủ.
+
+- **Ba phép đo trước khi thiết kế** (chỉ đọc, không đặt lệnh nào):
+
+  | | Kết quả |
+  |---|---|
+  | **E3 — tiền đề** | Tài khoản 538217 tách sạch: 13 deal do EA đặt đều `EXPERT (3)` magic 770001; 5 deal đặt tay đều `CLIENT (0)` magic 0. **Tiền đề đúng.** |
+  | **E2 — comment** | Comment `'phase5-A'`, `'phase5-restart'` gửi qua `OrderSend` ở phase 5 **còn nguyên trong `DEAL_COMMENT`**: không cắt, không bị sàn chèn chữ. → khớp theo thẻ dùng được làm đường chính |
+  | **E1 — control** | Hộp thoại New Order là dialog `#32770` với **53 control Win32 chuẩn**, control ID ổn định. → `PostMessage` khả thi ⇒ **không cần desktop tương tác** ⇒ bài toán RDP ngắt phiên biến mất |
+
+  Control ID đã lập bản đồ: Volume `10333`, Comment `1001`, Sell by Market `10409`,
+  Buy by Market `10408`, Symbol `10331`/`10325`, Fill policy `10339`.
+
+  **Cạm bẫy đã phát hiện:** ctrlID `10408`/`10409` xuất hiện **hai lần** — bản hiện
+  `'Buy by Market'`/`'Sell by Market'` và bản ẩn `'Buy'`/`'Sell'`. Phải phân biệt bằng
+  `IsWindowVisible` cộng text, không được tra theo ID trần.
+
+  **Quan sát phụ ảnh hưởng phase 8:** deal **đóng tay** một vị thế do EA mở có `magic = 0`.
+  Magic của deal phản ánh ai đặt *deal đó*, không phải ai mở vị thế. Đối chiếu phải đọc
+  `POSITION_MAGIC` từ snapshot.
+
+  **Ẩn số còn lại:** `WM_SETTEXT` có thật sự cập nhật trạng thái nội bộ MT5 hay chỉ đổi chữ hiển
+  thị. Không đo được nếu không đặt lệnh thật → là tiêu chí nghiệm thu, không phải giả định.
+
+- **Đổi hợp đồng — lý do, theo đúng quy tắc của `docs/DECISIONS.md`:**
+
+  **D-07 → thêm D-07b.** Hộp thoại New Order **không có ô magic** nhưng **có ô Comment**. D-07
+  cấm đúng thứ duy nhất còn dùng được và bắt buộc đúng thứ không còn dùng được. D-07b thu hẹp
+  phạm vi: Master giữ nguyên magic; phía Client, định danh "lệnh của bot" chuyển sang **sự tồn tại
+  trong bảng `pair`**, comment chỉ là thẻ tương quan dùng một lần.
+
+  Tinh thần bản gốc được giữ: lệnh cấm ban đầu là "đừng *dựa vào* comment" vì sàn có thể phá nó.
+  Bản 2 không dựa vào comment — dùng một lần rồi thay ngay bằng `position_id` bền vững (D-06), và
+  nếu sàn phá comment thì tương quan thất bại **ồn ào** chứ không âm thầm ghép sai.
+
+  **Thêm D-21…D-25**: đường giao diện cho lệnh mở; clicker là tiến trình riêng với loại command
+  riêng `OPEN_UI`; tương quan tại Bridge với event của EA là nguồn sự thật; chỉ `rejected` được
+  retry; không gửi lệnh cho clicker chưa chứng minh còn điều khiển được giao diện.
+
+- **Kết quả rà soát code đã viết (phase 1–6):**
+
+  **Tin tốt: thiệt hại gần như chỉ nằm ở plan, không nằm ở code.** `magic` trong `bridge/` mới chỉ
+  được **lưu** chứ chưa dùng để **nhận dạng** ở bất kỳ đâu — việc nhận dạng theo magic chỉ tồn tại
+  trong `plan/08` chưa làm. Không có logic nghiệp vụ nào phải viết lại.
+
+  Ba điểm phải sửa khi triển khai, đều nhỏ và đã xác định chính xác:
+  1. `bridge/engine/processor.py:141-144` — `_route()` trả `IGNORED` vô điều kiện cho
+     `position_opened` từ agent CLIENT. Phải thay bằng bộ tương quan.
+  2. `bridge/engine/processor.py:338` — `on_command_acked()` `return` sớm khi
+     `type != "OPEN"`, nên ack của `OPEN_UI` sẽ bị bỏ qua im lặng. Phải thêm nhánh tường minh.
+  3. `bridge/protocol/dispatcher.py:119` — `on_agent_online()` gửi `REQUEST_SNAPSHOT` cho **mọi**
+     agent. Clicker không snapshot được → phải lọc theo role.
+
+- **Một lỗi CÓ SẴN phát hiện khi rà soát, độc lập với phase 6b:**
+
+  `dispatcher.flush_pending()` (`dispatcher.py:129`) đẩy lại mọi command `PENDING` khi agent nối
+  lại, mà `scan_deadlines()` **cố ý chỉ quét `SENT`** nên command `PENDING` **không bao giờ hết
+  hạn**. Agent offline 10 phút rồi nối lại → Bridge bắn ra một lệnh mở đã cũ.
+
+  Đường EA hiện tại che lỗi này vì `Guard()` của EA tự từ chối lệnh quá hạn. Nhưng đó là may mắn,
+  không phải thiết kế — Bridge vẫn tạo command và vẫn tiêu một lượt gửi. **Phải sửa ở phase 6b:**
+  quá `deadline_at` thì `CANCELLED` + alert thay vì gửi, áp cho **mọi** loại command.
+
+- **Đã cập nhật để nhất quán:**
+  - `plan/06b-mo-lenh-qua-giao-dien.md` — file mới, viết theo văn phong của bộ plan. **Không đánh
+    số lại** các file cũ vì chúng đã commit và được `PROGRESS.md` tham chiếu.
+  - `plan/00-README.md` — sơ đồ, bảng vai trò (ba → bốn), D-07b, D-21…D-25, thuật ngữ, danh sách
+    file, và ghi rõ ràng buộc "không import DLL" chỉ áp cho MQL5.
+  - `docs/DECISIONS.md` — đồng bộ bảng (26/26 khớp nguyên văn với `plan/00`, đã kiểm bằng script)
+    cộng phần diễn giải cho cả sáu quyết định mới.
+  - `plan/07` — ghi rõ việc tra `(client_id, client_position_id)` là **toàn bộ** cách phân biệt
+    lệnh bot với lệnh mở tay phía Client, và đường ĐÓNG không đổi gì.
+  - `plan/08` — ba dòng ma trận đối chiếu viết lại; thêm `kind` mới `UI_REASON_MISMATCH`;
+    **`ACK_LOST` không có thẻ hạ từ SAFE xuống DECISION** vì ghép sai nghĩa là gắn vị thế của
+    người dùng vào một cặp rồi phase 7 sẽ đóng nó — `accept_all_safe()` không được chạm tới.
+  - `plan/09` — bảng sức khoẻ clicker, ô `open_route` trên trang cấu hình.
+  - `plan/10` — đóng gói clicker là Scheduled Task **không phải** Windows Service;
+    thêm TEST-23/24/25; thêm mục kiểm tra bộ migration đã chạy thật.
+  - `docs/ARCHITECTURE.md`, `docs/GLOSSARY.md` — vai trò và thuật ngữ mới.
+
+- **Vấn đề còn treo:**
+  1. **Bộ migration vẫn chưa từng chạy quá version 1.** Sẽ xoá và tạo lại DB ở phase 6b (dữ liệu
+     hiện tại chỉ là dấu vết thử nghiệm và 16/16 `master_position` đang ghi `OPEN` trong khi
+     terminal đã trống). **Phải đóng rủi ro này trước phase 10**, khi dữ liệu thật sự quý.
+  2. Độ trễ copy dự kiến tăng từ ~300ms lên 1–3s, và thông lượng còn ~1 lệnh/2–4s mỗi Client do
+     cổng một-lệnh-đang-bay. Ảnh hưởng chỉ số chính của dashboard phase 9.
+  3. Deal **đóng** vẫn mang `EXPERT`. Đã chấp nhận vì bên kiểm tra chỉ nhìn vị thế / lệnh mở.
+     Nếu sau này phát hiện bên kiểm tra nhìn cả deal đóng thì phạm vi phải mở rộng đáng kể —
+     đóng phải nhắm đúng một `position_id` và đóng được một phần theo volume, hai thứ giao diện
+     làm rất tệ.
+  4. Từ các phase trước: `retcode 10019` không ép được; nhánh filling IOC/RETURN chưa chạy thật;
+     Close By broker không hỗ trợ; symbol ngoài ASCII không có để thử.
