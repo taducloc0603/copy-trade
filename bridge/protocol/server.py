@@ -53,6 +53,10 @@ from bridge.protocol.messages import (
 
 log = get_logger(__name__)
 
+#: Số lần tối đa hỏi gửi bù cho cùng một mốc `from_seq` trong một phiên kết nối. Quá số này thì
+#: coi như agent không còn giữ những event đó — hỏi thêm chỉ tạo thêm tải, không tạo thêm dữ liệu.
+MAX_RESEND_ATTEMPTS = 3
+
 DEFAULT_HELLO_TIMEOUT_SEC = 5.0
 DEFAULT_MONITOR_INTERVAL_SEC = 0.5
 DEFAULT_HEARTBEAT_TIMEOUT_MS = 5000
@@ -92,6 +96,10 @@ class AgentConnection:
     buffer: LineBuffer
     last_seen_monotonic: float = field(default_factory=time.monotonic)
     closing: bool = False
+    #: `from_seq` của yêu cầu gửi bù gần nhất, và số lần đã hỏi cho đúng mốc đó. Nằm trên kết
+    #: nối chứ không nằm trong DB: hỏi lại là chuyện của một phiên, nối lại thì đếm từ đầu.
+    resend_asked_from: int | None = None
+    resend_attempts: int = 0
 
     async def send(self, message: BaseModel) -> None:
         """Gửi một message xuống agent. Lỗi socket được nuốt và ghi log, không lan lên trên."""
@@ -282,8 +290,8 @@ class BridgeServer:
                  agent_id, hello.role, peer, last_seq)
 
         if hello.seq > last_seq:
-            await self._request_resend(connection, last_seq + 1,
-                                       f"agent khai seq {hello.seq}, Bridge mới có {last_seq}")
+            await self._ask_resend(connection, last_seq + 1,
+                                   f"agent khai seq {hello.seq}, Bridge mới có {last_seq}")
 
         if self.on_agent_online is not None:
             await self.on_agent_online(agent_id)
@@ -405,10 +413,12 @@ class BridgeServer:
             return
 
         if message.seq > last_seq + 1:
-            await self._request_resend(
+            con_hoi = await self._ask_resend(
                 connection, last_seq + 1,
                 f"nhan seq {message.seq} nhung last_seq moi la {last_seq}",
             )
+            if not con_hoi:
+                self._accept_gap(connection, last_seq + 1, message.seq - 1)
 
         # Ghi vào DB TRƯỚC khi làm bất cứ việc gì khác với event.
         self._record(message, agent_id)
@@ -456,6 +466,55 @@ class BridgeServer:
     def _last_seq(self, agent_id: str) -> int:
         row = self.db.query_one("SELECT last_seq FROM agent WHERE agent_id = ?", (agent_id,))
         return int(row["last_seq"] or 0) if row is not None else 0
+
+    async def _ask_resend(self, connection: AgentConnection, from_seq: int,
+                          reason: str) -> bool:
+        """Hỏi gửi bù, có đếm. Trả về ``False`` khi đã quá trần cho đúng mốc `from_seq` này.
+
+        Không có bộ đếm này thì mỗi event tới lệch thứ tự lại sinh một yêu cầu gửi bù, mà mỗi
+        yêu cầu lại kéo về nhiều event lệch thứ tự — **mỗi vòng nhân lên**. Đo được ngày
+        2026-09-05: hàng nghìn message trong 0,4 giây, EA treo cứng phải gắn lại tay.
+        """
+        if connection.resend_asked_from != from_seq:
+            connection.resend_asked_from = from_seq
+            connection.resend_attempts = 0
+        connection.resend_attempts += 1
+        if connection.resend_attempts > MAX_RESEND_ATTEMPTS:
+            return False
+        await self._request_resend(connection, from_seq, reason)
+        return True
+
+    def _accept_gap(self, connection: AgentConnection, from_seq: int, to_seq: int) -> None:
+        """Chấp nhận một lỗ hổng agent không lấp được, để hệ thống đi tiếp.
+
+        Nghe như đầu hàng, nhưng lựa chọn còn lại tệ hơn: `last_seq` đứng im vĩnh viễn và **mọi**
+        event sau đó bị coi là lệch thứ tự. Lỗ hổng không lấp được là chuyện có thật — khôi phục
+        DB từ bản sao lưu, hoặc tạo lại DB, sinh ra đúng loại đó, và `plan/10` sẽ làm điều này.
+
+        Bỏ event là **mất dữ liệu**, nên nó phải ồn ào: alert CRITICAL kèm đúng khoảng seq đã
+        mất, để đối chiếu ở phase 8 biết chỗ mà nhìn. Tuyệt đối không được im lặng.
+        """
+        agent_id = connection.agent_id
+        connection.resend_asked_from = None
+        connection.resend_attempts = 0
+        if to_seq < from_seq:
+            return
+        with self.db.transaction() as conn:
+            conn.execute(
+                "UPDATE agent SET last_seq = ?, updated_at = ? WHERE agent_id = ? "
+                "AND last_seq < ?",
+                (to_seq, utc_now_iso(), agent_id, to_seq),
+            )
+        self.db.create_alert(
+            "CRITICAL", "EVENT_GAP_UNFILLED",
+            f"Agent {agent_id} khong cung cap duoc event seq {from_seq}..{to_seq} sau "
+            f"{MAX_RESEND_ATTEMPTS} lan hoi. Bo qua khoang nay de he thong di tiep. "
+            "CAN DOI CHIEU de biet da mat nhung gi.",
+            agent_id=agent_id,
+        )
+        log.critical("Bo qua lo hong seq %d..%d cua agent %s, khong lap duoc sau %d lan hoi",
+                     from_seq, to_seq, agent_id, MAX_RESEND_ATTEMPTS,
+                     extra={"agent_id": agent_id})
 
     async def _request_resend(self, connection: AgentConnection, from_seq: int,
                               reason: str) -> None:
@@ -536,28 +595,32 @@ class BridgeServer:
         for connection in list(self.connections.values()):
             if now - connection.last_seen_monotonic <= timeout_sec:
                 continue
-            log.warning("Agent %s im lặng quá %dms, chuyển OFFLINE",
-                        connection.agent_id, self._heartbeat_timeout_ms(),
-                        extra={"agent_id": connection.agent_id})
-            self._alert_on_transition(
+            doi = self._alert_on_transition(
                 connection.agent_id, "OFFLINE", "WARNING", "AGENT_OFFLINE",
                 f"Agent {connection.agent_id} khong gui heartbeat qua han",
             )
+            if doi:
+                # Vòng quét chạy mỗi vài trăm ms; in mỗi vòng cho một agent **đã** OFFLINE làm
+                # nhoè log đúng lúc cần đọc log để tìm nguyên nhân.
+                log.warning("Agent %s im lặng quá %dms, chuyển OFFLINE",
+                            connection.agent_id, self._heartbeat_timeout_ms(),
+                            extra={"agent_id": connection.agent_id})
 
     def _alert_on_transition(self, agent_id: str, status: str, level: str, code: str,
-                             message: str) -> None:
-        """Đặt trạng thái và chỉ tạo alert khi trạng thái **đổi**.
+                             message: str) -> bool:
+        """Đặt trạng thái và chỉ tạo alert khi trạng thái **đổi**. Trả về có đổi hay không.
 
         Tạo alert mỗi vòng quét sẽ làm ngập bảng alert và làm người vận hành quen với màu đỏ.
         """
         row = self.db.get_agent(agent_id)
         if row is not None and row["status"] == status:
             self._touch_status(agent_id, status)
-            return
+            return False
         self._touch_status(agent_id, status)
         self.db.create_alert(level, code, message, agent_id=agent_id)
         log.warning("Alert %s cho agent %s: %s", code, agent_id, message,
                     extra={"agent_id": agent_id})
+        return True
 
     def _clear_transition(self, agent_id: str, status: str) -> None:
         self._touch_status(agent_id, status)

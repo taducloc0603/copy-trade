@@ -10,7 +10,7 @@
 | 4 | EA phía Master | xong | 2026-09-05 |
 | 5 | EA phía Client và thực thi lệnh | xong | 2026-09-05 |
 | 6 | Luồng mở lệnh | xong | 2026-09-05 |
-| 6b | Mở lệnh qua giao diện MT5 | **đã lập kế hoạch, chưa viết code** | 2026-09-05 |
+| 6b | Mở lệnh qua giao diện MT5 | **bước 0–5 xong (nghiệm thu ĐẠT), còn bước 6–7** | 2026-09-05 |
 | 7 | Luồng đóng lệnh | chưa bắt đầu | |
 | 8 | Mất kết nối và đối chiếu | chưa bắt đầu | |
 | 9 | Dashboard và cấu hình | chưa bắt đầu | |
@@ -667,3 +667,325 @@ và kết quả rà soát toàn bộ plan.
      làm rất tệ.
   4. Từ các phase trước: `retcode 10019` không ép được; nhánh filling IOC/RETURN chưa chạy thật;
      Close By broker không hỗ trợ; symbol ngoài ASCII không có để thử.
+
+### Phase 6b — bước 0 đến 3 (phần không cần MT5)
+
+Phase này được chia bảy bước vì bước 4 đặt lệnh thật. Lượt này làm bước 0–3 và **dừng lại**.
+
+- **Bước 0 — mốc so sánh:** 319 test xanh, `ruff` sạch, Bridge không chạy. Chạy trước khi động
+  vào bất cứ thứ gì, để mọi hồi quy sau đó có chỗ đối chiếu.
+
+- **Bước 1 — nền dữ liệu:**
+  - `bridge/db/schema.sql`: `agent.role` thêm `CLICKER`; `command.type` thêm `OPEN_UI`;
+    `client_account` thêm `open_route` (`EA`/`UI`, mặc định `EA`) và `clicker_agent_id`, kèm
+    `CHECK (open_route = 'EA' OR clicker_agent_id IS NOT NULL)`; `pair` thêm `open_tag` và
+    `client_open_reason`; index `idx_pair_open_tag`; 5 khoá `ui_*` trong `system_config`.
+  - **Xoá và tạo lại `data/bridge.db`** (người dùng đã duyệt). Đã kiểm từng ràng buộc mới thực
+    sự chặn đúng thứ nó phải chặn, không chỉ tồn tại trong file schema.
+  - `bridge/protocol/messages.py`: `AgentRole` thêm `CLICKER`, `CommandType` thêm `OPEN_UI`,
+    `EventData` và `SnapshotPosition` thêm `comment` / `order_comment` / `order_id` / `reason`.
+  - `ea/CopyBridgeCommon.mqh`: gửi thêm `order_id`, `reason`, `comment` (`DEAL_COMMENT`) và
+    `order_comment` (`ORDER_COMMENT`, qua `HistoryOrderSelect`). Cả hai EA biên dịch 0 lỗi.
+  - 319 test cũ vẫn xanh sau toàn bộ bước này.
+
+- **Bước 2 — định tuyến và tương quan ở Bridge** (`+28 test`, `tests/test_ui_open_flow.py`):
+  - `_open_for_client()` rẽ theo `open_route`: đường `UI` gửi `OPEN_UI` tới `clicker_agent_id`,
+    payload **không có `magic`**, hạn lấy từ `ui_open_deadline_ms`, và ghi `open_tag` vào `pair`
+    trong **cùng một giao dịch** với `command` — sổ sách không bao giờ đi sau thực tế.
+  - Thẻ tương quan `open_tag_for()` = `"CB" + command_id[-10:]`, 12 ký tự, suy được từ
+    `command_id` nên không cần cột tra ngược, và sống sót qua giới hạn comment 31 ký tự của MT5.
+  - Hai cổng trước khi gửi: clicker phải `ONLINE` (canary), và **đúng một `OPEN_UI` đang bay mỗi
+    Client**. Cổng thứ hai là thứ biến tương quan mờ thành hàng đợi một phần tử.
+  - `_correlate_client_open()` thay nhánh `IGNORED` vô điều kiện cũ: đã tương quan → bỏ qua;
+    vị thế đã có chủ → chỉ đồng bộ volume; khớp thẻ → ghép; **hai thẻ cùng khớp → KHÔNG đoán**,
+    alert CRITICAL, event `ERROR`; mất thẻ → chỉ đoán khi `ui_fallback_match = HEURISTIC`.
+  - Ghép là một giao dịch DB duy nhất; `IntegrityError` của `idx_pair_client_pos` thành alert
+    CRITICAL chứ không phải exception.
+  - `_on_ui_ack()`: `ok` **không** mở pair (ack nói "tôi đã bấm", không nói "vị thế nào");
+    `unknown` giữ `PENDING_OPEN` + CRITICAL; chỉ `rejected` được retry.
+  - `on_command_timeout()` với `OPEN_UI` **không** đánh `OPEN_FAILED` — clicker im lặng không có
+    nghĩa là chưa bấm. `scan_correlation_deadlines()` cảnh báo đúng một lần rồi để phase 8 xử.
+  - `_check_ui_result()`: `client_open_reason` khác `CLIENT` → alert `UI_REASON_MISMATCH`. Mục
+    tiêu của cả phase trở thành một giá trị đo được, ghi vào DB, thay vì một niềm tin.
+
+- **Bước 3 — gói `clicker/` ở chế độ `--dry-run`** (`+20 test`, `tests/test_clicker.py`):
+  - `journal.py` — NDJSON append-only, `flush()` **và** `os.fsync()`, giữ chỗ trước phím đầu
+    tiên. Dòng cuối bị cắt vì mất điện thì bỏ dòng đó, không bỏ cả file.
+  - `link.py` — cùng giao thức NDJSON của EA, `role = "CLICKER"`. Bất biến: đã biết + có ack →
+    gửi lại nguyên văn; đã biết + ack rỗng → `unknown`, tuyệt đối không bấm lại.
+  - `ui/win32.py` — bọc mỏng `user32.dll`. `PostMessage` chứ không `SendInput` vì `SendInput`
+    chết khi phiên RDP ngắt, đúng cách VPS được vận hành.
+  - `ui/probe.py` — canary; kết quả vào `heartbeat.broker_connected`, với role CLICKER đọc là
+    "tôi điều khiển được giao diện".
+  - `ui/driver.py` — hợp đồng `OpenRequest` / `OpenOutcome` / `OpenDriver`, và `DryRunDriver`
+    luôn trả `rejected` reason `DRY_RUN`. `rejected` là đúng nghĩa: chưa có gì được bấm.
+  - `__main__.py` — khoá tiến trình đơn bằng named mutex; **không có `--dry-run` thì từ chối
+    khởi động** vì driver thật chưa được đo.
+
+- **Một lỗi tự tìm ra khi test đầu-cuối:** `_read_message()` bản đầu đọc một chunk TCP rồi chỉ
+  lấy dòng đầu, vứt phần còn lại. Bridge gửi command ngay sau `hello_ack` nên hai thứ thường về
+  chung một chunk — command đầu tiên sau mỗi lần kết nối bị đánh rơi im lặng. Đã thêm hàng chờ.
+
+- **Lỗi có sẵn đã sửa:** `flush_pending()` giờ **huỷ** command `PENDING` quá `deadline_at` kèm
+  alert `COMMAND_EXPIRED_BEFORE_SEND` thay vì gửi lệnh cũ (`+2 test`), và `on_agent_online()`
+  lọc theo role nên clicker không bao giờ nhận `REQUEST_SNAPSHOT`.
+
+- **Kiểm tra lại phần cũ:** 319 test của phase 1–6 vẫn xanh nguyên, không sửa test nào (chỉ
+  *thêm* vào `tests/test_dispatcher.py`). `ruff check .` sạch. Đường `open_route = 'EA'` chạy y
+  hệt hôm nay. **Chưa** chạy lại nghiệm thu phase 6 trên demo — cần terminal, để lượt sau.
+
+- **Kiểm tra phần mới:** 13/13 mục "không cần MT5" trong `plan/06b` đều có test tương ứng và
+  đều xanh. Tổng **369 test**.
+
+- **Còn treo cho lượt sau (cần terminal và đặt lệnh thật):** bước 4 trả lời ẩn số lớn nhất —
+  `WM_SETTEXT` có thật sự cập nhật trạng thái nội bộ MT5 hay chỉ đổi chữ hiển thị. Tiêu chí
+  **10/10** deal thật đúng volume, đúng chiều, `DEAL_REASON = CLIENT`; **9/10 là hỏng**. Sau đó
+  là bước 5 nghiệm thu đầu-cuối, bước 6 diễn tập hỏng hóc, bước 7 chốt tài liệu.
+
+### Phase 6b — Bước 4: driver giao diện thật (đo trên demo 538217)
+
+Bước này tồn tại để trả lời một câu hỏi không suy luận được: `WM_SETTEXT` có cập nhật trạng thái
+nội bộ của MT5 không. **Câu trả lời là KHÔNG**, và cách nó sai là kiểu tệ nhất có thể.
+
+- **Đo được, thay cho phỏng đoán:**
+  - `Tools → New Order` có **command id 32848**. `PostMessage(WM_COMMAND, 32848)` mở được hộp
+    thoại mà không cần focus, không cần bàn phím, không cần desktop tương tác. Đây là mảnh cuối
+    của cơ chế sống qua phiên RDP đã ngắt, và giờ nó là số đo chứ không phải giả định.
+  - Cửa sổ chính có class `MetaQuotes::MetaTrader::5.00`. Lọc theo class rồi mới đọc tiêu đề.
+  - Hộp thoại mở trong **3 ms**, 34 control đang hiện, ctrlID khớp đúng bảng đã đo ở E1.
+  - Symbol hiện dạng `'BTCUSD.s, Bitcoin vs US Dollar'` — so theo phần trước dấu phẩy.
+
+- **Ẩn số lớn nhất, trả lời bằng 4 lệnh thật:**
+
+  | Cách ghi volume | Yêu cầu | Thực sự gửi đi |
+  |---|---|---|
+  | `WM_SETTEXT` | 0.02 | **0.01** |
+  | `WM_SETTEXT` + báo `EN_CHANGE` cho dialog cha | 0.02 | **0.01** |
+  | `WM_SETTEXT` + gửi TAB để mất focus | 0.06 | **0.04** |
+  | `WM_CHAR` gõ từng ký tự | 0.04 | 0.04 |
+
+  Dòng thứ ba là dòng quan trọng nhất: nó gửi đi **volume của lệnh trước**, không phải giá trị
+  mặc định. MT5 giữ volume nội bộ **qua các lần mở hộp thoại**. Nghĩa là bản `WM_SETTEXT` sẽ
+  lặng lẽ copy kích thước của lệnh trước đó — sổ sách trông hoàn toàn hợp lý, không có cảnh báo
+  nào, và chỉ lộ ra khi đối chiếu với sao kê sàn.
+
+  > **Hệ quả phải nhớ:** đọc lại chữ trong ô **không chứng minh được gì** về giá trị MT5 sẽ dùng.
+  > Việc đọc lại vẫn cần — nó bắt ô sai, hộp thoại sai, symbol sai — nhưng bằng chứng duy nhất
+  > là deal thật. Nếu ai đó "dọn dẹp" `type_text()` thành `set_text()`, lỗi quay lại ngay và
+  > không thể thấy bằng mắt.
+
+  Volume đo cố ý là 0.02 chứ không phải 0.01 vì mặc định của hộp thoại là 0.01. Đo bằng 0.01 thì
+  cả bốn cách đều "đạt", và lỗi này đi thẳng vào sản xuất.
+
+- **Tiêu chí 10/10: ĐẠT.** Mười lệnh liên tiếp, xen kẽ volume 0.02/0.03 và chiều BUY/SELL, mỗi
+  lệnh một comment riêng. EA Client báo lên đủ mười, và cả mười đúng **cả bốn** điều kiện:
+  volume, chiều, comment nguyên vẹn, `DEAL_REASON = 0 (CLIENT)`. Xen kẽ là cố ý — một driver
+  luôn bấm cùng một nút, hoặc bỏ qua ô volume, không thể lọt qua.
+
+  **Đây là điều toàn bộ phase 6b tồn tại để đạt được, và giờ nó là số đo.**
+
+- **Độ trễ một chu kỳ mở lệnh** (mở hộp thoại → hộp thoại đóng), n = 10:
+  min 464 ms | trung vị 533 ms | max 545 ms | trung bình **511 ms**.
+  Nhanh hơn hẳn mức 2–4 s dự kiến trong plan. Cổng một-lệnh-đang-bay vì thế cho thông lượng
+  khoảng **một lệnh mỗi giây mỗi Client**, không phải một lệnh mỗi 2–4 giây.
+
+- **4.6 — bản gần đúng của test RDP:** 5/5 probe khô sạch với cửa sổ **minimized**.
+  **Chưa phải nghiệm thu RDP ngắt phiên** — máy đo là laptop. Mục đó chuyển sang phase 10.
+
+- **Code:**
+  - `clicker/ui/win32.py` — thêm `type_text()` (`WM_CHAR`), `post_command()`, `get_process_id()`,
+    `is_visible()`; `enum_top_level()` lọc theo class.
+  - `clicker/ui/dialog.py` — mới. Mở/đọc/điền hộp thoại. **Toàn bộ file test được mà không đặt
+    lệnh nào.** Lọc hộp thoại theo PID vì hai terminal chạy cạnh nhau đều dùng lớp `#32770`.
+  - `clicker/ui/driver.py` — `Mt5UiDriver` với `_commit()` là ranh giới `rejected`/`unknown`.
+  - `clicker/link.py` — ghi "đã bấm" xuống đĩa **trước** cú bấm qua hook `on_before_click`.
+  - `tests/test_ui_driver.py` — 8 test cho ranh giới đó bằng hộp thoại giả. Tổng **377 test**.
+
+- **Một lỗi trong code Bước 3 tự tìm ra:** `get_window_text()` dùng `SendMessage(WM_GETTEXT)`,
+  chặn vô hạn nếu **một** trong 348 cửa sổ của máy đang treo — đã làm treo chính phép đo. Đổi
+  sang `GetWindowTextW`: 1,0 ms. Một clicker treo im lặng vẫn "sống" dưới mắt Bridge.
+
+- **HAI LỖI PHASE 3 phát hiện khi chạy, chưa sửa, cần quyết định:**
+
+  1. **Gửi bù khuếch đại vô hạn** (`bridge/protocol/server.py:407`). Bridge có `last_seq = 0`,
+     EA đang ở seq 13, seq 1–10 không tồn tại ở cả hai bên. Bridge đòi gửi bù từ seq 1 → EA gửi
+     3 event nó có → **mỗi event lại rơi vào đúng nhánh "lỗ hổng" và sinh thêm một yêu cầu gửi
+     bù** → mỗi vòng nhân ba. `_advance_last_seq()` tìm seq=1 không thấy nên `last_seq` đứng ở 0
+     vĩnh viễn. Đo được: hàng nghìn dòng log trong 0,4 giây, EA treo cứng phải gắn lại tay,
+     agent bị đẩy sang OFFLINE vì không kịp gửi heartbeat.
+
+     **Điều kiện kích hoạt là khôi phục DB từ sao lưu, hoặc tạo lại DB — chính việc plan/10 sẽ
+     làm.** Không phải tình huống hiếm. Cần: không hỏi lại cho cùng `from_seq` khi chưa có tiến
+     triển; coi "agent không thể cung cấp" là kết cuộc hợp lệ (ghi finding rồi đi tiếp); có trần
+     số lần hỏi trong một phiên.
+
+  2. **Log `chuyển OFFLINE` lặp mỗi 0,5 giây** cho agent đã OFFLINE. Alert thì đúng (chỉ tạo một
+     lần) — chỉ dòng log là ồn, nhưng nó làm nhoè log đúng lúc cần đọc log để tìm nguyên nhân.
+
+  Lượt này **chỉ sửa dữ liệu**, không sửa code phase 3: đặt `agent.last_seq = 13` cho AG-CLIENT.
+  Hai lỗi vẫn còn nguyên. Thuộc phạm vi phase 8.
+
+- **Đã dọn:** ba dòng rác của test ràng buộc (`AG-TEST-CLICKER`, `CL-OK`, `CMD-TEST`) đã xoá;
+  cấp phát `AG-CLIENT` (538217, token đọc lại từ preset của EA) và `AG-MASTER` (538216, token
+  tạm). **Còn 10 vị thế mở** trên 538217 do phép đo 4.5, chưa đóng.
+
+### Phase 6b — sửa lỗi gửi bù, D-26, và Bước 5 nghiệm thu đầu-cuối
+
+#### Sửa lỗi phase 3: gửi bù khuếch đại vô hạn
+
+Lỗi phát hiện khi chạy Bước 4, đã làm treo cứng EA. Sửa trước Bước 5 vì Bước 5 chạy cả Bridge
+lẫn hai EA — để nguyên thì một lần lệch `last_seq` sẽ phá chính buổi nghiệm thu.
+
+- **Trần hỏi gửi bù.** `AgentConnection` thêm `resend_asked_from` và `resend_attempts`, trần 3
+  lần cho mỗi mốc `from_seq`, đặt lại mỗi phiên kết nối. Riêng phần này đã chặn được cơn bão.
+- **Chấp nhận lỗ hổng không lấp được.** Phần quan trọng hơn. Hết trần mà lỗ hổng vẫn còn thì đẩy
+  `last_seq` qua, kèm alert CRITICAL `EVENT_GAP_UNFILLED` ghi rõ khoảng seq đã mất. Không có
+  phần này thì hệ thống **bế tắc vĩnh viễn** ở mọi lỗ hổng không lấp được — mà khôi phục DB từ
+  sao lưu, hoặc tạo lại DB, sinh ra đúng loại đó, và `plan/10` sẽ làm điều này.
+
+  Bỏ event là **mất dữ liệu**, nên nó phải ồn ào chứ tuyệt đối không im lặng: alert CRITICAL,
+  log CRITICAL, và ghi đúng khoảng seq để đối chiếu ở phase 8 biết chỗ mà nhìn.
+- Dòng log `chuyển OFFLINE` chỉ in khi thật sự đổi trạng thái, không in lại mỗi vòng quét.
+- 4 test mới ở `tests/test_server.py`, trong đó một test tái hiện đúng sự cố (`last_seq = 0`,
+  EA ở seq 11+, seq 1–10 không tồn tại ở cả hai bên).
+
+**Xác nhận trên đường thật:** EA Client nối lại với backlog 20 event — **19 dòng log, sạch**.
+EA Master nối lại với lỗ hổng thật → alert `EVENT_GAP_UNFILLED` đúng một lần rồi đi tiếp.
+Trước khi sửa: hàng nghìn dòng trong 0,4 giây và EA treo.
+
+#### D-26 — không dùng One Click Trading
+
+Câu hỏi "sao không dùng OCT cho nhanh" là câu hỏi đúng, và OCT **chưa từng có trong bộ plan**.
+Đã ghi thành quyết định để không ai phải hỏi lại.
+
+**Bảng OCT không có ô Comment** — một mình điều này đã đủ để loại. Thẻ trong comment là toàn bộ
+cơ chế tương quan của D-07b/D-23; không có thẻ thì `STRICT` không bao giờ ghép được, còn
+`HEURISTIC` thì không phân biệt được lệnh bot với lệnh người dùng tự mở cùng thông số — ghép
+nhầm nghĩa là phase 7 sẽ đóng vị thế của chính người dùng.
+
+Hai lý do phụ cùng chiều: đo trên terminal thật thấy chart có `Edit` ẩn 106×20 giống ô volume
+của OCT nhưng **không có `Button` nào thuộc chart** (nhiều khả năng BUY/SELL vẽ trên canvas, phải
+bấm theo pixel); và OCT không đọc lại được, trong khi bài học của Bước 4 là *chữ hiển thị khác
+giá trị MT5 dùng*. Đổi lại chỉ được tốc độ, mà tốc độ đang dư.
+
+Hợp đồng giờ là **27 quyết định D-01…D-26 kèm D-07b**. Bảng ở `plan/00-README.md` và
+`docs/DECISIONS.md` khớp nguyên văn (kiểm bằng script).
+
+#### Bước 5 — nghiệm thu đầu-cuối trên demo: ĐẠT
+
+Cấu hình: `CL-01` với `open_route = 'UI'`, `clicker_agent_id = AG-CLICKER`, `copy_mode = OPPOSITE`,
+hệ số 1.0, `symbol_map` BTCUSD.s → BTCUSD.s. Token của cả hai EA đọc lại được từ preset của
+terminal nên không phải cấp lại. 5 lệnh Master đặt bằng chính driver, cách nhau 4 giây.
+
+| Pair | Master | Chiều M | Client | Chiều C | Volume | `client_open_reason` |
+|---|---|---|---|---|---|---|
+| PAIR-20260905-000001 | 71489221 | BUY | 71489222 | SELL | 0.01 | **0 (CLIENT)** |
+| PAIR-20260905-000002 | 71489223 | SELL | 71489224 | BUY | 0.01 | **0 (CLIENT)** |
+| PAIR-20260905-000003 | 71489225 | BUY | 71489226 | SELL | 0.01 | **0 (CLIENT)** |
+| PAIR-20260905-000004 | 71489227 | SELL | 71489228 | BUY | 0.01 | **0 (CLIENT)** |
+| PAIR-20260905-000005 | 71489229 | BUY | 71489230 | SELL | 0.01 | **0 (CLIENT)** |
+
+- [x] Đúng 5 pair, tất cả `OPEN`, `client_position_id` khớp vị thế thật.
+- [x] **Cả 5 có `client_open_reason = 0`** — mục tiêu của cả phase, đọc thẳng từ DB.
+- [x] Khớp lịch sử **cả hai** terminal: journal 538216 có order #71489221 buy 0.01, journal
+      538217 có order #71489222 sell 0.01, đúng từng cặp.
+- [x] 5 command `OPEN_UI` tới `AG-CLICKER`, tất cả `ACK_OK`. **EA Client không nhận `OPEN` nào.**
+- [x] **Clicker không nhận `REQUEST_SNAPSHOT` nào** (4 cái tới AG-CLIENT, 1 tới AG-MASTER).
+- [x] Không có alert mới nào — không `UI_CORRELATE_*`, không `UI_PARAM_MISMATCH`,
+      không `UI_REASON_MISMATCH`.
+
+**Độ trễ copy** (Master khớp → Client có vị thế), n = 5:
+min 553 | trung vị 616 | max 648 | **trung bình 604 ms**.
+
+So với phase 6 (đường EA, ~300 ms) thì gấp đôi, nhưng thấp hơn nhiều mức 1–3 s dự kiến khi lập
+kế hoạch. Cổng một-lệnh-đang-bay cho thông lượng khoảng **một lệnh mỗi giây mỗi Client**, không
+phải một lệnh mỗi 2–4 giây như plan lo ngại.
+
+#### Một chỗ thừa tự tìm ra khi đọc nhật ký clicker
+
+Nhật ký ghi `clicked=True` **hai lần** mỗi lệnh: một lần từ hook `on_before_click` (đúng chỗ,
+trước cú bấm) và một lần nữa sau khi driver trả về (thừa). Không sai — nhật ký là append-only,
+dòng sau đè dòng trước — nhưng dòng thừa làm người đọc tưởng cú bấm được ghi nhận **sau** khi
+xong, đúng thứ tự nguy hiểm mà cái hook sinh ra để tránh. Đã bỏ.
+
+#### Trạng thái để lại
+
+- **5 cặp vẫn đang mở** trên cả hai terminal, cố ý giữ cho Bước 6 (diễn tập hỏng hóc).
+- Bridge, clicker đã tắt. `run_mode` đang là `RUNNING` trong DB — **nhớ kiểm lại trước khi khởi
+  động lần sau**.
+- 381 test xanh, `ruff` sạch.
+
+#### Giới hạn đã biết, chưa giải
+
+**Hộp thoại New Order lấy symbol theo chart đang mở.** Driver **kiểm tra** symbol và từ chối nếu
+lệch, chứ không đổi — đổi symbol qua ComboBox 10331/10325 chưa được đo. Nghĩa là mỗi terminal
+Client hiện chỉ copy được **một symbol**, đúng cái chart đang mở. Nghiệm thu này chạy BTCUSD.s ở
+cả hai bên nên không vướng, nhưng phải giải trước khi dùng nhiều symbol — mà "nhiều symbol đồng
+thời" nằm trong phạm vi MVP ở `plan/00` mục 2.
+
+---
+
+## Trạng thái để lại cho lượt sau
+
+*(Viết ngày 2026-09-05, sau khi Bước 5 nghiệm thu ĐẠT. Đọc mục này TRƯỚC khi chạy bất cứ thứ gì.)*
+
+### Ba cái bẫy trong trạng thái hiện tại
+
+1. **`run_mode` đang là `RUNNING` trong DB.** Khởi động Bridge lên là hệ thống sống và copy
+   thật, không phải chạy thử. Kiểm và quyết định trước khi bật.
+2. **5 cặp đang mở trên cả hai terminal** (`PAIR-20260905-000001`…`000005`, BTCUSD.s 0.01,
+   Master BUY/SELL xen kẽ, Client ngược chiều). **Cố ý giữ để diễn tập ở Bước 6**, không phải
+   rác cần dọn.
+3. **Token của clicker đã mất.** Nó nằm trong scratchpad của phiên trước, mà scratchpad gắn với
+   session id nên phiên mới không đọc được; DB chỉ giữ hash. Phải cấp token mới cho `AG-CLICKER`.
+   Token của **hai EA thì không mất** — đọc lại được từ `MQL5/Presets/CopyBridge*.set` của mỗi
+   terminal, đó là cách đã dùng ở Bước 5.
+
+Bridge và clicker đều đã tắt. Cấu hình còn nguyên: `CL-01` với `open_route = 'UI'`,
+`clicker_agent_id = AG-CLICKER`, `copy_mode = OPPOSITE`, hệ số 1.0, `symbol_map`
+BTCUSD.s → BTCUSD.s. Ba agent đã có trong DB.
+
+### Lỗi cần sửa ĐẦU TIÊN ở lượt sau: trạng thái ONLINE cũ không bao giờ được dọn
+
+`BridgeServer.stop()` (`bridge/protocol/server.py`) đóng socket nhưng **không ghi
+`status = OFFLINE`** vào DB. Quan sát trực tiếp: Bridge đã tắt mà `AG-CLIENT` và `AG-MASTER` vẫn
+ghi `ONLINE`. Tệ hơn, `check_heartbeats()` duyệt `self.connections` — lúc khởi động lại danh
+sách đó rỗng — nên trạng thái cũ **không bao giờ được sửa** cho tới khi chính agent đó nối lại.
+
+Hệ quả: cổng canary của D-25 đọc đúng cột `status` này, nên một clicker `ONLINE` cũ rích vẫn qua
+được cổng. Bridge tạo pair + `OPEN_UI` rồi gửi vào hư không. Không âm thầm — command bị huỷ khi
+hết hạn và pair kêu `UI_CORRELATE_EXPIRED` — nhưng cổng không làm đúng việc D-25 hứa.
+
+**Hướng sửa:** lúc Bridge **khởi động**, đánh mọi agent về `OFFLINE`. Lúc đó chắc chắn chưa ai
+nối nên nó đúng một cách hiển nhiên, và nó xử lý được cả trường hợp Bridge chết đột ngột chứ
+không riêng đường tắt sạch. Cộng thêm đánh OFFLINE trong `stop()`. Bài diễn tập canary của
+Bước 6 chạm thẳng vào cổng này nên sửa ở đó là đúng chỗ và có sẵn bài thử.
+
+### Bước 6 — bốn bài diễn tập, cách dựng đã nghĩ sẵn
+
+| Bài | Cách dựng | Phải ra |
+|---|---|---|
+| Giết clicker sau khi giữ chỗ, **trước** khi bấm | Bọc driver bằng lớp ném lỗi trước cú bấm, dùng lại đúng file `data/clicker_commands.ndjson` | Gửi lại cùng `command_id` → ack `unknown`, **không có lệnh thứ hai** |
+| Giết clicker sau khi bấm, **trước** khi ack | `swallow_ack`, như `tests/mock_clicker.py` đã làm | Event tương quan tới sau vẫn mở được pair |
+| Mở tay lệnh trùng thông số lúc `OPEN_UI` đang bay | Dừng clicker để `OPEN_UI` nằm chờ, rồi mở tay một lệnh cùng symbol/chiều/volume trên Client | `ui_fallback_match = STRICT` **không ghép nhầm**; coi là lệnh mở tay (FR-12) |
+| Canary báo đỏ | Chạy clicker với `--terminal-title` sai | Bridge ngừng gửi `OPEN_UI`, alert ERROR, **không rơi về đường EA** |
+
+Bài thứ ba quan trọng nhất: nó kiểm đúng thứ mà việc bỏ One Click Trading (D-26) tồn tại để bảo
+vệ — khả năng phân biệt lệnh của bot với lệnh người dùng tự mở.
+
+Bài "lặp lại với phiên RDP đã ngắt" **vẫn treo**, chuyển sang phase 10 vì máy đo là laptop.
+
+### Bước 7 — chốt tài liệu
+
+`docs/ARCHITECTURE.md` và `docs/GLOSSARY.md` phải cập nhật theo những gì **đã đo**, không theo
+những gì đã dự kiến: `WM_CHAR` chứ không `WM_SETTEXT`; menu id 32848 để mở hộp thoại; độ trễ
+thật 604 ms thay cho ước lượng 1–3 s; thông lượng ~1 lệnh/giây mỗi Client thay cho 1 lệnh/2–4 giây.
+
+### Còn treo, chưa có kế hoạch
+
+**Mỗi terminal Client hiện chỉ copy được một symbol** — hộp thoại New Order lấy symbol theo chart
+đang mở, và driver chỉ *kiểm tra* chứ không đổi (ComboBox 10331/10325 chưa đo). Mà "nhiều symbol
+đồng thời" nằm trong phạm vi MVP ở `plan/00` mục 2, nên đây là món nợ phải trả trước phase 10.
+
+**Cấp phát agent/token vẫn làm bằng script tạm trong scratchpad** — món nợ ghi từ phase 3, và
+lần này nó đã cắn thật (mất token clicker). Phase 9 hoặc 10 phải đưa vào sản phẩm.

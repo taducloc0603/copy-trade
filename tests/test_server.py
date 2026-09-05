@@ -527,3 +527,106 @@ async def test_hai_event_trung_event_id_qua_duong_mang_chi_tao_mot_ban_ghi(
         assert rows[0]["type"] == "position_opened", "Bản ghi đầu tiên thắng"
     finally:
         await agent.kill()
+
+
+async def test_lo_hong_khong_lap_duoc_thi_dung_lai_chu_khong_hoi_mai(
+        server: BridgeServer, agents_db: Database) -> None:
+    """Tái hiện đúng sự cố ngày 2026-09-05 đã làm treo EA.
+
+    Bridge có `last_seq = 0`, EA đang ở seq cao, và những seq ở giữa **không tồn tại ở cả hai
+    bên** (xảy ra khi tạo lại DB hoặc khôi phục từ bản sao lưu). Bản cũ hỏi gửi bù cho từng
+    event lệch thứ tự, mà mỗi lần hỏi lại kéo về nhiều event lệch thứ tự nữa — mỗi vòng nhân
+    lên, hàng nghìn message trong 0,4 giây.
+    """
+    agent = _master(server)
+    await agent.start()
+    try:
+        # EA chỉ còn giữ 11..14; seq 1..10 đã biến mất vĩnh viễn ở cả hai bên.
+        for seq in (11, 12, 13, 14):
+            await agent.send_event("position_opened", seq=seq, position_id=seq,
+                                   deal_entry="IN", volume_after=1.0)
+
+        await _wait_until(
+            lambda: any(a["code"] == "EVENT_GAP_UNFILLED"
+                        for a in agents_db.list_open_alerts()), timeout=3.0
+        )
+        alert = next(a for a in agents_db.list_open_alerts()
+                     if a["code"] == "EVENT_GAP_UNFILLED")
+        assert alert["level"] == "CRITICAL"
+        assert "1..13" in alert["message"], "Alert phai ghi ro khoang seq da mat"
+
+        # Số lần hỏi có trần, không bùng nổ.
+        so_lan_hoi = sum(1 for m in agent.inbox if m.get("kind") == "resend")
+        assert so_lan_hoi <= 3, f"Hoi gui bu {so_lan_hoi} lan, phai co tran"
+
+        # Và quan trọng nhất: hệ thống đi tiếp được thay vì bế tắc vĩnh viễn.
+        await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["last_seq"] == 14,
+                          timeout=3.0)
+        await agent.send_event("position_opened", seq=15, position_id=15, deal_entry="IN",
+                               volume_after=1.0)
+        await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["last_seq"] == 15,
+                          timeout=3.0)
+        # Event thật sự nhận được vẫn nằm nguyên trong DB — chỉ khoảng trống là bị bỏ.
+        assert agents_db.query_one("SELECT COUNT(*) AS n FROM event")["n"] == 5
+    finally:
+        await agent.kill()
+
+
+async def test_lo_hong_lap_duoc_thi_khong_bao_dong_va_khong_bo_event(
+        server: BridgeServer, agents_db: Database) -> None:
+    """Trần hỏi gửi bù không được làm hỏng đường đi bình thường."""
+    agent = _master(server)
+    await agent.start()
+    try:
+        await agent.send_event("position_opened", seq=3, position_id=3, deal_entry="IN",
+                               volume_after=1.0)
+        await agent.expect("resend")
+        for seq in (1, 2):
+            await agent.send_event("position_opened", seq=seq, position_id=seq,
+                                   deal_entry="IN", volume_after=1.0)
+
+        await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["last_seq"] == 3)
+        assert not [a for a in agents_db.list_open_alerts()
+                    if a["code"] == "EVENT_GAP_UNFILLED"]
+        assert agents_db.query_one("SELECT COUNT(*) AS n FROM event")["n"] == 3
+    finally:
+        await agent.kill()
+
+
+async def test_bo_dem_hoi_gui_bu_dat_lai_khi_noi_lai(server: BridgeServer,
+                                                     agents_db: Database) -> None:
+    """Hỏi lại là chuyện của một phiên. Nối lại thì agent xứng đáng được hỏi lại từ đầu."""
+    agent = _master(server)
+    await agent.start()
+    for seq in (20, 21, 22, 23):
+        await agent.send_event("position_opened", seq=seq, position_id=seq,
+                               deal_entry="IN", volume_after=1.0)
+    await _wait_until(lambda: any(a["code"] == "EVENT_GAP_UNFILLED"
+                                  for a in agents_db.list_open_alerts()), timeout=3.0)
+    await _wait_until(lambda: agents_db.get_agent(MASTER_AGENT)["last_seq"] == 23, timeout=3.0)
+    await agent.kill()
+
+    lai = _master(server)
+    await lai.start()
+    try:
+        await lai.send_event("position_opened", seq=40, position_id=40, deal_entry="IN",
+                             volume_after=1.0)
+        resend = await lai.expect("resend", timeout=3.0)
+        assert resend["from_seq"] == 24, "Phien moi phai duoc hoi lai tu dau"
+    finally:
+        await lai.kill()
+
+
+async def test_agent_offline_chi_log_mot_lan(server: BridgeServer,
+                                             caplog: pytest.LogCaptureFixture) -> None:
+    """Vòng quét chạy mỗi vài trăm ms; in mỗi vòng làm nhoè log đúng lúc cần đọc log."""
+    agent = _master(server)
+    await agent.start()
+    try:
+        caplog.set_level(logging.WARNING, logger="bridge.protocol.server")
+        for _ in range(5):
+            server.check_heartbeats()
+        im_lang = [r for r in caplog.records if "im lặng quá" in r.getMessage()]
+        assert len(im_lang) <= 1, f"In {len(im_lang)} lan cho cung mot lan chuyen OFFLINE"
+    finally:
+        await agent.kill()

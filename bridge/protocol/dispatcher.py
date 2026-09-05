@@ -17,6 +17,7 @@ gửi được" với "đã gửi mà không có phản hồi" là điều kiệ
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from datetime import timedelta
 from typing import Any
@@ -116,7 +117,10 @@ class CommandDispatcher:
 
     async def on_agent_online(self, agent_id: str) -> None:
         """Agent vừa kết nối: yêu cầu snapshot rồi đẩy nốt các command còn tồn."""
-        await self.request_snapshot(agent_id)
+        agent = self.db.get_agent(agent_id)
+        # Agent role CLICKER không có vị thế nào để báo cáo — nó chỉ bấm nút.
+        if agent is not None and agent["role"] in ("MASTER", "CLIENT"):
+            await self.request_snapshot(agent_id)
         await self.flush_pending(agent_id)
 
     async def request_snapshot(self, agent_id: str) -> str:
@@ -127,13 +131,23 @@ class CommandDispatcher:
         return await self.dispatch(agent_id, "REQUEST_SNAPSHOT")
 
     async def flush_pending(self, agent_id: str) -> int:
-        """Gửi mọi command đang `PENDING` của một agent, theo đúng thứ tự tạo."""
+        """Gửi mọi command đang `PENDING` của một agent, theo đúng thứ tự tạo.
+
+        **Command quá hạn thì HUỶ chứ không gửi.** Agent offline mười phút rồi nối lại mà nhận
+        được một lệnh mở đã cũ là tình huống mất tiền. Lưu ý `scan_deadlines()` cố ý chỉ quét
+        `SENT` — nó phân biệt "chưa gửi được" với "đã gửi mà không có phản hồi" — nên command
+        `PENDING` không bao giờ tự hết hạn ở đó. Phải kiểm ngay tại chỗ gửi bù này.
+        """
+        now = utc_now_iso()
         rows = [
             row for row in self.db.list_inflight_commands()
             if row["target_agent_id"] == agent_id and row["status"] == "PENDING"
         ]
         sent = 0
         for row in rows:
+            if row["deadline_at"] and row["deadline_at"] < now:
+                self.cancel_expired(row)
+                continue
             payload = json.loads(row["payload_json"]) if row["payload_json"] else {}
             if await self._send(row["command_id"], agent_id, row["type"], row["pair_id"],
                                 payload, row["deadline_at"]):
@@ -142,6 +156,23 @@ class CommandDispatcher:
             log.info("Đã gửi bù %d command tồn đọng cho agent %s", sent, agent_id,
                      extra={"agent_id": agent_id})
         return sent
+
+    def cancel_expired(self, command: sqlite3.Row) -> None:
+        """Huỷ một command chưa kịp gửi thì đã quá hạn."""
+        command_id = command["command_id"]
+        with self.db.transaction() as conn:
+            conn.execute(
+                "UPDATE command SET status = 'CANCELLED', updated_at = ? WHERE command_id = ?",
+                (utc_now_iso(), command_id),
+            )
+        self.db.create_alert(
+            "WARNING", "COMMAND_EXPIRED_BEFORE_SEND",
+            f"Command {command_id} type {command['type']} qua han truoc khi gui duoc, da huy",
+            pair_id=command["pair_id"], agent_id=command["target_agent_id"],
+        )
+        log.warning("Command %s quá hạn trước khi gửi được, huỷ thay vì gửi lệnh cũ",
+                    command_id, extra={"command_id": command_id, "pair_id": command["pair_id"],
+                                       "agent_id": command["target_agent_id"]})
 
     # -- hạn -------------------------------------------------------------------------------
 

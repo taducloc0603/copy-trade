@@ -50,6 +50,21 @@ MIN_DEADLINE_MS = 2000
 DEFAULT_POLL_INTERVAL_SEC = 0.1
 DEFAULT_DEADLINE_SCAN_SEC = 1.0
 
+#: `DEAL_REASON_CLIENT`. Mục tiêu của đường mở lệnh qua giao diện (D-21).
+DEAL_REASON_CLIENT = 0
+
+#: Tiền tố thẻ tương quan. Thẻ suy được từ `command_id` nên không cần cột riêng để tra ngược.
+TAG_PREFIX = "CB"
+TAG_ID_CHARS = 10
+
+
+def open_tag_for(command_id: str) -> str:
+    """Thẻ tương quan của một lệnh mở qua giao diện.
+
+    Ngắn (12 ký tự) để chịu được việc sàn cắt — giới hạn comment của MT5 là 31 ký tự.
+    """
+    return TAG_PREFIX + command_id[-TAG_ID_CHARS:]
+
 
 class EventProcessor:
     """Task nền: lấy event `PENDING` theo thứ tự `id` và xử lý tuần tự."""
@@ -90,6 +105,7 @@ class EventProcessor:
                 now = asyncio.get_running_loop().time()
                 if now - last_scan >= self.deadline_scan_sec:
                     self.dispatcher.scan_deadlines()
+                    self.scan_correlation_deadlines()
                     last_scan = now
                 if not processed:
                     await asyncio.sleep(self.poll_interval_sec)
@@ -139,9 +155,10 @@ class EventProcessor:
             return "IGNORED", f"Phase 6 chua xu ly loai event {event['type']}", None
 
         if agent["role"] != "MASTER":
-            # Vị thế mở trên Client: hoặc do chính bot mở (có `caused_by_command_id`, đã xử lý
-            # qua ack), hoặc do người mở tay (FR-12: bỏ qua hoàn toàn).
-            return "IGNORED", "position_opened tu agent CLIENT, khong copy nguoc", None
+            # Vị thế mở trên Client. KHÔNG bao giờ copy ngược lên Master — chiều copy chỉ đi
+            # một chiều. Nhưng event này là **đường về duy nhất** để biết `position_id` của
+            # lệnh mở qua giao diện (D-23), nên phải thử tương quan trước khi bỏ qua.
+            return await self._correlate_client_open(event, agent)
 
         if event["caused_by_command_id"]:
             # Do chính bot gây ra thì KHÔNG lan truyền (D-08).
@@ -294,15 +311,41 @@ class EventProcessor:
         if result.skipped:
             return None, result.skip_reason or "bo qua"
 
-        deadline_ms = max(int(client["max_event_age_ms"]), MIN_DEADLINE_MS)
+        via_ui = client["open_route"] == "UI"
+        if via_ui:
+            skip = self._ui_route_blocked(client)
+            if skip is not None:
+                return None, skip
+
         command_id = new_command_id()
-        command_payload = {
-            "symbol": client_symbol,
-            "direction": client_direction,
-            "volume": result.volume,
-            "deviation": client["max_deviation_points"],
-            "magic": agent_row["magic_number"],
-        }
+        tag = open_tag_for(command_id) if via_ui else None
+
+        if via_ui:
+            target_agent = client["clicker_agent_id"]
+            command_type = "OPEN_UI"
+            deadline_ms = max(
+                self.db.get_config_int("ui_open_deadline_ms", 15000), MIN_DEADLINE_MS
+            )
+            # KHÔNG có khoá `magic`: hộp thoại New Order không đặt được magic, và việc thiếu nó
+            # làm `Guard()` của EA từ chối nếu command này đi nhầm địa chỉ (D-22).
+            command_payload = {
+                "symbol": client_symbol,
+                "direction": client_direction,
+                "volume": result.volume,
+                "deviation": client["max_deviation_points"],
+                "comment": tag,
+            }
+        else:
+            target_agent = client["agent_id"]
+            command_type = "OPEN"
+            deadline_ms = max(int(client["max_event_age_ms"]), MIN_DEADLINE_MS)
+            command_payload = {
+                "symbol": client_symbol,
+                "direction": client_direction,
+                "volume": result.volume,
+                "deviation": client["max_deviation_points"],
+                "magic": agent_row["magic_number"],
+            }
 
         # MỘT giao dịch: pair + command. Rồi mới gửi qua socket.
         with self.db.transaction():
@@ -312,11 +355,12 @@ class EventProcessor:
                 effective_multiplier=result.effective_multiplier,
                 client_symbol=client_symbol, client_direction=client_direction,
                 open_time_master=event["received_at"], last_event_id=event["event_id"],
+                open_tag=tag,
             )
             if pair_id is None:
                 return None, "da co pair (rang buoc DB chan)"
             self.db.create_command(
-                command_id, client["agent_id"], "OPEN", pair_id=pair_id,
+                command_id, target_agent, command_type, pair_id=pair_id,
                 payload_json=json.dumps(command_payload, ensure_ascii=False,
                                         separators=(",", ":")),
                 deadline_at=_deadline(deadline_ms),
@@ -335,10 +379,14 @@ class EventProcessor:
 
     async def on_command_acked(self, command: sqlite3.Row, message: Any) -> None:
         """Hook được `BridgeServer` gọi sau khi ghi ack vào DB."""
-        if command["type"] != "OPEN" or not command["pair_id"]:
+        if command["type"] not in ("OPEN", "OPEN_UI") or not command["pair_id"]:
             return
         pair = self.db.get_pair(command["pair_id"])
         if pair is None or pair["status"] != "PENDING_OPEN":
+            return
+
+        if command["type"] == "OPEN_UI":
+            await self._on_ui_ack(pair, command, message)
             return
 
         if message.status in ("ok", "already_closed") and message.retcode in (
@@ -405,7 +453,7 @@ class EventProcessor:
         deadline_ms = max(int(client["max_event_age_ms"]), MIN_DEADLINE_MS)
         command_id = new_command_id()
         self.db.create_command(
-            command_id, command["target_agent_id"], "OPEN", pair_id=pair_id,
+            command_id, command["target_agent_id"], command["type"], pair_id=pair_id,
             payload_json=command["payload_json"], deadline_at=_deadline(deadline_ms),
         )
         await self.dispatcher.send_existing(command_id)
@@ -460,10 +508,19 @@ class EventProcessor:
         **Không tự động thử lại** (D-13): không biết lệnh đã khớp hay chưa, và mở thêm là hành
         động tăng rủi ro. Để đối chiếu ở phase 8 dọn.
         """
-        if command["type"] != "OPEN" or not command["pair_id"]:
+        if command["type"] not in ("OPEN", "OPEN_UI") or not command["pair_id"]:
             return
         pair = self.db.get_pair(command["pair_id"])
         if pair is None or pair["status"] != "PENDING_OPEN":
+            return
+        if command["type"] == "OPEN_UI":
+            # Clicker im lặng KHÔNG có nghĩa là chưa bấm. Đánh `OPEN_FAILED` ở đây là tự tay xoá
+            # cặp lệnh có thể đang tồn tại thật trên terminal. Giữ `PENDING_OPEN` chờ tương quan.
+            self.db.update_pair(command["pair_id"], error_message="UI_ACK_TIMEOUT")
+            self._alert("CRITICAL", "UI_OPEN_TIMEOUT",
+                        f"Cap {command['pair_id']} khong nhan duoc ack tu clicker truoc han. "
+                        "KHONG ket luan la that bai; cho event tuong quan hoac doi chieu.",
+                        pair_id=command["pair_id"], agent_id=command["target_agent_id"])
             return
         self.db.update_pair(command["pair_id"], status="OPEN_FAILED",
                             error_message="Command OPEN qua han ma chua co ack")
@@ -471,6 +528,295 @@ class EventProcessor:
                     f"Cap {command['pair_id']} khong nhan duoc ack truoc han. KHONG tu dong "
                     "thu lai; cho doi chieu xu ly.",
                     pair_id=command["pair_id"], agent_id=command["target_agent_id"])
+
+    # -- đường mở lệnh qua giao diện (phase 6b) ----------------------------------------------
+
+    def _ui_route_blocked(self, client: sqlite3.Row) -> str | None:
+        """Lý do KHÔNG được gửi `OPEN_UI` lúc này, hoặc ``None`` nếu đi được.
+
+        Hai cổng, cả hai đều **chỉ biết bỏ qua**. Rơi về đường EA khi clicker hỏng là lặng lẽ
+        đặt một lệnh `EXPERT` — đúng thứ phase này tồn tại để làm cho bất khả thi (D-25).
+        """
+        client_id = client["client_id"]
+        clicker_id = client["clicker_agent_id"]
+        clicker = self.db.get_agent(clicker_id) if clicker_id else None
+
+        # Cổng 1 — canary. DEGRADED với role CLICKER nghĩa là "không điều khiển được giao diện".
+        if clicker is None or clicker["status"] != "ONLINE":
+            status = clicker["status"] if clicker is not None else "KHONG TON TAI"
+            fallback = self.db.get_config("ui_degraded_fallback", "SKIP")
+            self._alert("ERROR", "CLICKER_NOT_AVAILABLE",
+                        f"Clicker {clicker_id} cua Client {client_id} dang {status}, "
+                        f"khong copy lenh nay. ui_degraded_fallback = {fallback}. "
+                        "KHONG tu rot ve duong EA.",
+                        agent_id=clicker_id)
+            return f"clicker {status}"
+
+        # Cổng 2 — đúng MỘT `OPEN_UI` đang bay cho mỗi Client. Đây là thứ biến bài toán tương
+        # quan mờ thành hàng đợi một phần tử, luôn phân giải được.
+        inflight = self.db.query_one(
+            "SELECT c.command_id FROM command c JOIN pair p ON p.pair_id = c.pair_id "
+            "WHERE c.type = 'OPEN_UI' AND c.status IN ('PENDING', 'SENT') AND p.client_id = ? "
+            "LIMIT 1",
+            (client_id,),
+        )
+        if inflight is not None:
+            self._alert("WARNING", "UI_OPEN_BUSY",
+                        f"Client {client_id} dang co lenh mo qua giao dien "
+                        f"{inflight['command_id']} chua xong, bo qua lenh nay",
+                        agent_id=clicker_id)
+            return "clicker dang ban"
+        return None
+
+    async def _on_ui_ack(self, pair: sqlite3.Row, command: sqlite3.Row, message: Any) -> None:
+        """Ack của clicker. Đọc theo hợp đồng ở plan 6b mục 6b.3.
+
+        `ok` nói *"tôi đã bấm"*, **không** nói *"vị thế nào"*. Việc mở pair do tương quan quyết
+        định (D-23), nên ở đây không có nhánh nào gọi `mark_pair_open()`.
+        """
+        pair_id = pair["pair_id"]
+        status = message.status
+
+        if status == "ok":
+            if message.result_position_id:
+                self._alert("WARNING", "UI_ACK_HAS_POSITION_ID",
+                            f"Clicker tra ve result_position_id cho cap {pair_id}. Giao dien "
+                            "khong biet position_id; gia tri nay bi bo qua.",
+                            pair_id=pair_id, agent_id=command["target_agent_id"])
+            log.info("Clicker bao da bam xong cho cap %s, cho event tuong quan", pair_id,
+                     extra={"pair_id": pair_id, "command_id": command["command_id"]})
+            return
+
+        if status == "unknown":
+            # Không biết đã bấm hay chưa. Giữ `PENDING_OPEN` — đánh thất bại ở đây là xoá sổ một
+            # vị thế có thể đang tồn tại thật.
+            self.db.update_pair(pair_id, error_message="UI_ACK_UNKNOWN")
+            self._alert("CRITICAL", "UI_ACK_UNKNOWN",
+                        f"Clicker khong biet lenh cua cap {pair_id} da gui hay chua. KHONG thu "
+                        "lai; cho event tuong quan hoac doi chieu.",
+                        pair_id=pair_id, agent_id=command["target_agent_id"])
+            return
+
+        client = self.db.get_client_account(pair["client_id"])
+        self.db.update_pair(pair_id, error_code=message.retcode,
+                            error_message=(message.retmsg or status)[:500])
+
+        # `rejected` là trạng thái DUY NHẤT chứng minh được là chưa bấm nút gửi, nên cũng là
+        # trạng thái duy nhất được phép thử lại (D-24).
+        attempt = int(pair["retry_count"] or 0)
+        if status == "rejected" and attempt < int(client["max_retry"]):
+            self.db.update_pair(pair_id, retry_count=attempt + 1)
+            log.warning("Clicker tu choi cap %s (%s), thu lai lan %d sau %dms",
+                        pair_id, message.retmsg, attempt + 1, client["retry_interval_ms"],
+                        extra={"pair_id": pair_id})
+            task = asyncio.create_task(
+                self._retry_open(pair_id, command, int(client["retry_interval_ms"]))
+            )
+            self._retry_tasks.add(task)
+            task.add_done_callback(self._retry_tasks.discard)
+            return
+
+        await self._apply_open_fail_policy(pair, client, message.retcode, message.retmsg)
+
+    async def _correlate_client_open(self, event: sqlite3.Row,
+                                     agent: sqlite3.Row) -> tuple[str, str | None, str | None]:
+        """Ghép một vị thế vừa mở trên Client vào cặp lệnh đang chờ (plan 6b mục 6b.4)."""
+        if event["caused_by_command_id"]:
+            # Đã tương quan rồi. Idempotent với event gửi bù sau khi kết nối lại.
+            return "IGNORED", "Da tuong quan truoc do", None
+
+        position_id = event["position_id"]
+        if not position_id:
+            return "ERROR", "Event position_opened tu Client thieu position_id", None
+
+        client = self.db.query_one(
+            "SELECT * FROM client_account WHERE agent_id = ?", (agent["agent_id"],)
+        )
+        if client is None:
+            return "IGNORED", "Agent CLIENT chua duoc cau hinh trong client_account", None
+        client_id = client["client_id"]
+
+        # Vị thế đã thuộc một pair rồi thì KHÔNG ghép lại, chỉ đồng bộ volume.
+        existing = self.db.find_pair_by_client_position(client_id, position_id)
+        if existing is not None:
+            if event["volume_after"]:
+                self.db.update_pair(existing["pair_id"],
+                                    client_current_volume=event["volume_after"])
+            return "DONE", None, existing["pair_id"]
+
+        data = json.loads(event["payload_json"] or "{}").get("data", {})
+        # EA gửi volume dưới tên `volume_after` / `volume_delta`. So sánh với payload `OPEN_UI`
+        # cần một khoá thống nhất, nên chuẩn hoá ngay ở đây thay vì rải điều kiện xuống dưới.
+        if data.get("volume") is None:
+            data["volume"] = event["volume_after"] or data.get("volume_after")
+
+        candidates = self._open_ui_candidates(client_id)
+        if not candidates:
+            return "IGNORED", "Khong co lenh OPEN_UI nao dang cho, coi la lenh mo tay", None
+
+        comment = f"{data.get('comment') or ''} {data.get('order_comment') or ''}"
+        matched = [c for c in candidates if c["open_tag"] and c["open_tag"] in comment]
+
+        if len(matched) > 1:
+            # KHÔNG ĐOÁN. Ghép sai một vị thế vào một cặp là sai lệch sổ sách mà không có cách
+            # nào tự phát hiện về sau.
+            self._alert("CRITICAL", "UI_CORRELATE_AMBIGUOUS",
+                        f"Vi the {position_id} tren Client {client_id} khop {len(matched)} the "
+                        f"tuong quan: {[c['pair_id'] for c in matched]}. Khong ghep tu dong.",
+                        agent_id=agent["agent_id"])
+            return "ERROR", "Nhieu the tuong quan cung khop", None
+
+        if len(matched) == 1:
+            how = "the tuong quan"
+        else:
+            matched, how = self._heuristic_match(candidates, data, client_id, position_id)
+            if not matched:
+                return "IGNORED", "Khong khop lenh OPEN_UI nao, coi la lenh mo tay (FR-12)", None
+
+        return self._bind(matched[0], event, data, client_id, position_id, how)
+
+    def _open_ui_candidates(self, client_id: str) -> list[sqlite3.Row]:
+        """Các lệnh `OPEN_UI` còn trong cửa sổ tương quan của một Client."""
+        rows = self.db.query_all(
+            "SELECT c.command_id, c.deadline_at, c.payload_json, p.pair_id, p.open_tag, "
+            "       p.client_symbol, p.client_direction "
+            "FROM command c JOIN pair p ON p.pair_id = c.pair_id "
+            "WHERE c.type = 'OPEN_UI' AND p.client_id = ? AND p.status = 'PENDING_OPEN' "
+            "  AND p.client_position_id IS NULL "
+            "ORDER BY c.created_at",
+            (client_id,),
+        )
+        grace_ms = self.db.get_config_int("ui_correlate_grace_ms", 10000)
+        now_iso = utc_now_iso()
+        return [r for r in rows
+                if (_latency_ms(r["deadline_at"], now_iso) or 0) <= grace_ms]
+
+    def _heuristic_match(self, candidates: list[sqlite3.Row], data: dict[str, Any],
+                         client_id: str, position_id: int) -> tuple[list[sqlite3.Row], str]:
+        """Ghép bằng suy đoán khi thẻ bị mất. Chỉ chạy khi `ui_fallback_match = HEURISTIC`."""
+        mode = (self.db.get_config("ui_fallback_match", "STRICT") or "STRICT").upper()
+        if mode != "HEURISTIC":
+            log.info("Vi the %s tren Client %s khong mang the tuong quan, ui_fallback_match = "
+                     "%s nen khong doan", position_id, client_id, mode)
+            return [], ""
+
+        hits = [
+            c for c in candidates
+            if c["client_symbol"] == data.get("symbol")
+            and c["client_direction"] == data.get("direction")
+            and _same_volume(c["payload_json"], data.get("volume"))
+        ]
+        if len(hits) != 1:
+            log.info("Suy doan cho vi the %s tren Client %s ra %d ung vien, khong ghep",
+                     position_id, client_id, len(hits))
+            return [], ""
+
+        self._alert("WARNING", "UI_CORRELATE_HEURISTIC",
+                    f"Ghep vi the {position_id} vao cap {hits[0]['pair_id']} bang SUY DOAN "
+                    "(symbol/chieu/volume), khong phai bang the tuong quan.",
+                    pair_id=hits[0]["pair_id"])
+        return hits, "suy doan"
+
+    def _bind(self, candidate: sqlite3.Row, event: sqlite3.Row, data: dict[str, Any],
+              client_id: str, position_id: int, how: str) -> tuple[str, str | None, str | None]:
+        """Ghép vị thế vào cặp lệnh. Một giao dịch DB duy nhất."""
+        pair_id = candidate["pair_id"]
+        command_id = candidate["command_id"]
+        volume = event["volume_after"] or data.get("volume")
+        reason = data.get("reason")
+        now = utc_now_iso()
+
+        try:
+            with self.db.transaction() as conn:
+                conn.execute(
+                    "UPDATE event SET caused_by_command_id = ?, pair_id = ? WHERE event_id = ?",
+                    (command_id, pair_id, event["event_id"]),
+                )
+                conn.execute(
+                    "UPDATE command SET result_position_id = ?, executed_volume = ?, "
+                    "updated_at = ? WHERE command_id = ?",
+                    (position_id, volume, now, command_id),
+                )
+                conn.execute(
+                    "UPDATE pair SET status = 'OPEN', client_position_id = ?, client_ticket = ?, "
+                    "client_initial_volume = ?, client_current_volume = ?, open_time_client = ?, "
+                    "client_open_reason = ?, last_event_id = ?, updated_at = ? "
+                    "WHERE pair_id = ? AND status = 'PENDING_OPEN'",
+                    (position_id, data.get("ticket"), volume, volume, now, reason,
+                     event["event_id"], now, pair_id),
+                )
+        except sqlite3.IntegrityError as exc:
+            # `idx_pair_client_pos` là lưới an toàn cuối cùng chống ghép một vị thế vào hai pair.
+            self._alert("CRITICAL", "UI_CORRELATE_CONFLICT",
+                        f"Khong ghep duoc vi the {position_id} vao cap {pair_id}: {exc}. "
+                        "Vi the nay co the da thuoc mot cap khac.",
+                        pair_id=pair_id)
+            return "ERROR", f"xung dot rang buoc khi ghep: {exc}"[:500], None
+
+        pair = self.db.get_pair(pair_id)
+        latency = _latency_ms(pair["open_time_master"] if pair else None, now)
+        log.info("Ghep vi the %s tren Client %s vao cap %s bang %s, do tre copy %s ms",
+                 position_id, client_id, pair_id, how,
+                 latency if latency is not None else "?",
+                 extra={"pair_id": pair_id, "command_id": command_id,
+                        "event_id": event["event_id"]})
+
+        self._check_ui_result(pair_id, candidate, data, reason)
+        return "DONE", None, pair_id
+
+    def _check_ui_result(self, pair_id: str, candidate: sqlite3.Row, data: dict[str, Any],
+                         reason: Any) -> None:
+        """Tự kiểm chứng mục tiêu của cả phase, thay vì tin (plan 6b mục 6b.7)."""
+        if reason is not None and int(reason) != DEAL_REASON_CLIENT:
+            self._alert("CRITICAL", "UI_REASON_MISMATCH",
+                        f"Cap {pair_id} mo qua giao dien nhung DEAL_REASON = {reason}, khong "
+                        f"phai {DEAL_REASON_CLIENT} (CLIENT). Co che mo lenh qua giao dien da "
+                        "ngung hoat dong.",
+                        pair_id=pair_id)
+
+        payload = json.loads(candidate["payload_json"] or "{}")
+        lech = [
+            f"{ten}: yeu cau {payload.get(ten)!r}, thuc te {thuc!r}"
+            for ten, thuc in (("symbol", data.get("symbol")),
+                              ("direction", data.get("direction")))
+            if payload.get(ten) is not None and payload.get(ten) != thuc
+        ]
+        if not _same_volume(candidate["payload_json"], data.get("volume")):
+            lech.append(f"volume: yeu cau {payload.get('volume')!r}, "
+                        f"thuc te {data.get('volume')!r}")
+        if not lech:
+            return
+
+        action = (self.db.get_config("ui_mismatch_action", "ALERT") or "ALERT").upper()
+        self._alert("CRITICAL" if action == "CLOSE" else "ERROR", "UI_PARAM_MISMATCH",
+                    f"Cap {pair_id}: lenh thuc te lech so voi payload OPEN_UI. "
+                    f"{'; '.join(lech)}. ui_mismatch_action = {action}.",
+                    pair_id=pair_id)
+
+    def scan_correlation_deadlines(self) -> None:
+        """Cặp mở qua giao diện quá cửa sổ tương quan mà vẫn chưa ghép được vị thế nào.
+
+        **Không** đánh `OPEN_FAILED`: không ghép được không có nghĩa là không có lệnh. Cảnh báo
+        đúng một lần rồi để đối chiếu ở phase 8 quyết định.
+        """
+        grace_ms = self.db.get_config_int("ui_correlate_grace_ms", 10000)
+        rows = self.db.query_all(
+            "SELECT c.deadline_at, c.target_agent_id, p.pair_id FROM command c "
+            "JOIN pair p ON p.pair_id = c.pair_id "
+            "WHERE c.type = 'OPEN_UI' AND p.status = 'PENDING_OPEN' "
+            "  AND p.client_position_id IS NULL "
+            "  AND COALESCE(p.error_message, '') <> 'UI_CORRELATE_EXPIRED'"
+        )
+        now_iso = utc_now_iso()
+        for row in rows:
+            if (_latency_ms(row["deadline_at"], now_iso) or 0) <= grace_ms:
+                continue
+            self.db.update_pair(row["pair_id"], error_message="UI_CORRELATE_EXPIRED")
+            self._alert("CRITICAL", "UI_CORRELATE_EXPIRED",
+                        f"Cap {row['pair_id']} het cua so tuong quan ma khong ghep duoc vi the "
+                        "nao. Cap giu PENDING_OPEN; can doi chieu xac nhan terminal Client "
+                        "that su khong co vi the tuong ung.",
+                        pair_id=row["pair_id"], agent_id=row["target_agent_id"])
 
     # -- tiện ích --------------------------------------------------------------------------------
 
@@ -489,6 +835,17 @@ class EventProcessor:
         nên con số này chỉ nên dùng để so với ngưỡng vài giây, không dùng để đo độ trễ.
         """
         return _latency_ms(event["ts_agent"], utc_now_iso())
+
+
+def _same_volume(payload_json: str | None, actual: Any) -> bool:
+    """So volume yêu cầu với volume thực tế, với dung sai của số thực."""
+    if actual is None:
+        return True
+    try:
+        want = json.loads(payload_json or "{}").get("volume")
+        return want is None or abs(float(want) - float(actual)) < 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def _latency_ms(start_iso: str | None, end_iso: str | None) -> int | None:

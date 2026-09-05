@@ -268,3 +268,43 @@ async def test_deadline_at_duoc_tinh_tu_bay_gio(stack, agents_db: Database) -> N
     command_id = await dispatcher.dispatch(CLIENT_AGENT, "CLOSE", deadline_ms=5000)
     deadline = agents_db.get_command(command_id)["deadline_at"]
     assert deadline > to_iso(utc_now())
+
+
+async def test_command_pending_qua_han_bi_huy_thay_vi_gui_khi_agent_noi_lai(
+        stack, agents_db: Database) -> None:
+    """Agent offline mười phút rồi nối lại mà nhận được lệnh mở đã cũ là tình huống mất tiền.
+
+    `scan_deadlines()` cố ý chỉ quét `SENT`, nên nếu chỗ gửi bù này không kiểm hạn thì command
+    `PENDING` sẽ không bao giờ hết hạn.
+    """
+    server, dispatcher = stack
+    command_id = await dispatcher.dispatch(CLIENT_AGENT, "CLOSE", deadline_ms=60000)
+    assert agents_db.get_command(command_id)["status"] == "PENDING"
+    with agents_db.transaction() as conn:
+        conn.execute("UPDATE command SET deadline_at = '2000-01-01T00:00:00.000Z' "
+                     "WHERE command_id = ?", (command_id,))
+
+    agent = _client(server, auto_ack=False)
+    await agent.start()
+    try:
+        await _wait_until(
+            lambda: agents_db.get_command(command_id)["status"] == "CANCELLED", timeout=3.0
+        )
+        codes = [a["code"] for a in agents_db.list_open_alerts()]
+        assert "COMMAND_EXPIRED_BEFORE_SEND" in codes
+    finally:
+        await agent.kill()
+
+
+async def test_command_pending_con_han_van_duoc_gui_bu(stack, agents_db: Database) -> None:
+    server, dispatcher = stack
+    command_id = await dispatcher.dispatch(CLIENT_AGENT, "CLOSE", deadline_ms=60000)
+
+    agent = _client(server, auto_ack=False)
+    await agent.start()
+    try:
+        await _wait_until(
+            lambda: agents_db.get_command(command_id)["status"] == "SENT", timeout=3.0
+        )
+    finally:
+        await agent.kill()

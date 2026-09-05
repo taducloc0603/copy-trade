@@ -22,13 +22,20 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 PROTOCOL_VERSION = 1
 
-AgentRole: TypeAlias = Literal["MASTER", "CLIENT"]
+#: `CLICKER` là tiến trình mở lệnh qua giao diện MT5 (D-22). Nó không có vị thế nào, không
+#: sinh event, và chỉ nhận `OPEN_UI`.
+AgentRole: TypeAlias = Literal["MASTER", "CLIENT", "CLICKER"]
 Direction: TypeAlias = Literal["BUY", "SELL"]
 DealEntry: TypeAlias = Literal["IN", "OUT", "INOUT", "OUT_BY"]
 EventType: TypeAlias = Literal[
     "position_opened", "position_closed", "position_changed", "order_rejected"
 ]
-CommandType: TypeAlias = Literal["OPEN", "CLOSE", "CLOSE_PARTIAL", "REQUEST_SNAPSHOT"]
+#: `OPEN_UI` là loại RIÊNG, cố ý không tái dùng `OPEN`. Nếu định tuyến sai mà EA nhận `OPEN`,
+#: nó sẽ **lặng lẽ đặt lệnh `EXPERT`** — đúng thứ phase 6b tồn tại để làm cho bất khả thi.
+#: Với `OPEN_UI`, EA rơi vào nhánh mặc định và trả `rejected` (D-22).
+CommandType: TypeAlias = Literal[
+    "OPEN", "OPEN_UI", "CLOSE", "CLOSE_PARTIAL", "REQUEST_SNAPSHOT"
+]
 #: Trạng thái ack. ``unknown`` là trường hợp đặc biệt và nguy hiểm nhất: EA đã **giữ chỗ**
 #: `command_id` trước khi đặt lệnh rồi terminal chết giữa chừng, nên nó không biết lệnh đã khớp
 #: hay chưa. EA cố ý KHÔNG thực thi lại. Bridge phải coi đây là "chưa biết", không phải "thất
@@ -142,6 +149,19 @@ class EventData(_Base):
     price: float | None = None
     magic: int | None = None
     ticket: int | None = None
+
+    #: `DEAL_COMMENT`. Mang thẻ tương quan của lệnh mở qua giao diện (D-23).
+    comment: str | None = None
+    #: `ORDER_COMMENT` của order sinh ra deal. Gửi **cả hai** vì nhiều sàn thay `DEAL_COMMENT`
+    #: bằng chữ của mình trong khi `ORDER_COMMENT` vẫn giữ nguyên chữ người dùng gõ.
+    order_comment: str | None = None
+    #: `DEAL_ORDER` — ticket của order sinh ra deal này.
+    order_id: int | None = None
+    #: `DEAL_REASON` do **máy chủ broker** gán: 0 CLIENT, 1 MOBILE, 2 WEB, 3 EXPERT, 4 SL,
+    #: 5 TP, 6 SO. Đây là con số biến mục tiêu của phase 6b thành thứ **đo được** thay vì
+    #: một niềm tin — pair mở qua giao diện mà khác `CLIENT` là alert CRITICAL.
+    reason: int | None = None
+
     #: Chỗ cho thông tin phụ của broker (ví dụ retcode khi `order_rejected`).
     extra: dict[str, Any] | None = None
 
@@ -183,6 +203,11 @@ class SnapshotPosition(_Base):
     volume: float = Field(gt=0)
     price_open: float | None = None
     magic: int | None = None
+    #: `POSITION_COMMENT`. Đối chiếu ở phase 8 dùng để nhận ra vị thế của bot khi `magic = 0`
+    #: (D-07b) — vị thế mở qua giao diện không đặt được magic.
+    comment: str | None = None
+    #: `POSITION_REASON`, lấy từ deal mở vị thế.
+    reason: int | None = None
 
 
 class SnapshotMessage(_Envelope):

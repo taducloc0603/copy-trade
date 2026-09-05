@@ -88,6 +88,7 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 | D-23 | `position_id` của vị thế Client xác định bằng **tương quan tại Bridge** giữa `OPEN_UI` và event `position_opened` của EA. Event của EA là nguồn sự thật, ack của clicker là thông tin phụ. Nhiều ứng viên thì KHÔNG đoán. |
 | D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
 | D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
+| D-26 | Mở lệnh qua **hộp thoại New Order**, không dùng One Click Trading. OCT không có ô Comment, mà thẻ trong comment là cơ chế tương quan duy nhất (D-07b, D-23). Ô volume phải ghi bằng `WM_CHAR`, không phải `WM_SETTEXT`. |
 
 ## 5. Thuật ngữ
 
@@ -118,7 +119,7 @@ Các file được đánh số theo thứ tự thực hiện. **Làm tuần tự
 04-ea-master.md              EA phía Master
 05-ea-client.md              EA phía Client, thực thi lệnh
 06-mo-lenh.md                luồng mở lệnh đầu-cuối
-06b-mo-lenh-qua-giao-dien.md mở lệnh Client qua giao diện MT5 (D-21…D-25)
+06b-mo-lenh-qua-giao-dien.md mở lệnh Client qua giao diện MT5 (D-21…D-26)
 07-dong-lenh.md              luồng đóng lệnh, cascade, chống vòng lặp
 08-ket-noi-doi-chieu.md      mất kết nối, gửi bù, reconciliation
 09-dashboard.md              giao diện web

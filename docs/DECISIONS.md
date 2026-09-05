@@ -39,6 +39,7 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-23 | `position_id` của vị thế Client xác định bằng **tương quan tại Bridge** giữa `OPEN_UI` và event `position_opened` của EA. Event của EA là nguồn sự thật, ack của clicker là thông tin phụ. Nhiều ứng viên thì KHÔNG đoán. |
 | D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
 | D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
+| D-26 | Mở lệnh qua **hộp thoại New Order**, không dùng One Click Trading. OCT không có ô Comment, mà thẻ trong comment là cơ chế tương quan duy nhất (D-07b, D-23). Ô volume phải ghi bằng `WM_CHAR`, không phải `WM_SETTEXT`. |
 
 ---
 
@@ -231,3 +232,32 @@ mở lệnh bỏ qua Client đó.
 
 **Không tự rơi về đường EA khi clicker hỏng** — làm vậy là lặng lẽ vi phạm chính D-21. Thà không
 copy: không copy thì thấy được và sửa được, copy sai kênh thì không ai biết cho tới khi quá muộn.
+
+
+### D-26 — Hộp thoại New Order, không phải One Click Trading
+
+**Lý do:** câu hỏi "sao không dùng OCT cho nhanh" là câu hỏi đúng, và OCT thật sự nhanh hơn —
+nó là bảng nằm sẵn trên chart, không phải mở rồi đóng hộp thoại mỗi lệnh. Ghi lại ở đây vì câu
+trả lời không hiển nhiên nếu chỉ nhìn code, và sẽ có người hỏi lại.
+
+**Bảng OCT không có ô Comment.** Chỉ có volume, SELL, BUY. Một mình điều này đã đủ để loại:
+thẻ trong comment là toàn bộ cơ chế tương quan của D-07b và D-23. Không có thẻ thì
+`ui_fallback_match = STRICT` không bao giờ ghép được — mọi pair kẹt `PENDING_OPEN` — còn
+`HEURISTIC` thì ghép bằng (symbol, chiều, volume), tức là **không phân biệt được lệnh của bot
+với lệnh người dùng tự mở** cùng thông số trên cùng tài khoản. Ghép nhầm nghĩa là phase 7 sẽ
+đóng vị thế của chính người dùng.
+
+Hai lý do phụ, cùng chiều. Đo trên terminal thật: chart có một `Edit` ẩn 106×20 giống ô volume
+của OCT, nhưng **không có `Button` nào thuộc chart** — nhiều khả năng BUY/SELL được vẽ trên
+canvas, phải bấm theo toạ độ pixel, mong manh với DPI, theme và kích thước chart. Và OCT không
+đọc lại được, trong khi bài học đắt nhất của phase này là *chữ hiển thị khác giá trị MT5 dùng*.
+
+Đổi lại chỉ được tốc độ, mà tốc độ đang dư: đo được 511 ms cho một chu kỳ mở lệnh, tức khoảng
+một lệnh mỗi giây cho mỗi Client — thừa cho mọi kịch bản copy trong phạm vi dự án.
+
+**Phần thứ hai của quyết định này quan trọng ngang phần thứ nhất:** ô volume phải ghi bằng
+`WM_CHAR` gõ từng ký tự. `WM_SETTEXT` đổi chữ hiển thị nhưng **không** cập nhật trạng thái nội
+bộ của MT5, và lệnh gửi đi mang volume cũ. Tệ hơn nữa, MT5 giữ volume nội bộ qua các lần mở hộp
+thoại, nên lỗi này gửi đi kích thước của **lệnh trước** chứ không phải một giá trị mặc định dễ
+nhận ra. Đo ngày 2026-09-05: yêu cầu 0.02 nhưng gửi đi 0.01; yêu cầu 0.06 nhưng gửi đi 0.04 của
+lệnh liền trước. Xem `clicker/ui/win32.py::type_text()`.

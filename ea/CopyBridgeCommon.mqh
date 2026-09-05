@@ -1326,6 +1326,12 @@ public:
          position.Dbl("volume", PositionGetDouble(POSITION_VOLUME));
          position.Dbl("price_open", PositionGetDouble(POSITION_PRICE_OPEN));
          position.Int("magic", (long)PositionGetInteger(POSITION_MAGIC));
+         // Vi the mo qua giao dien co magic = 0, nen doi chieu o phase 8 phai nhan dang
+         // bang comment va bang bang `pair` chu khong bang magic (D-07b).
+         position.Int("reason", (long)PositionGetInteger(POSITION_REASON));
+         string pcomment = PositionGetString(POSITION_COMMENT);
+         if(StringLen(pcomment) > 0)
+            position.Str("comment", pcomment);
          if(StringLen(items) > 0)
             items += ",";
          items += position.Build();
@@ -1475,6 +1481,14 @@ void CbProcessTransaction(CBridgeAgent &agent, const MqlTradeTransaction &trans)
    long deal_type   = HistoryDealGetInteger(trans.deal, DEAL_TYPE);
    long magic       = HistoryDealGetInteger(trans.deal, DEAL_MAGIC);
    double volume    = HistoryDealGetDouble(trans.deal, DEAL_VOLUME);
+   long   order_id  = HistoryDealGetInteger(trans.deal, DEAL_ORDER);
+   long   reason    = HistoryDealGetInteger(trans.deal, DEAL_REASON);
+   string comment   = HistoryDealGetString(trans.deal, DEAL_COMMENT);
+   // Nhieu san thay DEAL_COMMENT bang chu cua minh trong khi ORDER_COMMENT giu nguyen
+   // chu nguoi dung go. Gui CA HAI, Bridge khop theo ca hai (D-23).
+   string order_comment = "";
+   if(order_id > 0 && HistoryOrderSelect(order_id))
+      order_comment = HistoryOrderGetString(order_id, ORDER_COMMENT);
    double price     = HistoryDealGetDouble(trans.deal, DEAL_PRICE);
    string symbol    = HistoryDealGetString(trans.deal, DEAL_SYMBOL);
 
@@ -1537,6 +1551,12 @@ void CbProcessTransaction(CBridgeAgent &agent, const MqlTradeTransaction &trans)
             data.Dbl("volume_delta", volume);
             data.Dbl("price", price);
             data.Int("magic", magic);
+            data.Int("order_id", order_id);
+            data.Int("reason", reason);
+            if(StringLen(comment) > 0)
+               data.Str("comment", comment);
+            if(StringLen(order_comment) > 0)
+               data.Str("order_comment", order_comment);
             CJsonWriter extra;
             extra.Str("reason", "DEAL_ENTRY_INOUT_ON_NETTING_ACCOUNT");
             data.Raw("extra", extra.Build());
@@ -1558,6 +1578,14 @@ void CbProcessTransaction(CBridgeAgent &agent, const MqlTradeTransaction &trans)
    data.Dbl("volume_after", volume_after);
    data.Dbl("price", price);
    data.Int("magic", magic);
+   data.Int("order_id", order_id);
+   // DEAL_REASON do MAY CHU san gan theo kenh gui lenh. Day la con so bien muc tieu cua
+   // phase 6b thanh thu DO DUOC va doi chieu duoc, thay vi mot niem tin.
+   data.Int("reason", reason);
+   if(StringLen(comment) > 0)
+      data.Str("comment", comment);
+   if(StringLen(order_comment) > 0)
+      data.Str("order_comment", order_comment);
 
    agent.SendEvent(event_type, data.Build(), cause);
   }

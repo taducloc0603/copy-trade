@@ -22,7 +22,9 @@ PRAGMA busy_timeout = 5000;
 -- ---------------------------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS agent (
     agent_id         TEXT    PRIMARY KEY,
-    role             TEXT    NOT NULL CHECK (role IN ('MASTER', 'CLIENT')),
+    -- CLICKER: tien trinh mo lenh qua giao dien MT5 (D-22). No khong co vi the nao,
+    -- khong sinh event, va chi nhan command OPEN_UI.
+    role             TEXT    NOT NULL CHECK (role IN ('MASTER', 'CLIENT', 'CLICKER')),
     token_hash       TEXT    NOT NULL,
     account_login    INTEGER,
     broker_server    TEXT,
@@ -61,6 +63,10 @@ CREATE TABLE IF NOT EXISTS client_account (
                                  CHECK (below_min_policy IN ('SKIP', 'USE_MIN')),
     -- Mặc định TẮT (D-20). Bật là cho phép Client đóng ngược Master và kéo theo cascade.
     can_close_master     INTEGER NOT NULL DEFAULT 0 CHECK (can_close_master IN (0, 1)),
+    -- Kenh mo lenh (D-21). 'EA' la duong cu dung OrderSend, ra DEAL_REASON_EXPERT.
+    -- 'UI' di qua giao dien MT5 de ra DEAL_REASON_CLIENT.
+    open_route           TEXT    NOT NULL DEFAULT 'EA' CHECK (open_route IN ('EA', 'UI')),
+    clicker_agent_id     TEXT    REFERENCES agent(agent_id),
     open_fail_policy     TEXT    NOT NULL DEFAULT 'RETRY'
                                  CHECK (open_fail_policy IN ('ALERT_ONLY', 'RETRY',
                                                              'RETRY_CLOSE_MASTER')),
@@ -73,7 +79,11 @@ CREATE TABLE IF NOT EXISTS client_account (
     max_deviation_points INTEGER NOT NULL DEFAULT 20 CHECK (max_deviation_points >= 0),
     max_event_age_ms     INTEGER NOT NULL DEFAULT 5000 CHECK (max_event_age_ms > 0),
     created_at           TEXT    NOT NULL,
-    updated_at           TEXT    NOT NULL
+    updated_at           TEXT    NOT NULL,
+
+    -- Bat duong giao dien ma khong chi dinh clicker la mot cau hinh vo nghia:
+    -- lenh se khong bao gio gui duoc di dau. Chan tai DB.
+    CHECK (open_route = 'EA' OR clicker_agent_id IS NOT NULL)
 );
 
 -- ---------------------------------------------------------------------------------------------
@@ -171,6 +181,12 @@ CREATE TABLE IF NOT EXISTS pair (
     close_source          TEXT    CHECK (close_source IS NULL
                                          OR close_source IN ('MASTER', 'CLIENT', 'BOT',
                                                              'BROKER', 'MANUAL')),
+    -- The tuong quan cho lenh mo qua giao dien (D-23). Tieu thu MOT LAN trong cua so cho
+    -- khop lenh roi thoi; khong phai nguon su that lau dai (D-07b).
+    open_tag              TEXT,
+    -- DEAL_REASON cua deal mo vi the Client. Bien muc tieu cua phase 6b thanh mot gia tri
+    -- DO DUOC va doi chieu duoc, thay vi mot niem tin. Khac CLIENT tren duong UI -> CRITICAL.
+    client_open_reason    INTEGER,
     last_event_id         TEXT,
     retry_count           INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
     error_code            INTEGER,
@@ -232,8 +248,11 @@ CREATE TABLE IF NOT EXISTS command (
     command_id         TEXT    PRIMARY KEY,
     target_agent_id    TEXT    NOT NULL REFERENCES agent(agent_id),
     pair_id            TEXT    REFERENCES pair(pair_id),
+    -- OPEN_UI la loai RIENG, khong tai dung OPEN. Neu dinh tuyen sai ma EA nhan OPEN,
+    -- no se LANG LE dat lenh EXPERT - dung thu phase 6b ton tai de lam cho bat kha thi.
+    -- Voi OPEN_UI, EA roi vao nhanh mac dinh va tra 'rejected' (D-22).
     type               TEXT    NOT NULL
-                               CHECK (type IN ('OPEN', 'CLOSE', 'CLOSE_PARTIAL',
+                               CHECK (type IN ('OPEN', 'OPEN_UI', 'CLOSE', 'CLOSE_PARTIAL',
                                                'REQUEST_SNAPSHOT')),
     payload_json       TEXT,
     status             TEXT    NOT NULL DEFAULT 'PENDING'
@@ -317,6 +336,7 @@ CREATE INDEX IF NOT EXISTS idx_mpos_status   ON master_position(status) WHERE st
 CREATE INDEX IF NOT EXISTS idx_pair_open     ON pair(status)
     WHERE status NOT IN ('CLOSED', 'OPEN_FAILED');
 CREATE INDEX IF NOT EXISTS idx_pair_master   ON pair(master_position_id);
+CREATE INDEX IF NOT EXISTS idx_pair_open_tag ON pair(open_tag) WHERE open_tag IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_event_pending ON event(process_status)
     WHERE process_status = 'PENDING';
 CREATE INDEX IF NOT EXISTS idx_event_pair    ON event(pair_id);
@@ -343,4 +363,10 @@ INSERT OR IGNORE INTO system_config (key, value, updated_at) VALUES
     ('event_retention_days',       '30',     '1970-01-01T00:00:00.000Z'),
     ('heartbeat_interval_ms',      '1000',   '1970-01-01T00:00:00.000Z'),
     ('heartbeat_timeout_ms',       '5000',   '1970-01-01T00:00:00.000Z'),
-    ('reconcile_interval_sec',     '60',     '1970-01-01T00:00:00.000Z');
+    ('reconcile_interval_sec',     '60',     '1970-01-01T00:00:00.000Z'),
+    -- Duong mo lenh qua giao dien (phase 6b)
+    ('ui_open_deadline_ms',        '15000',  '1970-01-01T00:00:00.000Z'),
+    ('ui_correlate_grace_ms',      '10000',  '1970-01-01T00:00:00.000Z'),
+    ('ui_fallback_match',          'STRICT', '1970-01-01T00:00:00.000Z'),
+    ('ui_degraded_fallback',       'SKIP',   '1970-01-01T00:00:00.000Z'),
+    ('ui_mismatch_action',         'ALERT',  '1970-01-01T00:00:00.000Z');
