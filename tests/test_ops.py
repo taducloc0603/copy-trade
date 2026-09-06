@@ -30,7 +30,7 @@ from bridge.ops import (
     thu_hoi_token,
 )
 from bridge.protocol.auth import hash_token, verify_token
-from tests.conftest import CLIENT_ID, MASTER_AGENT, MASTER_POSITION_ID
+from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT, MASTER_POSITION_ID
 
 # -- sao lưu ----------------------------------------------------------------------------------
 
@@ -533,3 +533,51 @@ def test_tinh_hinh_bao_sai_lech_dang_cho_kem_tuoi(seeded: Database, monkeypatch,
 
     assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 1
     assert "sai lech dang cho  : 1" in capsys.readouterr().out
+
+
+# -- anh xa symbol -------------------------------------------------------------------------------
+
+def _admin(db: Database, monkeypatch, tmp_path: Path):
+    from bridge import admin
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, tmp_path / "bridge.db"))
+    monkeypatch.setattr(db, "close", lambda: None)
+    return admin
+
+
+def test_chua_co_anh_xa_thi_bao_va_thoat_khac_0(seeded: Database, monkeypatch, tmp_path,
+                                                capsys) -> None:
+    """Không có ánh xạ nghĩa là **không copy được lệnh nào** — không được im lặng báo thành công."""
+    admin = _admin(seeded, monkeypatch, tmp_path)
+    assert admin.main(["anh-xa-symbol", CLIENT_ID]) == 1
+    assert "CHUA CO anh xa" in capsys.readouterr().out
+
+
+def test_khai_bao_anh_xa_kiem_symbol_co_that_tren_san(seeded: Database, monkeypatch, tmp_path,
+                                                      capsys) -> None:
+    """Sai tên symbol là lỗi không hiện ra cho tới lúc có lệnh thật đi qua — nên phải chặn tại đây."""
+    admin = _admin(seeded, monkeypatch, tmp_path)
+    seeded.replace_symbol_specs(CLIENT_AGENT, [{
+        "symbol": "XAUUSDm", "digits": 2, "point": 0.01, "volume_min": 0.01,
+        "volume_max": 50.0, "volume_step": 0.01, "contract_size": 100.0}])
+
+    # Symbol khong ton tai tren san Client -> tu choi, va goi y nhung symbol dang co.
+    assert admin.main(["anh-xa-symbol", CLIENT_ID, "XAUUSD", "--client-symbol", "GO-KHONG-CO"]) == 1
+    loi = capsys.readouterr().err
+    assert "chua bao co symbol" in loi and "XAUUSDm" in loi
+
+    assert admin.main(["anh-xa-symbol", CLIENT_ID, "XAUUSD", "--client-symbol", "XAUUSDm"]) == 0
+    hang = seeded.find_symbol_map(CLIENT_ID, "XAUUSD")
+    assert hang["client_symbol"] == "XAUUSDm"
+    assert hang["enabled"] == 1
+    assert hang["verified_at"] is not None, "Phai danh dau da kiem voi san"
+
+
+def test_tat_anh_xa(seeded: Database, monkeypatch, tmp_path) -> None:
+    admin = _admin(seeded, monkeypatch, tmp_path)
+    seeded.replace_symbol_specs(CLIENT_AGENT, [{
+        "symbol": "XAUUSDm", "digits": 2, "point": 0.01, "volume_min": 0.01,
+        "volume_max": 50.0, "volume_step": 0.01, "contract_size": 100.0}])
+    admin.main(["anh-xa-symbol", CLIENT_ID, "XAUUSD", "--client-symbol", "XAUUSDm"])
+
+    assert admin.main(["anh-xa-symbol", CLIENT_ID, "XAUUSD", "--tat"]) == 0
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD")["enabled"] == 0

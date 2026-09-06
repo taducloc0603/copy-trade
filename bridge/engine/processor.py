@@ -332,7 +332,9 @@ class EventProcessor:
         # Bước 1: ánh xạ symbol. Tuyệt đối không mặc định hai sàn dùng cùng tên symbol.
         mapping = self.db.find_symbol_map(client_id, symbol)
         if mapping is None:
-            self._alert("WARNING", "NO_SYMBOL_MAPPING",
+            # ERROR chu khong phai WARNING: khong co anh xa nghia la KHONG COPY duoc lenh
+            # nao ca — cung hau qua voi VOLUME_BELOW_MIN va UI_OPEN_BUSY, nen cung muc.
+            self._alert("ERROR", "NO_SYMBOL_MAPPING",
                         f"Client {client_id} khong co anh xa cho symbol {symbol}, bo qua lenh",
                         agent_id=client["agent_id"])
             return None, f"khong co anh xa cho {symbol}"

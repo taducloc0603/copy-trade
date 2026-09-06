@@ -15,6 +15,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from bridge.clock import utc_now_iso
 from bridge.config import load_config
 from bridge.db.repo import Database
 from bridge.ops import (
@@ -228,6 +229,69 @@ def lenh_tinh_hinh(db: Database, _args: argparse.Namespace, db_path: Path) -> in
     return 1
 
 
+def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
+    """Xem và khai báo ánh xạ symbol giữa hai sàn.
+
+    **Không có ánh xạ thì không copy được lệnh nào** — `find_symbol_map` trả `None` và mọi lệnh
+    Master bị bỏ qua. Trước phase 11 chỉ tạo được dòng này bằng `INSERT` tay vào SQLite, nên một
+    người cài đặt lần đầu sẽ dựng xong toàn bộ hệ thống rồi ngồi nhìn không có gì xảy ra.
+
+    Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
+    tường minh chứ không đoán.
+    """
+    client = db.get_client_account(args.client_id)
+    if client is None:
+        print(f"Khong co client {args.client_id}", file=sys.stderr)
+        return 1
+
+    if args.master_symbol is None:
+        rows = db.query_all(
+            "SELECT master_symbol, client_symbol, enabled, verified_at FROM symbol_map "
+            "WHERE client_id = ? ORDER BY master_symbol", (args.client_id,))
+        if not rows:
+            print(f"{args.client_id}: CHUA CO anh xa nao. Se khong copy duoc lenh nao.")
+            return 1
+        print(f"{'symbol Master':<16} {'symbol Client':<16} bat  da kiem")
+        for r in rows:
+            print(f"  {r['master_symbol']:<14} {r['client_symbol']:<16} "
+                  f"{'x' if r['enabled'] else '-':<4} {'x' if r['verified_at'] else '-'}")
+        return 0
+
+    if args.tat:
+        if db.query_one("SELECT 1 FROM symbol_map WHERE client_id = ? AND master_symbol = ?",
+                        (args.client_id, args.master_symbol)) is None:
+            print(f"Khong co anh xa cho {args.master_symbol}", file=sys.stderr)
+            return 1
+        db.upsert_symbol_map(args.client_id, args.master_symbol, args.client_symbol or "",
+                             enabled=0)
+        print(f"Da TAT anh xa {args.master_symbol}")
+        return 0
+
+    if not args.client_symbol:
+        print("Thieu symbol phia Client. Vi du: --client-symbol XAUUSDm", file=sys.stderr)
+        return 1
+
+    # Kiem symbol co that tren san Client truoc khi luu. EA day `symbol_spec` len moi vai phut,
+    # nen day la nguon su that chu khong phai phong doan — va sai ten symbol la loi khong hien ra
+    # cho toi luc co lenh that di qua.
+    spec = db.get_symbol_spec(client["agent_id"], args.client_symbol)
+    if spec is None:
+        print(f"San Client chua bao co symbol {args.client_symbol!r}.", file=sys.stderr)
+        print("Kiem: EA Client dang chay chua, va symbol da duoc keo vao Market Watch chua.",
+              file=sys.stderr)
+        co = db.query_all("SELECT symbol FROM symbol_spec WHERE agent_id = ? ORDER BY symbol",
+                          (client["agent_id"],))
+        if co:
+            print("San Client dang bao co: " + ", ".join(r["symbol"] for r in co), file=sys.stderr)
+        return 1
+
+    db.upsert_symbol_map(args.client_id, args.master_symbol, args.client_symbol,
+                         enabled=1, verified_at=utc_now_iso())
+    print(f"{args.client_id}: {args.master_symbol} -> {args.client_symbol}  (da kiem tren san)")
+    print(f"  volume toi thieu {spec['volume_min']}, buoc {spec['volume_step']}")
+    return 0
+
+
 def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
     """Xem và sửa cấu hình một Client (B-11).
 
@@ -319,6 +383,12 @@ def build_parser() -> argparse.ArgumentParser:
     cf.add_argument("--open-route", dest="open_route", choices=("EA", "UI"))
     cf.add_argument("--can-close-master", dest="can_close_master", choices=("bat", "tat"))
 
+    ax = sub.add_parser("anh-xa-symbol", help="Xem hoac khai bao anh xa symbol giua hai san")
+    ax.add_argument("client_id")
+    ax.add_argument("master_symbol", nargs="?")
+    ax.add_argument("--client-symbol", dest="client_symbol")
+    ax.add_argument("--tat", action="store_true", help="Tat anh xa nay")
+
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
@@ -345,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_kiem_reason(db, args)
         if args.lenh == "tinh-hinh":
             return lenh_tinh_hinh(db, args, db_path)
+        if args.lenh == "anh-xa-symbol":
+            return lenh_anh_xa_symbol(db, args)
         if args.lenh == "cau-hinh-client":
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "run-mode":

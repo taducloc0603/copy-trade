@@ -2001,3 +2001,39 @@ khối cảnh báo bằng chữ — và đây chính là cái bẫy đã cắn �
 Kiểm chứng: không tham chiếu ra ngoài nào (mở được khi mất mạng), không token/mật khẩu thật trong
 file, sáu lệnh nhắc trong hướng dẫn đều tồn tại trong `bridge/admin.py`, và toàn bộ trang đã render
 kiểm bằng trình duyệt.
+
+### Tách hướng dẫn thành hai bản, thêm ví dụ — và một lỗi bản hướng dẫn đầu
+
+*(2026-09-06.)*
+
+Người dùng yêu cầu tách thành hai bản riêng để mỗi bản chi tiết hơn, và thêm ví dụ.
+`docs/HUONG-DAN-SU-DUNG.html` bị thay bằng **`HUONG-DAN-CUNG-VPS.html`** (198 KB) và
+**`HUONG-DAN-KHAC-VPS.html`** (204 KB). Mỗi bản đọc độc lập, phần chung cố ý lặp lại.
+
+**Khảo sát để viết lộ ra một lỗi trong chính bản hướng dẫn vừa viết hôm nay:** nó **thiếu hẳn
+bước khai báo ánh xạ symbol**. Không có dòng `symbol_map` thì `find_symbol_map` trả `None` và
+**mọi lệnh Master bị bỏ qua** — ai làm đúng theo hướng dẫn sẽ cài xong rồi ngồi nhìn không có gì
+xảy ra. Tệ hơn: chưa có lệnh nào tạo được dòng đó, chỉ `INSERT` tay vào SQLite.
+
+Sửa:
+
+- Thêm **`bridge.admin anh-xa-symbol`** — xem, khai, tắt ánh xạ. Nó **kiểm symbol có thật trên
+  sàn Client** trước khi lưu (đọc `symbol_spec` do EA đẩy lên) và liệt kê các symbol đang có nếu
+  gõ sai, vì sai tên symbol là lỗi không hiện ra cho tới lúc có lệnh thật đi qua.
+- Nâng `NO_SYMBOL_MAPPING` từ WARNING lên **ERROR** — cùng hậu quả với `VOLUME_BELOW_MIN` và
+  `UI_OPEN_BUSY` (không copy được lệnh nào) nên phải cùng mức, theo đúng nguyên tắc B-08.
+
+**Mục ví dụ** (yêu cầu của người dùng): chín tình huống cho bản một VPS, mười cho bản hai VPS.
+Mỗi ví dụ là một thẻ *Cấu hình / Bạn làm / Hệ thống làm gì / Kết quả / Bạn thấy gì*. **Mọi con số
+là số đo thật** — 0,6 giây mở lệnh, 272 ms đóng hẳn, 285 ms đóng một phần, 1,1 giây cho đóng khẩn
+cấp hai cặp. Bốn ví dụ là các trường hợp **hỏng**: hệ số làm volume dưới mức tối thiểu, quên bật
+Algo Trading, quên khai ánh xạ, hai lệnh quá gần nhau.
+
+Bản hai VPS có thêm cảnh báo đầu file (cách bố trí này chưa từng được chạy), sơ đồ hai máy, đánh
+dấu `[MÁY A]`/`[MÁY B]` ở từng bước, và ví dụ thứ mười về mất kết nối Tailscale.
+
+Hai file sinh từ một script dùng chung (để trong scratchpad, không commit) nên phần chung giống
+nhau theo cấu trúc chứ không phải chép tay. Ảnh: hai sơ đồ SVG và năm ảnh chụp thật, token trong
+ảnh đã che bằng cách vẽ đè lên pixel.
+
+**527 test xanh (+4), `ruff` sạch.**
