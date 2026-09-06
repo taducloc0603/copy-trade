@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MT5 Copy Bridge</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<!-- Khong co chuoi tieng Viet nao trong file nay. Moi nhan do /api gui xuong tu
+     bridge/labels_vi.py (D-16), nen doi cach goi mot khai niem chi phai sua mot cho. -->
+<header id="thanh-trang-thai">
+  <span id="app-title"></span>
+  <span id="run-mode" class="badge"></span>
+  <span id="agents"></span>
+  <span id="dong-ho"></span>
+</header>
+
+<nav>
+  <button data-man="tong-quan" class="tab active"></button>
+  <button data-man="sai-lech" class="tab"></button>
+  <button data-man="cau-hinh" class="tab"></button>
+  <button data-man="nhat-ky" class="tab"></button>
+</nav>
+
+<main>
+  <section id="tong-quan" class="man">
+    <div id="chi-so" class="o-chi-so"></div>
+    <h2 id="tieu-de-cap"></h2>
+    <table id="bang-cap"><thead><tr id="dau-bang"></tr></thead><tbody></tbody></table>
+
+    <div class="dieu-khien">
+      <div class="thuong-ngay">
+        <button id="nut-pause-new"></button>
+        <button id="nut-stop-sync"></button>
+        <button id="nut-resume" class="chinh"></button>
+      </div>
+      <!-- Tach khoi cum nut thuong ngay, can ve phia doi dien, vien do:
+           dat canh nhau la som muon cung co ngay bam nham. -->
+      <div class="khan-cap">
+        <button id="nut-emergency" class="nguy-hiem"></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="sai-lech" class="man an">
+    <h2 id="tieu-de-sai-lech"></h2>
+    <div id="nhom-safe"></div>
+    <div id="nhom-decision"></div>
+    <p id="khong-sai-lech" class="trong"></p>
+  </section>
+
+  <section id="cau-hinh" class="man an">
+    <h2 id="tieu-de-cau-hinh"></h2>
+    <div id="noi-dung-cau-hinh"></div>
+  </section>
+
+  <section id="nhat-ky" class="man an">
+    <h2 id="tieu-de-nhat-ky"></h2>
+    <div id="danh-sach-alert"></div>
+  </section>
+</main>
+
+<dialog id="hop-xac-nhan">
+  <p id="xac-nhan-loi"></p>
+  <input id="xac-nhan-go" type="text" autocomplete="off">
+  <div>
+    <button id="xac-nhan-huy"></button>
+    <button id="xac-nhan-ok" class="nguy-hiem"></button>
+  </div>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

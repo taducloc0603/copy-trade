@@ -36,8 +36,10 @@ ALERT_LEVEL = {"INFO": "Thông tin", "WARNING": "Cảnh báo",
                "ERROR": "Lỗi", "CRITICAL": "Nghiêm trọng"}
 MASTER_POSITION_STATUS = {"OPEN": "Đang mở", "CLOSED": "Đã đóng", "UNPAIRED": "Chưa ghép cặp"}
 
-#: Mọi nhóm nhãn, dùng cho test và cho việc duyệt toàn bộ bảng nhãn.
-ALL_GROUPS: dict[str, dict[str, str]] = {
+#: Nhóm nhãn **ánh xạ từ enum trong DB**. Key phải là enum tiếng Anh viết hoa, đúng như giá trị
+#: được lưu. Nhóm `UI` ở cuối file KHÔNG thuộc đây: key của nó là id chuỗi giao diện, không phải
+#: enum, nên không chịu ràng buộc viết hoa.
+ENUM_GROUPS: dict[str, dict[str, str]] = {
     "PAIR_STATUS": PAIR_STATUS,
     "RUN_MODE": RUN_MODE,
     "AGENT_STATUS": AGENT_STATUS,
@@ -46,6 +48,9 @@ ALL_GROUPS: dict[str, dict[str, str]] = {
     "ALERT_LEVEL": ALERT_LEVEL,
     "MASTER_POSITION_STATUS": MASTER_POSITION_STATUS,
 }
+
+#: Mọi nhóm nhãn, dùng cho test và cho việc duyệt toàn bộ bảng nhãn.
+ALL_GROUPS: dict[str, dict[str, str]] = dict(ENUM_GROUPS)
 
 
 def label(group: dict[str, str], key: str) -> str:
@@ -62,3 +67,94 @@ def label(group: dict[str, str], key: str) -> str:
         _log.warning("Thiếu nhãn tiếng Việt cho key %r", key)
         return key
     return text
+
+
+# ---------------------------------------------------------------------------------------------
+# Nhãn giao diện (phase 9).
+#
+# Template và JavaScript **không được** chứa chuỗi tiếng Việt nào. Chúng hiển thị đúng những gì
+# tầng Python gửi xuống, và tầng Python lấy chữ từ đây. Nhờ vậy đổi cách gọi một khái niệm chỉ
+# phải sửa một chỗ, và `grep` tìm chuỗi tiếng Việt lọt ra ngoài trở thành một phép kiểm được.
+# ---------------------------------------------------------------------------------------------
+
+UI = {
+    "app_title": "MT5 Copy Bridge",
+    "nav_main": "Tổng quan",
+    "nav_findings": "Sai lệch",
+    "nav_config": "Cấu hình",
+    "nav_log": "Nhật ký",
+
+    "run_mode_label": "Chế độ vận hành",
+    "agents": "Trạng thái agent",
+    "canary_last_ok": "Canary gần nhất",
+    "canary_never": "chưa lần nào",
+
+    "metric_p50": "Độ trễ copy p50",
+    "metric_p95": "Độ trễ copy p95",
+    "metric_hedged": "Cặp đang hedge",
+    "metric_attention": "Cần can thiệp",
+
+    "pairs_title": "Cặp lệnh",
+    "col_pair": "Cặp",
+    "col_symbol": "Symbol",
+    "col_direction": "Chiều",
+    "col_volume": "Vol M/C",
+    "col_status": "Trạng thái",
+    "orphan_master_left": "Mất hedge — còn Master",
+    "orphan_client_left": "Mất hedge — còn Client",
+    "reason_mismatch": "Sai kênh mở lệnh",
+    "no_pairs": "Chưa có cặp lệnh nào",
+
+    "btn_pause_new": "Tạm dừng lệnh mới",
+    "btn_stop_sync": "Dừng toàn bộ đồng bộ",
+    "btn_resume": "Bắt đầu copy",
+    "btn_emergency": "Đóng khẩn cấp tất cả",
+    "confirm_stop_sync": "Dừng toàn bộ đồng bộ sẽ bỏ rơi các cặp đang chạy. Tiếp tục?",
+    "confirm_emergency": "Gõ đúng chuỗi dưới đây để đóng toàn bộ cặp đang quản lý:",
+    "emergency_phrase": "DONG TAT CA",
+    "emergency_wrong": "Chuỗi xác nhận không đúng. Không có lệnh nào được gửi.",
+
+    "findings_title": "Sai lệch cần xử lý",
+    "findings_safe": "An toàn — khắc phục chỉ gồm đóng lệnh hoặc sửa sổ sách",
+    "findings_decision": "Cần quyết định — dính tới mở lệnh hoặc đóng Master",
+    "evidence_db": "Sổ sách",
+    "evidence_master": "Master thực tế",
+    "evidence_client": "Client thực tế",
+    "btn_accept": "Chấp nhận",
+    "btn_accept_all_safe": "Chấp nhận tất cả mục an toàn",
+    "btn_skip": "Bỏ qua",
+    "skip_note_prompt": "Lý do bỏ qua (sẽ để lại một cảnh báo tồn tại):",
+    "no_findings": "Không có sai lệch nào",
+    "confirm_resume_with_findings": "Còn {n} sai lệch chưa xử lý:",
+
+    "cfg_title": "Cấu hình",
+    "cfg_effect_now": "Có hiệu lực ngay",
+    "cfg_effect_next_open": ("Chỉ áp dụng cho lệnh mở sau khi lưu. "
+                             "Các cặp đang chạy giữ nguyên tỷ lệ."),
+    "cfg_multiplier": "Hệ số volume",
+    "cfg_preview": "Xem trước",
+    "cfg_open_route": "Kênh mở lệnh phía Client",
+    "cfg_master_close_always": "Master đóng thì Client đóng: LUÔN BẬT, không tắt được",
+    "cfg_can_close_master": "Cho phép Client đóng ngược Master",
+    "confirm_can_close_master": ("Bật mục này nghĩa là khi một Client đóng, Bridge sẽ đóng "
+                                 "Master, rồi đóng nốt các Client còn lại. Tiếp tục?"),
+    "confirm_open_route_ui": ("Chuyển sang kênh giao diện: thông lượng còn khoảng một lệnh mỗi "
+                              "giây, độ trễ copy tăng lên khoảng nửa giây tới vài giây. "
+                              "Bắt buộc phải có một clicker đang kết nối. Tiếp tục?"),
+    "map_title": "Ánh xạ symbol",
+    "btn_verify": "Kiểm tra với sàn",
+    "map_unverified": "Chưa kiểm tra — không lưu được",
+    "map_verify_failed": "Sàn Client không có symbol này",
+
+    "log_title": "Nhật ký cảnh báo",
+    "btn_ack": "Đã xử lý",
+    "no_alerts": "Không có cảnh báo nào",
+
+    "login_title": "Đăng nhập",
+    "login_password": "Mật khẩu",
+    "login_submit": "Vào",
+    "login_wrong": "Mật khẩu không đúng",
+}
+
+ALL_GROUPS["UI"] = UI
+

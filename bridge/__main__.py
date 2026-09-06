@@ -14,12 +14,15 @@ import contextlib
 import logging
 import signal
 
+import uvicorn
+
 from bridge.config import ConfigError, load_config
 from bridge.db.repo import Database
 from bridge.engine.processor import EventProcessor
 from bridge.logging_setup import get_logger, setup_logging
 from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
+from bridge.web.app import Dashboard, tao_app
 
 log = get_logger(__name__)
 
@@ -45,6 +48,16 @@ async def run() -> int:
     await server.start()
     await processor.start()
 
+    # Dashboard chạy trong cùng tiến trình: nó đọc thẳng SQLite cục bộ và gọi API của tầng
+    # engine, nên không cần tiến trình riêng và không có đường nào để hai bên lệch trạng thái.
+    dashboard = Dashboard(db, password=config.security.get("dashboard_password"),
+                          processor=processor, server=server)
+    web = uvicorn.Server(uvicorn.Config(
+        tao_app(dashboard), host=config.bridge.host, port=config.bridge.web_port,
+        log_level="warning", access_log=False))
+    web_task = asyncio.create_task(web.serve())
+    log.info("Dashboard tai http://%s:%d", config.bridge.host, config.bridge.web_port)
+
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     with contextlib.suppress(NotImplementedError):
@@ -57,6 +70,9 @@ async def run() -> int:
         pass
     finally:
         log.info("Bridge dung lai")
+        web.should_exit = True
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await asyncio.wait_for(web_task, timeout=5)
         await processor.stop()
         await server.stop()
         db.close()

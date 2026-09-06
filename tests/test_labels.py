@@ -10,7 +10,7 @@ import logging
 import pytest
 
 from bridge import labels_vi
-from bridge.labels_vi import ALL_GROUPS, PAIR_STATUS, RUN_MODE, label
+from bridge.labels_vi import ALL_GROUPS, ENUM_GROUPS, PAIR_STATUS, RUN_MODE, label
 
 
 @pytest.mark.parametrize("group_name", sorted(ALL_GROUPS))
@@ -23,10 +23,14 @@ def test_moi_nhan_la_chuoi_khong_rong(group_name: str) -> None:
         assert value.strip(), f"{group_name}[{key}] là chuỗi rỗng"
 
 
-@pytest.mark.parametrize("group_name", sorted(ALL_GROUPS))
+@pytest.mark.parametrize("group_name", sorted(ENUM_GROUPS))
 def test_key_enum_la_tieng_anh_khong_dau_viet_hoa(group_name: str) -> None:
-    """Key phải là enum tiếng Anh không dấu, viết hoa — đúng dạng lưu trong DB."""
-    for key in ALL_GROUPS[group_name]:
+    """Key phải là enum tiếng Anh không dấu, viết hoa — đúng dạng lưu trong DB.
+
+    Chỉ áp cho nhóm ánh xạ từ enum. Nhóm `UI` (phase 9) có key là id chuỗi giao diện chứ không
+    phải enum, nên nó nằm ngoài phép kiểm này.
+    """
+    for key in ENUM_GROUPS[group_name]:
         assert key.isascii(), f"{group_name}: key {key!r} có ký tự ngoài ASCII"
         assert key == key.upper(), f"{group_name}: key {key!r} phải viết hoa"
 

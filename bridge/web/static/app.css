@@ -1,0 +1,82 @@
+/* Giao dien nay phai mo duoc nhanh tren dien thoai: khong framework, khong font tai ve. */
+:root {
+  --nen: #12161c; --the: #1b212a; --chu: #e6edf3; --mo: #8b98a8;
+  --vien: #2b3542; --do: #e5484d; --cam: #f5a524; --xanh: #3fb950; --lam: #388bfd;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--nen); color: var(--chu);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header {
+  display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--the); border-bottom: 1px solid var(--vien);
+}
+#app-title { font-weight: 600; }
+#dong-ho { margin-left: auto; color: var(--mo); font-variant-numeric: tabular-nums; }
+.badge { padding: 2px 10px; border-radius: 999px; background: var(--vien); font-weight: 600; }
+.badge.chay { background: #17361f; color: var(--xanh); }
+.badge.dung { background: #3a1f20; color: var(--do); }
+.agent { margin-right: 12px; color: var(--mo); }
+.agent .cham { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+               margin-right: 5px; background: var(--mo); }
+.agent.online .cham { background: var(--xanh); }
+.agent.degraded .cham { background: var(--cam); }
+.agent.offline .cham { background: var(--do); }
+
+nav { display: flex; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(--vien); }
+.tab { background: none; border: 0; color: var(--mo); padding: 6px 12px; cursor: pointer;
+       border-radius: 6px; font-size: 14px; }
+.tab.active { background: var(--the); color: var(--chu); }
+main { padding: 16px; }
+.man.an { display: none; }
+
+.o-chi-so { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px; margin-bottom: 20px; }
+.o { background: var(--the); border: 1px solid var(--vien); border-radius: 10px; padding: 14px; }
+.o .nhan { color: var(--mo); font-size: 12px; }
+.o .gia-tri { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Chi to do khi khac 0. Neu luon do, mat se quen va bo qua. */
+.o.bao-dong { border-color: var(--do); }
+.o.bao-dong .gia-tri { color: var(--do); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--vien); }
+th { color: var(--mo); font-weight: 500; font-size: 12px; }
+tr.can-can-thiep td { background: #2a1618; }
+tr.sai-kenh td { box-shadow: inset 3px 0 0 var(--cam); }
+.canh-bao-nho { color: var(--cam); font-size: 12px; margin-left: 6px; }
+.trong { color: var(--mo); padding: 24px 0; }
+
+.dieu-khien { display: flex; justify-content: space-between; align-items: center;
+              margin-top: 24px; gap: 24px; flex-wrap: wrap; }
+button { background: var(--vien); color: var(--chu); border: 1px solid transparent;
+         padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+button.chinh { background: var(--lam); }
+button.nguy-hiem { background: transparent; border-color: var(--do); color: var(--do); }
+.thuong-ngay { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.sai-lech-nhom { margin-bottom: 24px; }
+.sai-lech-nhom h3 { font-size: 13px; color: var(--mo); font-weight: 500; }
+.dong-sai-lech { background: var(--the); border: 1px solid var(--vien); border-radius: 10px;
+                 padding: 12px; margin-bottom: 10px; }
+.bang-chung { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+              gap: 10px; margin: 10px 0; }
+.bang-chung > div { background: var(--nen); border-radius: 8px; padding: 8px; }
+.bang-chung .nhan { color: var(--mo); font-size: 12px; margin-bottom: 4px; }
+.bang-chung pre { margin: 0; white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+
+dialog { background: var(--the); color: var(--chu); border: 1px solid var(--vien);
+         border-radius: 12px; padding: 20px; max-width: 520px; }
+dialog::backdrop { background: rgba(0,0,0,.6); }
+input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien);
+        border-radius: 8px; padding: 8px; width: 100%; margin: 10px 0; font-size: 14px; }
+.loi { color: var(--do); }
+body.dangnhap { display: grid; place-items: center; height: 100vh; }
+body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px; width: 300px; }
+
+@media (max-width: 640px) {
+  main { padding: 10px; }
+  th, td { padding: 6px; font-size: 13px; }
+  .dieu-khien { flex-direction: column; align-items: stretch; }
+}

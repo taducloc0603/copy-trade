@@ -13,7 +13,7 @@
 | 6b | Mở lệnh qua giao diện MT5 | **xong** | 2026-09-05 |
 | 7 | Luồng đóng lệnh | **xong** | 2026-09-05 |
 | 8 | Mất kết nối và đối chiếu | **xong** | 2026-09-05 |
-| 9 | Dashboard và cấu hình | chưa bắt đầu | |
+| 9 | Dashboard và cấu hình | **phần lớn xong, trang cấu hình mới ở mức đọc** | 2026-09-06 |
 | 10 | Đóng gói, vận hành và nghiệm thu | chưa bắt đầu | |
 
 ## Nhật ký
@@ -1427,3 +1427,90 @@ cần ngắt mạng thật:
 `run_mode = PAUSED`, Bridge đã tắt. Còn `PAIR-000025` (`ORPHANED`) và `PAIR-000027`
 (`PARTIALLY_CLOSED`) — giữ lại làm dữ liệu thật. Không đặt lệnh mới nào trong lượt này; nghiệm
 thu dùng đúng một thao tác đóng tay của người dùng.
+
+---
+
+## Phase 9 — Dashboard và cấu hình
+
+### Cấu trúc
+
+`bridge/web/views.py` lắp dữ liệu (đọc DB, gắn nhãn, sắp xếp, tính chỉ số) và `bridge/web/app.py`
+làm tầng HTTP. Tách đôi để test được phần lắp dữ liệu mà không cần dựng server. Dashboard chạy
+**trong cùng tiến trình** với Bridge, trên cùng vòng lặp asyncio — nó đọc thẳng SQLite cục bộ và
+gọi API tầng engine, nên không có đường nào để hai bên lệch trạng thái.
+
+Giao diện là HTML/CSS/JS thuần, không framework. **Không tham chiếu nào ra ngoài máy** — không
+CDN, không font tải về (có test khoá lại). Đúng lúc mất mạng là lúc cần nhìn thấy trạng thái nhất.
+
+### D-16 thành một phép kiểm được, không còn là lời hứa
+
+Thêm nhóm `UI` vào `bridge/labels_vi.py` với toàn bộ chữ trên màn hình. Template và JavaScript
+**không chứa ký tự tiếng Việt nào**; chúng hiển thị đúng những gì API gửi xuống.
+
+Phép kiểm viết theo hướng **đảo ngược**: file phải là ASCII, trừ một danh sách ngắn ký tự kiểu
+chữ được phép (`·→—✕✓`). Bản đầu tôi liệt kê dấu tiếng Việt để tìm — sai, vì bảng chữ có hơn 130
+ký tự có dấu và liệt kê thì sót. Liệt kê thứ *được phép* thì không sót được.
+
+Cũng phải tách `ENUM_GROUPS` khỏi `ALL_GROUPS`: test cũ bắt mọi key nhãn phải là enum viết hoa,
+mà key của nhóm `UI` là id chuỗi giao diện chứ không phải enum.
+
+### Những chỗ giao diện có thể làm mất tiền
+
+Ma sát tăng dần theo mức nguy hiểm, và mức cao nhất là **bắt gõ tay**:
+
+- `Tạm dừng lệnh mới` — bấm thẳng, vô hại, hoàn tác được.
+- `Dừng toàn bộ đồng bộ` — hộp xác nhận, vì nó bỏ rơi các cặp đang chạy.
+- `Đóng khẩn cấp tất cả` — phải gõ đúng `DONG TAT CA`. Chuỗi **cố ý không dấu**: bắt gõ tiếng
+  Việt có dấu trong lúc hoảng, với bộ gõ có thể đang ở chế độ khác, là tự tạo thêm rắc rối.
+  Nút này đặt tách khỏi cụm thường ngày, căn về phía đối diện, viền đỏ.
+
+Server kiểm chuỗi chứ không chỉ JavaScript: gõ sai thì trả 400 và **không sinh command nào**.
+
+**Không tồn tại đường nào bỏ qua hàng loạt** — có test duyệt danh sách route để khoá lại. Bỏ qua
+là hành động cho từng dòng, và mỗi dòng để lại một alert tồn tại.
+
+`Bắt đầu copy` vẫn bấm được khi còn finding, nhưng mở hộp xác nhận liệt kê số mục đang bỏ lại.
+Khoá nút thì người ta đi tìm cách lách; cho bấm nhưng bắt nhìn thẳng vào cái mình bỏ qua thì
+hiệu quả hơn.
+
+### Hai chi tiết lấy từ bài học các phase trước
+
+**Màn hình sai lệch lấy mọi finding đang `PENDING`, không lọc theo `run_id`.** Đây đúng là cái
+bẫy tôi tự vấp khi viết kịch bản nghiệm thu phase 8 — cổng lọc trùng của bộ đối chiếu làm sai
+lệch cũ không xuất hiện trong `run_id` mới, nên lọc theo `run_id` sẽ giấu mất chính những dòng
+chưa ai xử lý. Đã ghi thành test.
+
+**Ô xem trước hệ số dùng ví dụ 0.01 chứ không phải 0.03.** Plan gợi ý 0.03, nhưng với step 0.01
+thì 0.03 × 0.5 = 0.015 làm tròn xuống còn 0.01 — vẫn hợp lệ, nên dòng đó không lộ ra điều gì.
+Lệnh nhỏ nhất sàn cho phép (0.01) mới là chỗ hệ số nhỏ làm **rơi hẳn** lệnh, và đó mới là thứ
+người ta không nghĩ tới khi chỉ nhìn trường hợp đẹp.
+
+### Nghiệm thu trên dữ liệu thật
+
+Chạy `python -m bridge` và đọc API:
+
+```
+run_mode : Đã dừng
+agent    : AG-CLICKER Mất kết nối | AG-CLIENT Kết nối | AG-MASTER Kết nối
+chi so   : p50=606ms p95=1234ms hedge=1 can-can-thiep=3 to-do=True
+cap      : 000025 | Mất hedge — còn Master  | SELL→BUY | 0.01 / 0.00
+cap      : 000006 | Mở thất bại             | BUY→SELL | 0.01 / —
+cap      : 000007 | Mở thất bại             | BUY→SELL | 0.01 / —
+cap      : 000027 | Đóng một phần           | BUY→SELL | 0.03 / 0.03
+```
+
+Hai điều đáng nói. **p50 = 606 ms và p95 = 1234 ms khớp chính xác** số đo độc lập của phase 6b
+(trung vị 604 ms) và lần OCT khởi động nguội (1234 ms) — chỉ số tính đúng trên dữ liệu thật.
+Và bảng **sắp đúng theo mức nghiêm trọng**: mất hedge lên đầu, không phải theo thời gian.
+
+### 456 test xanh (+23)
+
+### Chưa làm được trong lượt này
+
+- **Mở từ máy khác qua Tailscale** và **ngắt Internet giữ LAN**: cần máy thứ hai. Phần "không
+  phụ thuộc Internet" đã kiểm được về mặt cấu trúc (không tham chiếu nào ra ngoài máy).
+- **WebSocket cập nhật dưới 1 giây** và **xem trên điện thoại**: cần mắt người trước màn hình.
+- **Trang cấu hình mới ở mức đọc.** Sửa hệ số, đổi `open_route`, lưu ánh xạ symbol chưa có API
+  ghi — mới có API `verify` cho symbol và các hộp xác nhận đã chuẩn bị nhãn. Ghi rõ ở đây để
+  không tưởng nhầm là đã xong.
+- Tiêu chí "một người chưa từng đọc code ngồi vào và hiểu được" cần người thật thử.
