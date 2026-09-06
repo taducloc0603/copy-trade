@@ -42,10 +42,12 @@ Mới có `NONE` (mặc định) và `IF_STILL_OPEN`. Bản `IF_STILL_OPEN` hi�
 kiện rồi cảnh báo, **chưa thực sự mở bù** — cố ý: "được tự động ĐÓNG, không được tự động MỞ"
 (D-13) nên việc mở bù cần người bấm.
 
-### B-05 — Trang cấu hình mới ở mức đọc
+### B-05 — Trang cấu hình trên dashboard mới ở mức đọc
 
-Sửa hệ số, đổi `open_route`, lưu ánh xạ symbol chưa có API ghi. Hiện phải sửa thẳng trong DB
-hoặc bằng `python -m bridge.admin`.
+*(Thu hẹp ở phase 11: `copy_mode`, `volume_multiplier`, `open_route` và `can_close_master` nay
+sửa được bằng `python -m bridge.admin cau-hinh-client`, không phải SQL tay nữa — B-11.)*
+
+Còn lại: **dashboard** chưa có API ghi, và **ánh xạ symbol** vẫn phải sửa trong DB.
 
 ### B-06 — Cascade chưa chạy trên demo
 
@@ -59,40 +61,6 @@ ro còn lại nằm ở phần chờ-xác-nhận-rồi-mới-lan-truyền chứ 
 
 Broker Connext-Demo không hỗ trợ Close By, nên D-12 được cài mà chưa từng đối chiếu với hành vi
 thật của sàn. Đổi broker thì đây là bài chạy lại đầu tiên.
-
-### B-08 — Mức alert không nhất quán cho cùng một hậu quả (F-07)
-
-Phase 10 nâng `UI_OPEN_BUSY` lên ERROR vì bỏ một lệnh copy là mất hedge, mà chỉ ERROR trở lên mới
-ra được Telegram. Lập luận đó chưa áp cho các mã cùng hậu quả: `VOLUME_BELOW_MIN` (bỏ một lệnh
-copy), `PARTIAL_CLOSE_ROUNDS_TO_ZERO` (phần đóng bị bỏ), `RECONCILE_FINDINGS` (sổ sách lệch thực
-tế), và `KHOI_DONG_EP_PAUSED` — mã cuối nghịch lý nhất, vì D-15 sinh ra cho tình huống *không ai
-nhìn màn hình* mà alert lại ở mức không gửi đi đâu.
-
-### B-09 — Finding `PENDING` không có gì nhắc lại (F-08)
-
-Hiện có 4 finding `PENDING`, cái cũ nhất từ 03:57 ngày 06-09. Không có cơ chế nhắc, và alert duy
-nhất báo về chúng ở mức WARNING (B-08).
-
-### B-10 — `cap-token` không bật lại agent đã thu hồi
-
-`thu-hoi` đặt `enabled = 0`; `cap-token` sau đó cấp token mới nhưng **không** bật lại, nên agent
-vẫn bị từ chối bắt tay với `AGENT_DISABLED` và người vận hành không có manh mối nào. Gặp thật khi
-dựng lại clicker trong phase 11, phải `UPDATE` thẳng DB.
-
-### B-11 — Không có lệnh admin đổi cấu hình Client (F-12)
-
-`copy_mode`, `volume_multiplier`, `open_route` chỉ sửa được bằng SQL tay. Để chạy TEST-01 trong
-phase 11 phải `UPDATE` thẳng vào `client_account`. Đây là cái giá thật của B-05.
-
-### B-12 — Vài dòng `pair` cũ còn số liệu sai
-
-`PAIR-20260906-000007` và `000008` là `CLOSED` nhưng còn `master_current_volume` khác 0 — dữ liệu
-sinh ra giữa lúc phase 11 đang sửa. Cùng loại với `PAIR-000027` mang `0.030000000000000002`. Vô
-hại về nghiệp vụ (cặp đã đóng) nhưng làm bẩn báo cáo.
-
-### B-13 — Test canh gác D-16 chưa quét `clicker/` (F-11)
-
-Hiện `clicker/` không có vi phạm nào, nên đây thuần là rủi ro hồi quy.
 
 ---
 
@@ -141,3 +109,21 @@ Ghi lại để lần sau không phải đi tìm:
   hai cặp mồ côi được phát hiện và đóng sổ.
 - ~~F-06: "0 sai lệch" nghĩa là "0 finding mới"~~ → báo cả số mới lẫn tổng đang chờ.
 - ~~F-09: `ACCEPTANCE.md` tự khai sai số~~ → đếm lại từ bảng.
+
+**Phase 11 (lượt hai) — dọn nốt B-08…B-13:**
+
+- ~~B-08: mức alert không nhất quán~~ → `VOLUME_BELOW_MIN`, `PARTIAL_CLOSE_ROUNDS_TO_ZERO` và
+  `KHOI_DONG_EP_PAUSED` lên **ERROR** (đều là "đã mất hedge" hoặc "đã ngừng copy");
+  `RECONCILE_FINDINGS` nay lấy mức theo **mức nghiêm trọng thật** của finding trong vòng đó —
+  `DECISION` → ERROR, toàn `SAFE` → WARNING.
+- ~~B-09: finding `PENDING` không có gì nhắc~~ → `FINDING_BO_QUEN` mức ERROR khi cái cũ nhất quá
+  `finding_nhac_sau_phut` (mặc định 60). Mốc nhắc ghi vào `system_config` nên khởi động lại không
+  thành cách vô tình để im lặng mãi; đặt 0 thì tắt.
+- ~~B-10: `cap-token` không bật lại agent đã thu hồi~~ → cấp token nay bật lại `enabled`, kèm một
+  dòng WARNING nói rõ.
+- ~~B-11: không có lệnh admin đổi cấu hình Client~~ → `bridge.admin cau-hinh-client`, có ràng
+  buộc (`multiplier > 0`, `open_route = UI` phải có clicker) và nói rõ cặp đang chạy giữ nguyên
+  tỷ lệ cũ.
+- ~~B-12: vài dòng `pair` còn số liệu sai~~ → `don_so_sach()`, chạy trong `bao_tri_hang_ngay`.
+  Đã chạy thật trên `data/bridge.db`: sửa 2 dòng, còn 0.
+- ~~B-13: guard D-16 chưa quét `clicker/`~~ → quét cả hai gói.

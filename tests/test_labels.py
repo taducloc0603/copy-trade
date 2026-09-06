@@ -65,6 +65,9 @@ def test_log_va_alert_khong_co_dau_tieng_viet(project_root) -> None:
     `UnicodeEncodeError` giữa lúc đang ghi log — tức là mất log đúng lúc cần nó nhất. Phase 10
     tìm thấy 41 chỗ lệch; test này giữ cho nó không quay lại.
 
+    Quét cả `bridge/` lẫn `clicker/` — bản đầu chỉ quét `bridge/` nên `clicker/` không có gì
+    canh (B-13).
+
     Chỉ soi **đối số chuỗi của `log.*` và `create_alert`**. Docstring, chú thích và nhãn tiếng
     Việt trong `labels_vi.py` không liên quan — chúng chưa bao giờ đi vào log hay DB.
     """
@@ -75,7 +78,8 @@ def test_log_va_alert_khong_co_dau_tieng_viet(project_root) -> None:
         return any(ord(c) > 127 and "LATIN" in unicodedata.name(c, "") for c in s)
 
     lech = []
-    for path in sorted((project_root / "bridge").rglob("*.py")):
+    goi = [project_root / "bridge", project_root / "clicker"]
+    for path in sorted(q for goi_con in goi for q in goi_con.rglob("*.py")):
         cay = ast.parse(path.read_text(encoding="utf-8"))
         for nut in ast.walk(cay):
             if not isinstance(nut, ast.Call):

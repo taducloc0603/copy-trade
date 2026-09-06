@@ -185,8 +185,11 @@ def compute_client_volume(inputs: SizingInputs) -> SizingResult:
             ))
         else:
             result.skip_reason = (SKIP_ZERO_AFTER_ROUNDING if volume <= 0 else SKIP_BELOW_MIN)
+            # ERROR chu khong phai WARNING (B-08): bo mot lenh copy la MAT HEDGE, va chi
+            # ERROR tro len moi di ra kenh canh bao ngoai. Cung hau qua voi UI_OPEN_BUSY,
+            # nen phai cung muc.
             result.alerts.append((
-                "WARNING", "VOLUME_BELOW_MIN",
+                "ERROR", "VOLUME_BELOW_MIN",
                 f"Volume tinh ra {volume} duoi muc toi thieu {inputs.volume_min} cua san "
                 f"Client, BO QUA lenh. Khong tu nang volume (D-18).",
             ))

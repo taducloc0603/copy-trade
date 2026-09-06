@@ -118,11 +118,53 @@ class Reconciler:
         log.info("Doi chieu %s (%s): %d sai lech moi, %d dang cho xu ly",
                  run_id, trigger, so, dang_cho)
         if so:
-            self._alert("WARNING", "RECONCILE_FINDINGS",
+            # Muc canh bao theo muc NGHIEM TRONG that cua finding, khong phai mot muc co dinh
+            # (B-08). `DECISION` nghia la co thu can nguoi quyet dinh — thu do phai ra duoc kenh
+            # ngoai; toan `SAFE` thi de trong dashboard la du.
+            co_quyet_dinh = self.db.query_one(
+                "SELECT 1 FROM reconcile_finding WHERE run_id = ? AND severity = 'DECISION' "
+                "LIMIT 1", (run_id,)) is not None
+            self._alert("ERROR" if co_quyet_dinh else "WARNING", "RECONCILE_FINDINGS",
                         f"Doi chieu {run_id} ({trigger}) phat hien {so} sai lech moi giua so "
                         f"sach va thuc te; tong cong {dang_cho} dang cho xu ly. Can nguoi xem "
                         "tung dong.")
+        self._nhac_finding_bo_quen()
         return run_id
+
+    def _nhac_finding_bo_quen(self) -> None:
+        """Nhắc lại khi có sai lệch nằm chờ quá lâu (B-09).
+
+        Cổng chống trùng ở `_create_finding` khiến một sai lệch chỉ được báo **một lần**, và cổng
+        đó đúng — nhưng hệ quả là sau tin báo đầu tiên thì không còn gì nhắc nữa. Kiểm toán
+        2026-09-06 tìm thấy một finding nằm `PENDING` suốt cả ngày, đi qua trọn một phiên làm
+        việc mà không ai để ý.
+
+        Mốc nhắc lần cuối ghi vào `system_config` chứ không giữ trong bộ nhớ: khởi động lại
+        không được biến thành một cách vô tình để im lặng mãi.
+        """
+        han_phut = self.db.get_config_int("finding_nhac_sau_phut", 60)
+        if han_phut <= 0:
+            return
+        bay_gio = utc_now()
+        # MIN() chu khong phai mot cot tran canh COUNT(*): khong co MIN thi SQLite tra ve
+        # created_at cua mot dong bat ky, va "cai cu nhat" se sai.
+        cu_nhat = self.db.query_one(
+            "SELECT MIN(created_at) AS created_at, COUNT(*) n FROM reconcile_finding "
+            "WHERE resolution = 'PENDING'")
+        if cu_nhat is None or not cu_nhat["n"] or cu_nhat["created_at"] is None:
+            return
+        tuoi_phut = (bay_gio - parse_iso(cu_nhat["created_at"])).total_seconds() / 60.0
+        if tuoi_phut < han_phut:
+            return
+
+        lan_cuoi = self.db.get_config("finding_nhac_lan_cuoi")
+        if lan_cuoi is not None:
+            if (bay_gio - parse_iso(lan_cuoi)).total_seconds() / 60.0 < han_phut:
+                return
+        self.db.set_config("finding_nhac_lan_cuoi", utc_now_iso())
+        self._alert("ERROR", "FINDING_BO_QUEN",
+                    f"Co {cu_nhat['n']} sai lech dang cho xu ly, cai cu nhat da {tuoi_phut:.0f} "
+                    f"phut. So sach va thuc te dang lech ma chua ai xu ly.")
 
     async def _snapshot(self, agent_id: str) -> dict[int, Any] | None:
         """Hỏi agent hiện đang có những vị thế nào. Trả về `{position_id: vị thế}`."""

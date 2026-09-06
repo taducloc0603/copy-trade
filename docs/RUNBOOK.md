@@ -107,6 +107,8 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
 .\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
 .\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING      # dat
 .\.venv\Scripts\python.exe -m bridge.admin sao-luu
@@ -116,7 +118,11 @@ món nợ đó đã một lần làm mất token của clicker.
 
 **Token thô chỉ hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc
 lại. `thu-hoi` không xoá dòng agent (sẽ mất lịch sử); nó đặt hash thành giá trị không token nào
-sinh ra được và tắt `enabled`.
+sinh ra được và tắt `enabled`. `cap-token` **bật lại** agent đã thu hồi — cấp token là hành động
+có chủ đích để nó nối lại được.
+
+Đổi cấu hình giao dịch bằng `cau-hinh-client`, đừng `UPDATE` tay. Cặp **đang chạy** giữ nguyên tỷ
+lệ cũ; giá trị mới chỉ áp cho lệnh mới (D-19).
 
 Đặt `bao-tri` chạy hằng ngày bằng Scheduled Task. Nó chạy retention (D-17), `VACUUM INTO` một
 bản sao lưu, giữ 14 bản gần nhất, rồi **tự mở lại bản vừa tạo để kiểm chứng** — vì một bản sao
@@ -163,6 +169,7 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 | Alert `UI_OPEN_BUSY` | Hai lệnh Master trong ~600 ms; mỗi Client chỉ cho **một** `OPEN_UI` đang bay | Lệnh sau **bị bỏ** — đây là mất hedge thật, nên nó ở mức ERROR và đi ra Telegram. Kiểm và mở bù bằng tay. |
 | Alert `ORPHANED_MASTER` | Client đóng khi `can_close_master = 0` (D-20) | Đúng thiết kế. Quyết định bằng tay: đóng Master hay mở lại Client. |
 | Agent `DEGRADED` | Terminal mất kết nối broker nhưng EA còn sống | Bridge **ngừng gửi command** cho agent đó. Chờ terminal nối lại. |
+| Alert `FINDING_BO_QUEN` | Có sai lệch nằm chờ quá `finding_nhac_sau_phut` (mặc định 60) | Mở dashboard, xử lý từng finding. Đặt khoá này về 0 để tắt nhắc. |
 | Finding đối chiếu đang chờ | Sổ sách lệch với thực tế trên terminal | Mở finding trên dashboard, đọc `evidence_json` (có đủ ba nguồn) rồi mới `accept`. Không accept khi chưa đọc bằng chứng. |
 | EA gửi bù lặp không dứt | Đã sửa ở Phase 10: trần 3 lần cho mỗi mốc `from_seq` | Nếu tái diễn, xem `bridge/protocol/server.py`. |
 | Lệnh mở bị từ chối vì symbol lệch | Hộp thoại New Order lấy symbol theo chart đang mở | **Giới hạn đã biết** (`BACKLOG.md` B-01): mỗi terminal Client copy được một symbol. Mở đúng chart đó. |

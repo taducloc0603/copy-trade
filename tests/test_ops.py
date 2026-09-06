@@ -347,3 +347,102 @@ def test_cap_chua_mo_duoc_khong_bi_tinh_la_vi_pham(seeded: Database) -> None:
     with seeded.transaction() as conn:
         conn.execute("UPDATE pair SET client_open_reason = NULL")
     assert kiem_reason_client(seeded) == []
+
+
+def test_cap_token_bat_lai_agent_da_thu_hoi(seeded: Database) -> None:
+    """B-10: cấp token cho agent đã thu hồi phải làm nó nối lại được, không im lặng thất bại.
+
+    Bản đầu chỉ đổi hash, nên người vận hành nhận một token trông hợp lệ rồi agent vẫn bị từ chối
+    bắt tay với `AGENT_DISABLED` — và không có gì chỉ ra vì sao.
+    """
+    assert thu_hoi_token(seeded, MASTER_AGENT)
+    assert not seeded.get_agent(MASTER_AGENT)["enabled"]
+
+    token = cap_token(seeded, MASTER_AGENT)
+    agent = seeded.get_agent(MASTER_AGENT)
+    assert agent["enabled"], "Cap token xong ma agent van bi vo hieu hoa"
+    assert verify_token(token, agent["token_hash"])
+
+
+# -- B-11: lenh admin doi cau hinh Client -------------------------------------------------------
+
+def test_admin_doi_cau_hinh_client(seeded: Database, monkeypatch, capsys) -> None:
+    """Sửa cấu hình giao dịch bằng SQL tay là chỗ dễ gõ nhầm nhất; nó xứng đáng có một lệnh."""
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (seeded, Path("bridge.db")))
+    monkeypatch.setattr(seeded, "close", lambda: None)
+
+    assert admin.main(["cau-hinh-client", CLIENT_ID]) == 0
+    assert "copy_mode=OPPOSITE" in capsys.readouterr().out
+
+    assert admin.main(["cau-hinh-client", CLIENT_ID,
+                       "--copy-mode", "SAME", "--multiplier", "0.5"]) == 0
+    row = seeded.get_client_account(CLIENT_ID)
+    assert row["copy_mode"] == "SAME"
+    assert row["volume_multiplier"] == 0.5
+
+
+def test_admin_tu_choi_multiplier_khong_duong(seeded: Database, monkeypatch) -> None:
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (seeded, Path("bridge.db")))
+    monkeypatch.setattr(seeded, "close", lambda: None)
+    assert admin.main(["cau-hinh-client", CLIENT_ID, "--multiplier", "0"]) == 1
+    assert seeded.get_client_account(CLIENT_ID)["volume_multiplier"] == 1.0
+
+
+def test_admin_canh_bao_cap_dang_chay_giu_nguyen_ty_le(seeded: Database, monkeypatch,
+                                                       capsys) -> None:
+    """D-19: đổi hệ số giữa chừng không đụng cặp đang chạy — lệnh phải nói rõ điều đó."""
+    from bridge import admin
+
+    seeded.create_pending_pair(MASTER_POSITION_ID, client_id=CLIENT_ID, copy_mode="OPPOSITE",
+                               master_initial_volume=1.0, effective_multiplier=1.0)
+    monkeypatch.setattr(admin, "_mo_db", lambda: (seeded, Path("bridge.db")))
+    monkeypatch.setattr(seeded, "close", lambda: None)
+
+    assert admin.main(["cau-hinh-client", CLIENT_ID, "--multiplier", "5.0"]) == 0
+    assert "giu nguyen ty le cu" in capsys.readouterr().out
+
+
+def test_admin_tu_choi_open_route_UI_khi_chua_co_clicker(seeded: Database, monkeypatch) -> None:
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (seeded, Path("bridge.db")))
+    monkeypatch.setattr(seeded, "close", lambda: None)
+    assert admin.main(["cau-hinh-client", CLIENT_ID, "--open-route", "UI"]) == 1
+
+
+# -- B-12: don so sach ---------------------------------------------------------------------------
+
+def test_don_so_sach_dua_volume_master_ve_0(seeded: Database) -> None:
+    """Cặp `CLOSED` mà vẫn còn volume Master là tàn dư của các bản sửa trước."""
+    from bridge.ops import don_so_sach
+
+    pair_id = seeded.create_pending_pair(
+        MASTER_POSITION_ID, client_id=CLIENT_ID, copy_mode="OPPOSITE",
+        master_initial_volume=1.0, effective_multiplier=1.0)
+    seeded.set_master_position_status(MASTER_POSITION_ID, "CLOSED", current_volume=0.0)
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE pair SET status = 'CLOSED', master_current_volume = 0.02 "
+                     "WHERE pair_id = ?", (pair_id,))
+
+    assert don_so_sach(seeded) == 1
+    assert seeded.get_pair(pair_id)["master_current_volume"] == 0
+    assert don_so_sach(seeded) == 0, "Chay lai khong duoc sua them gi"
+
+
+def test_don_so_sach_khong_dung_toi_cap_ma_master_con_mo(seeded: Database) -> None:
+    """Không suy diễn: vị thế Master còn `OPEN` thì con số kia là **thật**, không phải rác."""
+    from bridge.ops import don_so_sach
+
+    pair_id = seeded.create_pending_pair(
+        MASTER_POSITION_ID, client_id=CLIENT_ID, copy_mode="OPPOSITE",
+        master_initial_volume=1.0, effective_multiplier=1.0)
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE pair SET status = 'CLOSED', master_current_volume = 0.02 "
+                     "WHERE pair_id = ?", (pair_id,))
+
+    assert don_so_sach(seeded) == 0
+    assert seeded.get_pair(pair_id)["master_current_volume"] == 0.02

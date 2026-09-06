@@ -253,7 +253,9 @@ class CloseFlow:
         can_dong = round_to_step(con_lai * ty_le, to_decimal(spec["volume_step"]), "DOWN")
 
         if can_dong <= 0:
-            self._alert("WARNING", "PARTIAL_CLOSE_ROUNDS_TO_ZERO",
+            # ERROR (B-08): phan Client dang le phai dong bi bo lai, va phan lech nay
+            # TICH LUY qua tung lan dong chu khong tu bien mat.
+            self._alert("ERROR", "PARTIAL_CLOSE_ROUNDS_TO_ZERO",
                         f"Cap {pair_id}: Master dong {delta} ({ty_le:.4f}) nhung phan Client "
                         f"tuong ung lam tron xuong ra 0 (con {con_lai}, step "
                         f"{spec['volume_step']}). Khong gui lenh; phan lech tich luy lai.",

@@ -547,3 +547,79 @@ async def test_bao_cao_phan_biet_sai_lech_moi_va_tong_dang_cho(env: Env, caplog)
     assert dong, "Khong thay dong bao cao doi chieu"
     assert "0 sai lech moi" in dong[-1], dong[-1]
     assert "1 dang cho xu ly" in dong[-1], dong[-1]
+
+
+# -- B-08: muc alert phai theo hau qua that ----------------------------------------------------
+
+async def test_finding_can_quyet_dinh_thi_bao_muc_ERROR(env: Env) -> None:
+    """Chỉ ERROR trở lên mới ra được kênh cảnh báo ngoài, nên mức phải theo mức nghiêm trọng thật."""
+    env.tao_cap(900001, 800001)
+    env.vi_the_master(900001)
+    env.vi_the_client(800001, volume=0.99)      # lech volume -> finding DECISION
+
+    await env.processor.reconciler.run("TEST")
+    canh_bao = [a for a in env.db.query_all("SELECT * FROM alert")
+                if a["code"] == "RECONCILE_FINDINGS"]
+    assert canh_bao and canh_bao[-1]["level"] == "ERROR", canh_bao
+
+
+async def test_toan_finding_SAFE_thi_o_muc_WARNING(env: Env) -> None:
+    """Sai lệch tự dọn được thì để trong dashboard là đủ, không cần làm phiền điện thoại."""
+    env.tao_cap(900001, 800001)
+    env.vi_the_client(800001)                   # Master khong con -> MASTER_CLOSED_OFFLINE (SAFE)
+
+    await env.processor.reconciler.run("TEST")
+    canh_bao = [a for a in env.db.query_all("SELECT * FROM alert")
+                if a["code"] == "RECONCILE_FINDINGS"]
+    assert canh_bao and canh_bao[-1]["level"] == "WARNING", canh_bao
+
+
+# -- B-09: sai lech nam cho qua lau phai duoc nhac lai -----------------------------------------
+
+async def test_nhac_lai_khi_finding_nam_cho_qua_lau(env: Env) -> None:
+    """Cổng chống trùng khiến mỗi sai lệch chỉ báo **một lần** — đúng, nhưng rồi im luôn.
+
+    Kiểm toán 2026-09-06 tìm thấy một finding nằm `PENDING` suốt cả ngày, đi qua trọn một phiên
+    làm việc mà không ai để ý (B-09).
+    """
+    env.tao_cap(900001, 800001)
+    env.vi_the_client(800001)
+    await env.processor.reconciler.run("TEST")
+    assert not [a for a in env.db.query_all("SELECT * FROM alert") if a["code"] == "FINDING_BO_QUEN"]
+
+    # Day finding lui lai qua han roi chay vong nua.
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE reconcile_finding SET created_at = '2020-01-01T00:00:00.000Z'")
+    await env.processor.reconciler.run("TEST")
+
+    nhac = [a for a in env.db.query_all("SELECT * FROM alert") if a["code"] == "FINDING_BO_QUEN"]
+    assert len(nhac) == 1, nhac
+    assert nhac[0]["level"] == "ERROR"
+
+
+async def test_khong_nhac_lai_lien_tuc_trong_cung_cua_so(env: Env) -> None:
+    """Nhắc mãi cũng thành rác. Mốc nhắc nằm trong `system_config` nên khởi động lại không xoá."""
+    env.tao_cap(900001, 800001)
+    env.vi_the_client(800001)
+    await env.processor.reconciler.run("TEST")
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE reconcile_finding SET created_at = '2020-01-01T00:00:00.000Z'")
+
+    for _ in range(3):
+        await env.processor.reconciler.run("TEST")
+
+    nhac = [a for a in env.db.query_all("SELECT * FROM alert") if a["code"] == "FINDING_BO_QUEN"]
+    assert len(nhac) == 1, f"Nhac {len(nhac)} lan trong cung cua so"
+    assert env.db.get_config("finding_nhac_lan_cuoi") is not None
+
+
+async def test_tat_nhac_duoc_bang_cau_hinh(env: Env) -> None:
+    env.db.set_config("finding_nhac_sau_phut", "0")
+    env.tao_cap(900001, 800001)
+    env.vi_the_client(800001)
+    await env.processor.reconciler.run("TEST")
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE reconcile_finding SET created_at = '2020-01-01T00:00:00.000Z'")
+    await env.processor.reconciler.run("TEST")
+
+    assert not [a for a in env.db.query_all("SELECT * FROM alert") if a["code"] == "FINDING_BO_QUEN"]

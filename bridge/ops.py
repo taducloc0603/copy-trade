@@ -83,6 +83,29 @@ def kiem_chung_ban_sao_luu(duong_dan: Path) -> dict[str, int]:
         conn.close()
 
 
+def don_so_sach(db: Database) -> int:
+    """Dọn các dòng `pair` mà sổ sách còn giữ số cũ. Trả về số dòng đã sửa (B-12).
+
+    Một cặp đã `CLOSED` mà `master_current_volume` vẫn khác 0 là tàn dư của những lần sửa trước:
+    con số đó chỉ được đưa về 0 khi EA Master ack, nên cặp nào đóng bằng đường khác sẽ giữ lại
+    giá trị cũ mãi. Vô hại về nghiệp vụ — cặp đã đóng thì không ai đụng tới nữa — nhưng nó làm
+    bẩn mọi báo cáo đọc từ bảng này.
+
+    Chỉ dọn khi vị thế Master **thật sự** đã đóng; không suy diễn từ trạng thái của cặp.
+    """
+    with db.transaction() as conn:
+        cur = conn.execute(
+            "UPDATE pair SET master_current_volume = 0, updated_at = ? "
+            "WHERE status = 'CLOSED' AND master_current_volume <> 0 "
+            "AND master_position_id IN (SELECT master_position_id FROM master_position "
+            "                           WHERE status = 'CLOSED')",
+            (utc_now_iso(),))
+        so = cur.rowcount
+    if so:
+        log.info("Don so sach: dua %d dong pair ve dung volume Master", so)
+    return so
+
+
 def bao_tri_hang_ngay(db: Database, db_path: Path,
                       retention_days: int | None = None) -> KetQuaBaoTri:
     """Chạy retention rồi sao lưu, theo đúng thứ tự đó.
@@ -90,6 +113,7 @@ def bao_tri_hang_ngay(db: Database, db_path: Path,
     Sao lưu **sau** khi dọn: bản sao lưu nhỏ hơn, và nếu retention có lỗi thì ta còn bản của
     hôm qua chưa bị đụng tới.
     """
+    don_so_sach(db)
     bao_cao = run_retention(db, retention_days=retention_days)
     ban = sao_luu(db, db_path)
     da_xoa = don_ban_cu(db_path)
@@ -106,14 +130,24 @@ def cap_token(db: Database, agent_id: str) -> str:
 
     DB chỉ giữ hash. Giá trị thô đi thẳng vào tham số EA hoặc `config.toml`; không ghi log, không
     lưu lại ở đâu khác. Mất thì cấp lại, không có đường đọc lại.
+
+    **Cấp token cũng bật lại agent đang bị vô hiệu hoá.** Bản đầu chỉ đổi hash, nên cấp token sau
+    khi `thu_hoi_token` cho ra một token hợp lệ mà agent vẫn bị từ chối bắt tay với
+    `AGENT_DISABLED` — không có manh mối nào ở phía người vận hành. Gặp thật khi dựng lại clicker
+    ở phase 11 (B-10). Cấp token là hành động có chủ đích để agent nối lại được; nếu muốn nó nằm
+    im thì đừng cấp token cho nó.
     """
     agent = db.get_agent(agent_id)
     if agent is None:
         raise ValueError(f"Khong co agent {agent_id}")
     token = generate_token()
     with db.transaction() as conn:
-        conn.execute("UPDATE agent SET token_hash = ?, updated_at = ? WHERE agent_id = ?",
-                     (hash_token(token), utc_now_iso(), agent_id))
+        conn.execute(
+            "UPDATE agent SET token_hash = ?, enabled = 1, updated_at = ? WHERE agent_id = ?",
+            (hash_token(token), utc_now_iso(), agent_id))
+    if not agent["enabled"]:
+        log.warning("Agent %s dang bi vo hieu hoa, cap token moi nen bat lai", agent_id,
+                    extra={"agent_id": agent_id})
     log.info("Da cap token moi cho agent %s", agent_id, extra={"agent_id": agent_id})
     return token
 

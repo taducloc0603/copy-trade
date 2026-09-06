@@ -1741,3 +1741,38 @@ F-07, F-08, F-10…F-12 chuyển thành **B-08…B-13** trong `docs/BACKLOG.md`,
 
 Một test dao động: `test_ack_rejected_duoc_thu_lai` hỏng một lần rồi xanh lại khi chạy riêng và ở
 mọi lần chạy sau. Phụ thuộc thời gian, chưa truy nguyên.
+
+### Phase 11, lượt hai — dọn nốt B-08…B-13
+
+*(Cùng ngày. Không đặt lệnh demo nào; các mục này không cần terminal.)*
+
+- **B-08 — mức alert theo hậu quả thật.** `VOLUME_BELOW_MIN`, `PARTIAL_CLOSE_ROUNDS_TO_ZERO` và
+  `KHOI_DONG_EP_PAUSED` lên ERROR: cả ba đều nghĩa là "đã mất hedge" hoặc "đã ngừng copy", mà chỉ
+  ERROR trở lên mới ra được Telegram. `RECONCILE_FINDINGS` thì **không** đặt một mức cố định —
+  nó lấy mức theo mức nghiêm trọng thật của finding trong vòng đó: có `DECISION` thì ERROR, toàn
+  `SAFE` thì WARNING. Sai lệch tự dọn được không đáng làm phiền điện thoại lúc 3 giờ sáng.
+- **B-09 — nhắc lại sai lệch bị bỏ quên.** Cổng chống trùng khiến mỗi sai lệch chỉ báo một lần —
+  đúng, nhưng rồi im luôn, và kiểm toán tìm thấy một finding nằm `PENDING` suốt cả ngày. Thêm
+  `FINDING_BO_QUEN` (ERROR) khi cái cũ nhất quá `finding_nhac_sau_phut`, mặc định 60. Mốc nhắc ghi
+  vào `system_config` chứ không giữ trong bộ nhớ: khởi động lại không được thành một cách vô tình
+  để im lặng mãi.
+- **B-10 — `cap-token` bật lại agent đã thu hồi.** Trước đó nó chỉ đổi hash, nên người vận hành
+  cầm một token trông hợp lệ mà agent vẫn bị từ chối với `AGENT_DISABLED` và không có manh mối gì.
+  Chính tôi vấp phải lúc dựng lại clicker ở lượt trước.
+- **B-11 — `bridge.admin cau-hinh-client`.** Xem và sửa `copy_mode`, `volume_multiplier`,
+  `open_route`, `can_close_master`, có ràng buộc và có nói rõ cặp đang chạy giữ nguyên tỷ lệ cũ.
+  Trước đó phải `UPDATE` thẳng vào SQLite — và để chạy đúng một mục nghiệm thu thì đã phải làm thế
+  thật.
+- **B-12 — `don_so_sach()`**, chạy trong `bao_tri_hang_ngay`. Đưa `master_current_volume` về 0 cho
+  cặp `CLOSED` mà vị thế Master **thật sự** đã đóng; không suy diễn từ trạng thái của cặp. Đã chạy
+  trên database thật: sửa 2 dòng, còn 0.
+- **B-13 —** test canh gác D-16 nay quét cả `clicker/`.
+
+Một lỗi tự bắt được khi viết B-09: câu `SELECT created_at, COUNT(*) ...` không có `MIN()` sẽ cho
+`created_at` của một dòng bất kỳ, nên "cái cũ nhất" là sai. Đã sửa trước khi chạy.
+
+`config.toml` đã đổi sang mật khẩu ngẫu nhiên 28 ký tự; kiểm chứng thật: mật khẩu cũ → 401, mật
+khẩu mới → 200, gọi không cookie → 401.
+
+**512 test xanh (+12), `ruff` sạch.** `docs/BACKLOG.md` còn đúng 7 món nợ B-01…B-07, tất cả đều
+cần môi trường thật hoặc nhiều Client.

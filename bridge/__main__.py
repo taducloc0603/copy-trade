@@ -39,7 +39,10 @@ def ep_ve_paused(db: Database) -> str | None:
     truoc = db.get_config("run_mode")
     if truoc != "PAUSED":
         db.set_config("run_mode", "PAUSED")
-        db.create_alert("WARNING", "KHOI_DONG_EP_PAUSED",
+        # ERROR (B-08): D-15 sinh ra cho tinh huong may tu bat lai luc khong ai nhin man
+        # hinh — dung tinh huong do ma de o WARNING thi canh bao khong di den dau ca, trong
+        # khi thuc te la HE THONG DA NGUNG COPY.
+        db.create_alert("ERROR", "KHOI_DONG_EP_PAUSED",
                         f"Bridge khoi dong lai: dat run_mode tu {truoc} ve PAUSED theo D-15")
         log.warning("run_mode dang la %s, da dat ve PAUSED (D-15)", truoc)
     return truoc

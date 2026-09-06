@@ -132,6 +132,55 @@ def lenh_kiem_reason(db: Database, _args: argparse.Namespace) -> int:
     return 1
 
 
+def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
+    """Xem và sửa cấu hình một Client (B-11).
+
+    Trước phase 11 chỉ sửa được bằng `UPDATE` tay vào SQLite — và để chạy đúng một mục nghiệm thu
+    thì phải làm thế thật. Sửa cấu hình giao dịch bằng SQL tay là chỗ dễ gõ nhầm nhất trong cả hệ
+    thống, nên nó xứng đáng có một lệnh với ràng buộc rõ ràng.
+
+    **Chỉ đổi lệnh MỚI.** Cặp đang chạy giữ nguyên tỷ lệ của nó: đường đóng một phần lấy tỷ lệ
+    trên volume còn lại của chính cặp đó và không hề đọc bảng này (D-19).
+    """
+    client = db.query_one("SELECT * FROM client_account WHERE client_id = ?", (args.client_id,))
+    if client is None:
+        print(f"Khong co client {args.client_id}", file=sys.stderr)
+        return 1
+
+    doi = {}
+    if args.copy_mode is not None:
+        doi["copy_mode"] = args.copy_mode
+    if args.multiplier is not None:
+        if args.multiplier <= 0:
+            print("volume_multiplier phai duong", file=sys.stderr)
+            return 1
+        doi["volume_multiplier"] = args.multiplier
+    if args.open_route is not None:
+        if args.open_route == "UI" and not client["clicker_agent_id"]:
+            print("open_route = UI can clicker_agent_id, chua co", file=sys.stderr)
+            return 1
+        doi["open_route"] = args.open_route
+    if args.can_close_master is not None:
+        doi["can_close_master"] = 1 if args.can_close_master == "bat" else 0
+
+    if not doi:
+        print(f"{args.client_id}: copy_mode={client['copy_mode']} "
+              f"volume_multiplier={client['volume_multiplier']} "
+              f"open_route={client['open_route']} "
+              f"can_close_master={client['can_close_master']}")
+        return 0
+
+    dang_mo = db.query_one(
+        "SELECT COUNT(*) n FROM pair WHERE client_id = ? AND status NOT IN ('CLOSED','OPEN_FAILED')",
+        (args.client_id,))["n"]
+    db.upsert_client_account(args.client_id, agent_id=client["agent_id"], **doi)
+    for khoa, gia_tri in doi.items():
+        print(f"{args.client_id}.{khoa} = {gia_tri}")
+    if dang_mo:
+        print(f"Luu y: {dang_mo} cap dang chay giu nguyen ty le cu, chi lenh MOI dung gia tri nay.")
+    return 0
+
+
 def lenh_run_mode(db: Database, args: argparse.Namespace) -> int:
     if args.gia_tri is None:
         print(db.get_config("run_mode"))
@@ -165,6 +214,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("bao-tri", help="Retention + sao luu + don ban cu")
     sub.add_parser("kiem-reason", help="TEST-23: moi vi the Client phai la DEAL_REASON_CLIENT")
 
+    cf = sub.add_parser("cau-hinh-client", help="Xem hoac sua cau hinh mot Client")
+    cf.add_argument("client_id")
+    cf.add_argument("--copy-mode", dest="copy_mode", choices=("SAME", "OPPOSITE"))
+    cf.add_argument("--multiplier", type=float)
+    cf.add_argument("--open-route", dest="open_route", choices=("EA", "UI"))
+    cf.add_argument("--can-close-master", dest="can_close_master", choices=("bat", "tat"))
+
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
@@ -189,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_bao_tri(db, args, db_path)
         if args.lenh == "kiem-reason":
             return lenh_kiem_reason(db, args)
+        if args.lenh == "cau-hinh-client":
+            return lenh_cau_hinh_client(db, args)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
     finally:
