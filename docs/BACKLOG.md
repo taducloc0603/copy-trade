@@ -62,6 +62,38 @@ ro còn lại nằm ở phần chờ-xác-nhận-rồi-mới-lan-truyền chứ 
 Broker Connext-Demo không hỗ trợ Close By, nên D-12 được cài mà chưa từng đối chiếu với hành vi
 thật của sàn. Đổi broker thì đây là bài chạy lại đầu tiên.
 
+### B-08 — Bài "phiên RDP đã ngắt" chưa từng chạy — **chặn triển khai VPS**
+
+Toàn bộ đường mở lệnh dựa vào clicker điều khiển giao diện MT5 bằng `PostMessage`. Lập luận
+"không cần desktop tương tác nên chạy được khi phiên RDP đã ngắt" có từ phase 6b mục E1 và **chưa
+bao giờ được đo**: bản gần đúng duy nhất là 5/5 probe với cửa sổ **minimized** (phase 6b mục 4.6).
+Mục này ghi là "chuyển sang phase 10 vì máy đo là laptop", rồi **rơi khỏi mọi danh sách theo dõi**
+cho tới lượt rà soát 2026-09-06.
+
+Trên laptop đây là mục nice-to-have. Trên VPS nó là **trạng thái vận hành bình thường**: người
+vận hành RDP vào, làm việc, rồi ngắt kết nối — và từ giây đó trở đi mọi lệnh copy đều đi qua một
+cơ chế chưa ai chứng minh là còn hoạt động.
+
+**Cách trả:** trên chính VPS, RDP vào, chạy stack, đặt một lệnh, **ngắt phiên RDP** (đóng cửa sổ
+RDP chứ không Sign out), rồi từ xa kiểm qua database xem lệnh tiếp theo có được copy không. Chế
+độ hỏng cần phân biệt: canary đỏ (an toàn — Bridge ngừng gửi `OPEN_UI`) so với canary xanh mà cú
+bấm không tới nơi (nguy hiểm).
+
+### B-09 — Bridge không biết Algo Trading của terminal đang bật hay tắt
+
+`MQL_TRADE_ALLOWED` chỉ được kiểm **bên trong EA**, lúc khởi động và lúc nhận command; nó không
+bao giờ đi vào `hello` hay `heartbeat`, nên dashboard và bộ đối chiếu đều mù với nó.
+
+Bất đối xứng nguy hiểm: đường **mở** phía Client đi qua giao diện nên **không cần** Algo Trading,
+còn đường **đóng** đi qua EA nên **cần**. Một terminal có Algo Trading tắt sẽ vẫn mở lệnh bình
+thường và chỉ hỏng khi đóng — tức là tích luỹ vị thế một chiều rồi mới báo `CLOSE_FAILED`.
+
+Sau khi VPS khởi động lại hoặc MT5 tự cập nhật, Algo Trading tắt là trạng thái hoàn toàn có thật.
+
+**Cách trả:** thêm `trade_allowed` vào heartbeat, hiện trên dashboard cạnh canary, và cho Bridge
+từ chối gửi lệnh mở khi phía Client không đóng được. Chi phí: sửa EA (phải biên dịch và **gỡ ra
+gắn lại**, xem RUNBOOK mục 2), sửa schema message, sửa dashboard.
+
 ---
 
 ## Mở rộng — không thuộc MVP

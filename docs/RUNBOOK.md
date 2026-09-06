@@ -140,7 +140,64 @@ Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba th�
 
 ---
 
-## 6. Mạng và bảo mật — **CHƯA LÀM, phải làm trước khi dùng tiền thật**
+## 5b. Triển khai tất cả trên MỘT VPS
+
+Đây là kiến trúc đơn giản nhất và cũng là kiến trúc **khác** với mục 6 bên dưới: Bridge, cả hai
+terminal MT5 và clicker cùng nằm trên một máy. Mục 6 viết cho kiến trúc nhiều máy — khi chạy
+một-VPS thì phần lớn nó **không áp dụng**, nhưng đổi lại có ba rủi ro mới.
+
+### Cái gì biến mất
+
+Agent nối tới Bridge qua `127.0.0.1`, nên đặt `host = "127.0.0.1"` là **đóng hẳn** cả 8787 lẫn
+8080 với thế giới bên ngoài — không cần Tailscale ACL, không cần luật firewall, không cần máy thứ
+ba để kiểm. Đo trên máy phát triển: `host = "0.0.0.0"` cho `netstat` ra
+`0.0.0.0:8787 LISTENING`, tức mở ra toàn mạng; `127.0.0.1` thì không.
+
+Cái giá: dashboard chỉ mở được **từ trong VPS**. Muốn xem từ máy khác thì hoặc RDP vào rồi mở
+trình duyệt trên đó, hoặc cài Tailscale và đặt `host = "0.0.0.0"` **kèm mật khẩu mạnh** (Bridge
+sẽ từ chối khởi động nếu thiếu — xem mục 2).
+
+### Ba rủi ro mới
+
+1. **Phiên RDP ngắt (B-08) — nghiêm trọng nhất.** Cách vận hành VPS bình thường là RDP vào rồi
+   ngắt ra, và từ giây đó mọi lệnh mở đều đi qua một cơ chế **chưa ai chứng minh là còn chạy**.
+   Phải đo trước khi tin: ngắt phiên RDP (đóng cửa sổ, **không** Sign out), rồi kiểm qua database
+   xem lệnh tiếp theo có được copy không.
+2. **Algo Trading tắt (B-09).** Đường mở phía Client đi qua giao diện nên **không cần** Algo
+   Trading; đường đóng đi qua EA nên **cần**. Terminal có Algo Trading tắt vẫn mở lệnh bình
+   thường rồi mới hỏng lúc đóng. Bridge hiện **không nhìn thấy** trạng thái này. Sau mỗi lần VPS
+   khởi động lại hoặc MT5 tự cập nhật: kiểm nút **Algo Trading** sáng xanh trên **cả hai**
+   terminal.
+3. **Hai tài khoản, một địa chỉ IP.** Hai tài khoản mở vị thế ngược chiều, cùng symbol, cách nhau
+   dưới một giây, từ cùng một IP là một dấu vết rất dễ nhận. Nhiều broker cấm hoặc huỷ lợi nhuận
+   từ mô hình này. Đây là rủi ro **điều khoản**, không phải rủi ro kỹ thuật, và nó không hiện ra
+   trong bất kỳ log nào cho tới lúc tài khoản bị xử lý.
+
+### Cấu hình máy
+
+Đo thực tế lúc chạy không tải: mỗi terminal MT5 ~157 MB, Bridge ~49 MB, clicker ~4 MB. Cộng
+Windows Server thì **4 GB RAM là mức nên có**, 2 GB sẽ chật. CPU 2 nhân là đủ — đường mở bị chặn
+ở tốc độ giao diện MT5 (~600 ms/lệnh), không phải ở CPU.
+
+Bắt buộc: **autologon**, **tắt sleep/hibernate**, và **tắt khoá màn hình tự động** — clicker phải
+sống trong một phiên người dùng đang tồn tại.
+
+### Khác biệt so với mục 6
+
+| Mục 6 nói | Khi chạy một-VPS |
+|---|---|
+| Tailscale ACL cho 8787 | Không cần — agent đi loopback |
+| Firewall chặn 8787/8080 | Thay bằng `host = "127.0.0.1"` |
+| Kiểm bằng máy thứ ba | Không cần, nếu đã bind loopback |
+| Bridge chạy Windows Service | Vẫn nên, để tự bật sau reboot |
+| clicker chạy Scheduled Task theo phiên | **Bắt buộc**, kèm autologon |
+
+---
+
+## 6. Mạng và bảo mật cho kiến trúc NHIỀU MÁY — **CHƯA LÀM**
+
+> Chạy tất cả trên một VPS thì đọc **mục 5b** thay cho mục này; phần lớn mục 6 không áp
+> dụng, và mục 5b nói rõ chỗ nào thay bằng gì.
 
 Những mục dưới đây **chưa được thực hiện hay kiểm chứng** ở lượt này vì cần môi trường thật
 (máy thứ ba, VPS, quyền quản trị mạng):
@@ -195,3 +252,5 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
    trên demo.
 8. Biết rõ những gì **chưa từng chạy trên sàn thật** — `docs/ACCEPTANCE.md` cột "Nguồn", mọi
    dòng ghi TEST hoặc KHÔNG.
+9. **Nếu chạy một VPS:** xong bài "phiên RDP đã ngắt" (B-08) và kiểm Algo Trading bật ở cả hai
+   terminal (B-09). Mục 5b nói cách làm.

@@ -1776,3 +1776,40 @@ khẩu mới → 200, gọi không cookie → 401.
 
 **512 test xanh (+12), `ruff` sạch.** `docs/BACKLOG.md` còn đúng 7 món nợ B-01…B-07, tất cả đều
 cần môi trường thật hoặc nhiều Client.
+
+### Rà soát chuẩn bị chạy thật trên MỘT VPS
+
+*(2026-09-06, sau khi B-08…B-13 của lượt trước đã đóng.)*
+
+Kiến trúc một-VPS **khác** kiến trúc mà `RUNBOOK.md` mục 6 giả định. Rà soát lại theo đúng kịch
+bản đó tìm ra hai mục và làm rõ một mục thứ ba.
+
+**Mục đã rơi khỏi danh sách theo dõi — nay là B-08.** Bài "lặp lại với phiên RDP đã ngắt" ghi từ
+phase 6b, đánh dấu "chuyển sang phase 10 vì máy đo là laptop", rồi **không xuất hiện ở bất cứ đâu
+nữa** — không có trong `BACKLOG.md`, không có trong checklist của `plan/10`. Trên laptop nó là mục
+nice-to-have; trên VPS nó là **trạng thái vận hành bình thường**, vì người ta RDP vào rồi ngắt ra.
+Toàn bộ đường mở lệnh dựa vào clicker `PostMessage`, và lập luận "không cần desktop tương tác"
+chưa bao giờ được đo — bản gần đúng duy nhất là 5/5 probe với cửa sổ minimized.
+
+**B-09 — Bridge mù với Algo Trading.** `MQL_TRADE_ALLOWED` chỉ được kiểm bên trong EA, không đi
+vào `hello` hay `heartbeat`. Bất đối xứng: đường **mở** phía Client đi qua giao diện nên không cần
+Algo Trading, đường **đóng** đi qua EA nên cần. Terminal có Algo Trading tắt sẽ mở lệnh bình
+thường rồi chỉ hỏng lúc đóng — tích luỹ vị thế một chiều trước khi báo `CLOSE_FAILED`. Sau khi VPS
+khởi động lại hoặc MT5 tự cập nhật, đây là trạng thái hoàn toàn có thật.
+
+**Rủi ro điều khoản, không phải kỹ thuật.** Hai tài khoản mở vị thế ngược chiều, cùng symbol, cách
+nhau dưới một giây, **từ cùng một IP** là dấu vết rất dễ nhận. Nhiều broker cấm hoặc huỷ lợi nhuận
+từ mô hình này, và nó không hiện ra trong bất kỳ log nào cho tới lúc tài khoản bị xử lý.
+
+**Cái gì biến mất khi chạy một-VPS.** Agent đi loopback, nên `host = "127.0.0.1"` đóng hẳn cả hai
+cổng — không cần Tailscale ACL, firewall hay máy thứ ba. Đo được: `host = "0.0.0.0"` cho `netstat`
+ra `0.0.0.0:8787 LISTENING`, tức đang mở ra toàn mạng. Cái giá là dashboard chỉ mở được từ trong
+VPS.
+
+**Cấu hình máy, đo thật:** mỗi terminal MT5 ~157 MB, Bridge ~49 MB, clicker ~4 MB. Cộng Windows
+Server thì 4 GB RAM là mức nên có; 2 GB sẽ chật.
+
+Đã thêm mục **5b — Triển khai tất cả trên một VPS** vào `RUNBOOK.md`, kèm bảng đối chiếu chỉ rõ
+mục 6 chỗ nào thay bằng gì, và đổi tiêu đề mục 6 thành "kiến trúc NHIỀU MÁY" để không ai đọc nhầm.
+
+Không sửa code ở lượt này. 512 test xanh, `ruff` sạch, `run_mode = PAUSED`.
