@@ -446,3 +446,90 @@ def test_don_so_sach_khong_dung_toi_cap_ma_master_con_mo(seeded: Database) -> No
 
     assert don_so_sach(seeded) == 0
     assert seeded.get_pair(pair_id)["master_current_volume"] == 0.02
+
+
+# -- tinh-hinh: co che bu khi khong co canh bao ra ngoai ----------------------------------------
+
+def _tinh_hinh(db: Database, monkeypatch, tmp_path: Path):
+    """Chạy lệnh với thư mục sao lưu thật, trả về (mã thoát, hàm đọc màn hình)."""
+    from bridge import admin
+
+    db_path = tmp_path / "bridge.db"
+    (tmp_path / "backup").mkdir(exist_ok=True)
+    (tmp_path / "backup" / "bridge-20260906-000000.db").write_bytes(b"x")
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, db_path))
+    monkeypatch.setattr(db, "close", lambda: None)
+    return admin.main(["tinh-hinh"])
+
+
+def test_tinh_hinh_moi_thu_khoe_thi_thoat_0(seeded: Database, monkeypatch, tmp_path,
+                                            capsys) -> None:
+    """Không được bịa ra cảnh báo giả: im lặng phải nghĩa là thật sự không có gì."""
+    seeded.set_config("run_mode", "RUNNING")
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE', broker_connected = 1, "
+                     "trade_allowed = 1")
+
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 0
+    ra = capsys.readouterr().out
+    assert "Khong co gi can lam" in ra
+    assert "can chu y" not in ra
+
+
+def test_tinh_hinh_paused_thi_bao_dang_khong_copy(seeded: Database, monkeypatch, tmp_path,
+                                                  capsys) -> None:
+    """`PAUSED` là trạng thái sau mỗi lần khởi động lại (D-15) — và nó nghĩa là ngừng copy."""
+    seeded.set_config("run_mode", "PAUSED")
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE', broker_connected = 1, "
+                     "trade_allowed = 1")
+
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 1
+    ra = capsys.readouterr().out
+    assert "DANG KHONG COPY" in ra
+    assert "run_mode = PAUSED" in ra
+
+
+def test_tinh_hinh_bat_algo_trading_tat(seeded: Database, monkeypatch, tmp_path,
+                                        capsys) -> None:
+    """B-09: terminal tắt Algo Trading vẫn mở được lệnh nhưng không đóng được."""
+    seeded.set_config("run_mode", "RUNNING")
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE', broker_connected = 1, "
+                     "trade_allowed = 1")
+        conn.execute("UPDATE agent SET trade_allowed = 0 WHERE role = 'CLIENT'")
+
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 1
+    assert "Algo Trading: TAT" in capsys.readouterr().out
+
+
+def test_tinh_hinh_dem_canh_bao_chua_xem(seeded: Database, monkeypatch, tmp_path,
+                                         capsys) -> None:
+    """Đã xác nhận rồi thì không đếm nữa — nếu không, con số chỉ tăng và mất ý nghĩa."""
+    seeded.set_config("run_mode", "RUNNING")
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE', broker_connected = 1, "
+                     "trade_allowed = 1")
+    seeded.create_alert("ERROR", "THU_MOT", "chua xem")
+    seeded.create_alert("CRITICAL", "THU_HAI", "chua xem")
+    seeded.create_alert("WARNING", "THU_BA", "muc thap, khong tinh")
+
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 1
+    assert "canh bao chua xem  : 2" in capsys.readouterr().out
+
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE alert SET acknowledged_at = '2026-09-06T00:00:00.000Z'")
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 0
+    assert "canh bao chua xem  : 0" in capsys.readouterr().out
+
+
+def test_tinh_hinh_bao_sai_lech_dang_cho_kem_tuoi(seeded: Database, monkeypatch, tmp_path,
+                                                  capsys) -> None:
+    seeded.set_config("run_mode", "RUNNING")
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET status = 'ONLINE', broker_connected = 1, "
+                     "trade_allowed = 1")
+    seeded.create_finding("REC-TEST", "SAFE", "THU_NGHIEM", suggested_action="NOTHING")
+
+    assert _tinh_hinh(seeded, monkeypatch, tmp_path) == 1
+    assert "sai lech dang cho  : 1" in capsys.readouterr().out

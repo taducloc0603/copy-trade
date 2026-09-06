@@ -1866,3 +1866,36 @@ Kèm bảng "đã có bằng chứng, khỏi kiểm lại" để lần sau khôn
 Rà soát cũng xác nhận: không còn `TODO`/`FIXME` nào trong `bridge/`, `clicker/`, `ea/`, `tests/`;
 không test nào bị `skip`/`xfail`; không tham chiếu file hỏng trong `docs/`; và cấu trúc mọi bảng
 của `data/bridge.db` **khớp hoàn toàn** với một database tạo mới từ đầu.
+
+### Bỏ Telegram — dựng cơ chế bù `tinh-hinh`
+
+*(2026-09-06. Người dùng chốt không dùng kênh cảnh báo ngoài.)*
+
+Lựa chọn hợp lệ, nhưng nó vô hiệu hoá một giả định mà cả phase 10–11 dựa vào: việc nâng
+`ORPHANED_MASTER`, `CLOSE_FAILED`, `TRADE_NOT_ALLOWED`, `KHOI_DONG_EP_PAUSED`… lên ERROR có ý
+nghĩa **vì** "chỉ ERROR trở lên mới đi ra ngoài". Không có kênh ra thì việc phân mức vẫn đúng
+nhưng không ai nhận. Tình huống phải chấp nhận: VPS khởi động lại lúc 3 giờ sáng → `run_mode` bị
+ép về `PAUSED` (D-15) → ngừng copy hoàn toàn → không ai biết cho tới lần đăng nhập tiếp theo.
+
+Cơ chế bù hợp với cách VPS thực sự được vận hành (người ta RDP vào theo thói quen):
+**`python -m bridge.admin tinh-hinh`** trả lời đúng một câu hỏi — *có gì cần làm không?* Gom
+`run_mode` (nói rõ `PAUSED` nghĩa là đang không copy), trạng thái từng agent kèm Algo Trading,
+cặp cần can thiệp, sai lệch đang chờ kèm tuổi, cảnh báo ERROR/CRITICAL **chưa xác nhận**, và tuổi
+bản sao lưu gần nhất. **Thoát khác 0 khi có việc cần làm**, để cắm được vào Scheduled Task sau này.
+
+Dùng lại `views.trang_thai_chung()` và `views.chi_so()` thay vì viết truy vấn thứ hai — dashboard
+và lệnh này không bao giờ được nói khác nhau. Cột `alert.acknowledged_at` đã có sẵn từ phase 9,
+chỉ chưa ai đọc nó từ dòng lệnh.
+
+Chạy trên database thật: báo đúng 4 mục cần chú ý (`PAUSED`, 2 cặp `OPEN_FAILED`, 4 sai lệch đang
+chờ, 25 cảnh báo chưa xem), mã thoát 1. Hiển thị "Algo Trading: khong ro" cho cả hai EA — trung
+thực, vì chúng chưa nạp bản mới nên chưa gửi `trade_allowed`.
+
+Tài liệu: `KE-HOACH-CHAY-THAT.md` mục 1.2 đổi từ "làm Telegram" thành "đã bỏ, và đây là hệ quả"
+kèm lịch kiểm tay; `RUNBOOK.md` mục 5 đưa `tinh-hinh` lên thành việc đầu tiên mỗi lần đăng nhập;
+`BACKLOG.md` thêm mục **"Quyết định có chủ đích, KHÔNG phải thiếu sót"** để lượt rà soát sau không
+ghi Telegram thành món nợ rồi "sửa" nó.
+
+`bridge/alerting.py` giữ nguyên — bật lại chỉ là điền hai khoá vào `config.toml`.
+
+**523 test xanh (+5), `ruff` sạch.**

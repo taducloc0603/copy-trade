@@ -24,6 +24,7 @@ from bridge.ops import (
     kiem_reason_client,
     sao_luu,
     thu_hoi_token,
+    thu_muc_sao_luu,
 )
 from bridge.protocol.auth import hash_token
 
@@ -132,6 +133,101 @@ def lenh_kiem_reason(db: Database, _args: argparse.Namespace) -> int:
     return 1
 
 
+def lenh_tinh_hinh(db: Database, _args: argparse.Namespace, db_path: Path) -> int:
+    """Trả lời đúng một câu hỏi: **có gì cần làm không?**
+
+    Hệ thống chạy trên VPS không có người trông và kênh cảnh báo ngoài đang tắt có chủ đích, nên
+    mọi cảnh báo nằm im trong database cho tới khi có người nhìn. Lệnh này là cơ chế bù: nó gom
+    những thứ mà mất chúng là mất tiền vào một màn hình đọc trong năm giây.
+
+    **Mã thoát khác 0 khi có mục cần chú ý** — để cắm được vào Scheduled Task về sau.
+
+    Dùng lại `bridge/web/views.py` thay vì viết truy vấn thứ hai: dashboard và lệnh này không bao
+    giờ được nói khác nhau.
+    """
+    from bridge.clock import parse_iso, utc_now
+    from bridge.web import views
+
+    can_chu_y: list[str] = []
+    chung = views.trang_thai_chung(db)
+    so = views.chi_so(db)
+
+    mode = chung["run_mode"]
+    if mode == "RUNNING":
+        print(f"run_mode : {mode}")
+    else:
+        print(f"run_mode : {mode}  <-- DANG KHONG COPY LENH MOI")
+        can_chu_y.append(f"run_mode = {mode}")
+
+    print()
+    for a in chung["agents"]:
+        cot = [f"  {a['agent_id']:<12} {a['role']:<8} {a['status']:<9}"]
+        if not a["broker_connected"]:
+            cot.append("broker: MAT KET NOI")
+            can_chu_y.append(f"{a['agent_id']} mat ket noi broker")
+        if a.get("trade_allowed") is False:
+            cot.append("Algo Trading: TAT")
+            can_chu_y.append(f"{a['agent_id']} tat Algo Trading")
+        elif a.get("trade_allowed") is None and a["role"] != "CLICKER":
+            cot.append("Algo Trading: khong ro")
+        if a["status"] != "ONLINE":
+            can_chu_y.append(f"{a['agent_id']} dang {a['status']}")
+        print("  ".join(cot))
+
+    print()
+    print(f"cap dang hedge     : {so['hedged']}")
+    if so["attention"]:
+        print(f"cap can can thiep  : {so['attention']}")
+        for cap in db.list_pairs_needing_attention():
+            print(f"    {cap['pair_id']}  {cap['status']}"
+                  f"{'  phia ' + cap['orphan_side'] if cap['orphan_side'] else ''}")
+        can_chu_y.append(f"{so['attention']} cap can can thiep")
+    else:
+        print("cap can can thiep  : 0")
+
+    cho = db.query_one("SELECT MIN(created_at) AS cu_nhat, COUNT(*) n FROM reconcile_finding "
+                       "WHERE resolution = 'PENDING'")
+    if cho and cho["n"]:
+        tuoi = (utc_now() - parse_iso(cho["cu_nhat"])).total_seconds() / 3600.0
+        print(f"sai lech dang cho  : {cho['n']}  (cu nhat {tuoi:.1f} gio)")
+        can_chu_y.append(f"{cho['n']} sai lech dang cho xu ly")
+    else:
+        print("sai lech dang cho  : 0")
+
+    canh_bao = db.query_one(
+        "SELECT COUNT(*) n FROM alert WHERE acknowledged_at IS NULL "
+        "AND level IN ('ERROR', 'CRITICAL')")["n"]
+    if canh_bao:
+        print(f"canh bao chua xem  : {canh_bao} (ERROR/CRITICAL)")
+        for r in db.query_all(
+                "SELECT level, code, substr(message, 1, 70) m FROM alert "
+                "WHERE acknowledged_at IS NULL AND level IN ('ERROR', 'CRITICAL') "
+                "ORDER BY id DESC LIMIT 5"):
+            print(f"    {r['level']:<8} {r['code']:<26} {r['m']}")
+        can_chu_y.append(f"{canh_bao} canh bao ERROR/CRITICAL chua xem")
+    else:
+        print("canh bao chua xem  : 0")
+
+    ban = sorted(thu_muc_sao_luu(db_path).glob("bridge-*.db"))
+    if ban:
+        gio = (utc_now().timestamp() - ban[-1].stat().st_mtime) / 3600.0
+        print(f"sao luu gan nhat   : {ban[-1].name} ({gio:.1f} gio truoc)")
+        if gio > 48:
+            can_chu_y.append(f"sao luu gan nhat da {gio:.0f} gio truoc")
+    else:
+        print("sao luu gan nhat   : CHUA CO")
+        can_chu_y.append("chua co ban sao luu nao")
+
+    print()
+    if not can_chu_y:
+        print("=> Khong co gi can lam.")
+        return 0
+    print(f"=> {len(can_chu_y)} muc can chu y:")
+    for muc in can_chu_y:
+        print(f"   - {muc}")
+    return 1
+
+
 def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
     """Xem và sửa cấu hình một Client (B-11).
 
@@ -214,6 +310,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("bao-tri", help="Retention + sao luu + don ban cu")
     sub.add_parser("kiem-reason", help="TEST-23: moi vi the Client phai la DEAL_REASON_CLIENT")
 
+    sub.add_parser("tinh-hinh", help="Co gi can lam khong (thoat khac 0 neu co)")
+
     cf = sub.add_parser("cau-hinh-client", help="Xem hoac sua cau hinh mot Client")
     cf.add_argument("client_id")
     cf.add_argument("--copy-mode", dest="copy_mode", choices=("SAME", "OPPOSITE"))
@@ -245,6 +343,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_bao_tri(db, args, db_path)
         if args.lenh == "kiem-reason":
             return lenh_kiem_reason(db, args)
+        if args.lenh == "tinh-hinh":
+            return lenh_tinh_hinh(db, args, db_path)
         if args.lenh == "cau-hinh-client":
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "run-mode":

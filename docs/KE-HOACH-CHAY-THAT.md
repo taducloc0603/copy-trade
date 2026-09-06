@@ -33,14 +33,40 @@ Mã đã viết và **biên dịch sạch**, nhưng terminal vẫn chạy bản 
 
 Chi phí: ~2 lệnh demo.
 
-### 1.2 Gửi được một tin Telegram thật *(cần bạn: bot token + chat id)*
+### 1.2 ~~Telegram~~ — đã quyết định BỎ, và đây là hệ quả
 
-Đường gửi có test với sender giả, nhưng **chưa tin nào từng tới điện thoại**. Trên VPS đây là
-kênh duy nhất báo cho bạn khi có sự cố — nếu nó không chạy thì mọi alert ERROR/CRITICAL ở các
-phase trước đều vô nghĩa.
+Người dùng chốt không dùng kênh cảnh báo ngoài. Lựa chọn hợp lệ, nhưng phải nói thẳng cái mất:
 
-Cần: tạo bot qua `@BotFather`, lấy `telegram_token` và `telegram_chat_id`, điền vào `config.toml`.
-Sau đó ép một alert CRITICAL và xác nhận tin tới nơi trong vài giây.
+> **Sẽ không có gì chủ động báo cho bạn khi hệ thống gặp sự cố.** Mọi cảnh báo nằm im trong
+> database cho tới khi có người nhìn.
+
+Việc phân mức alert ở phase 10–11 (nâng `ORPHANED_MASTER`, `CLOSE_FAILED`, `TRADE_NOT_ALLOWED`,
+`KHOI_DONG_EP_PAUSED`… lên ERROR) dựa trên giả định "chỉ ERROR trở lên mới đi ra ngoài". Không có
+kênh ra thì việc phân mức đó **tạm thời mất tác dụng** — nó vẫn đúng, chỉ là không ai nhận.
+
+Tình huống cụ thể phải chấp nhận: VPS khởi động lại lúc 3 giờ sáng → `run_mode` bị ép về `PAUSED`
+(D-15) → **ngừng copy hoàn toàn** → không ai biết cho tới lần đăng nhập tiếp theo.
+
+**Cơ chế bù — bắt buộc, không phải tuỳ chọn:**
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh
+```
+
+Một màn hình đọc trong năm giây, gom `run_mode`, trạng thái từng agent (kèm Algo Trading), cặp
+cần can thiệp, sai lệch đang chờ, cảnh báo ERROR/CRITICAL chưa xem, và tuổi bản sao lưu gần nhất.
+Thoát khác 0 khi có việc cần làm.
+
+**Lịch kiểm tay thay cho thông báo đẩy:**
+
+| Khi nào | Vì sao |
+|---|---|
+| **Mỗi lần RDP vào VPS** — việc đầu tiên | Rẻ, và bắt được mọi thứ tích luỹ từ lần trước |
+| **Bắt buộc sau mỗi lần VPS khởi động lại** | `run_mode` chắc chắn đang `PAUSED`, tức đang không copy |
+| Ít nhất **một lần mỗi ngày** trong tuần đầu chạy thật | Chưa có dữ liệu về tần suất sự cố thật |
+
+Bật lại Telegram sau này chỉ là điền hai khoá vào `config.toml` — code vẫn còn nguyên trong
+`bridge/alerting.py` và cấu hình trống thì kênh im lặng chứ không lỗi.
 
 ### 1.3 Chạy lại toàn bộ nghiệm thu sau khi EA đổi
 
@@ -115,7 +141,8 @@ Khi đã qua cả ba giai đoạn:
   chưa đo lần nào.
 - **Volume nhỏ nhất sàn cho phép**, mở rộng sau khi quan sát vài chục lệnh.
 - `can_close_master = 0` (mặc định) — cascade chưa từng chạy trên demo (B-06).
-- Kiểm `python -m bridge.admin kiem-reason` mỗi ngày trong tuần đầu.
+- Kiểm `python -m bridge.admin tinh-hinh` **mỗi lần đăng nhập**, và `kiem-reason` mỗi ngày
+  trong tuần đầu.
 
 ---
 

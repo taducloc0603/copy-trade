@@ -103,6 +103,7 @@ Toàn bộ qua `python -m bridge.admin`. **Không sửa DB bằng tay**, và kh�
 món nợ đó đã một lần làm mất token của clicker.
 
 ```powershell
+.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh                            # co gi can lam khong
 .\.venv\Scripts\python.exe -m bridge.admin liet-ke
 .\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
@@ -131,6 +132,16 @@ lưu chưa từng khôi phục thử thì không phải bản sao lưu.
 ---
 
 ## 5. Xem log và trạng thái
+
+**Việc đầu tiên mỗi lần đăng nhập vào máy:**
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh
+```
+
+Nó trả lời đúng một câu hỏi — *có gì cần làm không?* — và thoát khác 0 khi có. Kênh cảnh báo
+ngoài đang **tắt có chủ đích**, nên đây là cách duy nhất bạn biết chuyện đã xảy ra; xem
+`docs/KE-HOACH-CHAY-THAT.md` mục 1.2 để biết lịch kiểm.
 
 Log: `logs/bridge.log`, xoay vòng theo ngày, giữ 30 ngày, UTF-8. Có bộ lọc che token —
 `grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06: 0 dòng trên ~15.000 dòng log).

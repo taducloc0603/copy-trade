@@ -7,6 +7,19 @@ hưởng tới cách dùng hôm nay) và **mở rộng** (chưa cần cho MVP). 
 
 ---
 
+## Quyết định có chủ đích, KHÔNG phải thiếu sót
+
+**Kênh cảnh báo Telegram bị tắt.** Người dùng chốt ngày 2026-09-06. `bridge/alerting.py` vẫn còn
+nguyên và hoạt động; cấu hình trống thì kênh im lặng chứ không lỗi, nên bật lại chỉ là điền
+`telegram_token` + `telegram_chat_id` vào `config.toml`.
+
+Hệ quả đã được chấp nhận: **không có gì chủ động báo khi hệ thống gặp sự cố.** Cơ chế bù là
+`python -m bridge.admin tinh-hinh` kèm lịch kiểm tay — xem `docs/KE-HOACH-CHAY-THAT.md` mục 1.2.
+
+Đừng ghi việc này thành một món nợ ở lượt rà soát sau.
+
+---
+
 ## Món nợ — ảnh hưởng tới cách dùng hôm nay
 
 ### B-01 — Mỗi terminal Client chỉ copy được một symbol
