@@ -1852,3 +1852,17 @@ Ba file EA biên dịch lại: **0 lỗi, 0 cảnh báo**. Chưa nạp lại tr�
   không có chỗ nào mâu thuẫn với việc EA Master nay đóng được lệnh.
 
 **518 test xanh (+2) và 3 test tải, `ruff` sạch.**
+
+### Kế hoạch chạy thật
+
+Viết `docs/KE-HOACH-CHAY-THAT.md`: ba giai đoạn theo thứ tự nên làm, tách rõ **cái gì làm được
+trên máy hiện tại** (nghiệm thu B-09, Telegram thật, chạy lại nghiệm thu sau khi EA đổi) khỏi
+**cái gì chỉ VPS mới đo được** (B-08 phiên RDP ngắt, TEST-19 mất điện — trên VPS thì *force stop*
+làm được, chạy 24 giờ) và **cái gì không phải kỹ thuật** (điều khoản broker: hai tài khoản ngược
+chiều cùng một IP).
+
+Kèm bảng "đã có bằng chứng, khỏi kiểm lại" để lần sau không ai chạy lại thứ đã chứng minh.
+
+Rà soát cũng xác nhận: không còn `TODO`/`FIXME` nào trong `bridge/`, `clicker/`, `ea/`, `tests/`;
+không test nào bị `skip`/`xfail`; không tham chiếu file hỏng trong `docs/`; và cấu trúc mọi bảng
+của `data/bridge.db` **khớp hoàn toàn** với một database tạo mới từ đầu.

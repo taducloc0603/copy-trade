@@ -237,6 +237,10 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 
 ## 8. Trước khi chuyển sang tài khoản thật
 
+> Kế hoạch chi tiết theo thứ tự nên làm nằm ở **`docs/KE-HOACH-CHAY-THAT.md`**. Mục này là bản
+> rút gọn của các điều kiện.
+
+
 Đây là điều kiện vận hành, không phải checklist kỹ thuật. Không mục nào được bỏ.
 
 1. **Chạy ổn định trên demo ít nhất một tuần liên tục** trước khi động vào tiền thật.
