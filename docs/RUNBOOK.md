@@ -1,0 +1,177 @@
+# RUNBOOK — vận hành MT5 Copy Bridge
+
+*Chốt ngày 2026-09-06 (Phase 10). Đọc `docs/DECISIONS.md` trước nếu bạn định sửa hành vi;
+tài liệu này chỉ nói cách **chạy**.*
+
+---
+
+## 0. Điều quan trọng nhất, đọc trước tiên
+
+**Hệ thống luôn khởi động ở `run_mode = PAUSED`, không có ngoại lệ** (D-15). Kể cả khi máy tự
+bật lại lúc 3 giờ sáng sau khi mất điện. Nếu DB đang ghi `RUNNING`, Bridge sẽ **đặt lại về
+`PAUSED`** và sinh alert `KHOI_DONG_EP_PAUSED`.
+
+Nghĩa là: **sau mỗi lần khởi động lại, phải có người bấm `RUNNING` bằng tay.** Đó là chủ đích,
+không phải thiếu sót. Thứ tệ nhất sau một sự cố là hệ thống tự hồi sinh và bắt đầu vào lệnh khi
+chưa ai kịp nhìn màn hình.
+
+**Nút dừng khẩn cấp** nằm ở dashboard, phải gõ đúng cụm `DONG TAT CA` để xác nhận. Người vận
+hành phải biết cách bấm nó **trước khi** cần dùng tới.
+
+---
+
+## 1. Kiến trúc chạy — ba tiến trình
+
+| Tiến trình | Chạy ở đâu | Vai trò |
+|---|---|---|
+| **Bridge** (`python -m bridge`) | Máy Bridge | TCP server 8787, dashboard 8080, toàn bộ logic. |
+| **EA** (`CopyBridgeClient.mq5`) | Trong mỗi terminal MT5 | Gửi event, thực thi lệnh **ĐÓNG**. |
+| **clicker** (`python -m clicker`) | Cùng phiên đăng nhập Windows với terminal Client | Mở lệnh qua hộp thoại New Order (D-21, D-22, D-26). |
+
+Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
+
+> **clicker KHÔNG chạy được như Windows Service.** Service nằm ở session 0 và không thấy cửa sổ
+> của phiên người dùng. Nó phải là **Scheduled Task theo phiên đăng nhập**, kèm autologon và tắt
+> sleep/hibernate. Bridge thì chạy service bình thường.
+
+---
+
+## 2. Cài đặt
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+Copy-Item config.example.toml config.toml     # roi dien gia tri that
+```
+
+`config.toml` nằm trong `.gitignore`. Các khoá:
+
+```toml
+[bridge]
+host = "0.0.0.0"        # nghe tren moi interface; firewall moi la thu chan (muc 6)
+port = 8787             # agent
+web_port = 8080         # dashboard
+db_path = "data/bridge.db"
+
+[security]
+dashboard_password = "..."
+telegram_token   = ""    # de trong thi kenh canh bao im lang, khong loi
+telegram_chat_id = ""
+```
+
+Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA (mục 4).
+
+---
+
+## 3. Khởi động và dừng
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge                      # Bridge + dashboard
+.\.venv\Scripts\python.exe -m clicker --token <TOKEN> --account-login 538217
+```
+
+Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
+
+1. Bật Bridge **khi `run_mode` vẫn là `PAUSED`**. Backlog trong outbox của EA chảy vào và được
+   ghi nhận `IGNORED`. Đây là cách sạch nhất để dọn hàng đợi mà không sinh lệnh nào.
+2. Bật clicker, **kiểm canary xanh** trên dashboard trước khi đi tiếp.
+3. Chờ 0 event `PENDING`, rồi mới đặt `RUNNING`.
+
+Bật `RUNNING` trước bước 3 thì event cũ bị từ chối bằng `EVENT_TOO_OLD` thay vì `IGNORED` —
+không sai, nhưng sinh alert nhiễu.
+
+Dừng: `Ctrl+C` (bắt `SIGINT`/`SIGTERM`, đóng sạch và đánh mọi agent về `OFFLINE`).
+
+---
+
+## 4. Lệnh vận hành
+
+Toàn bộ qua `python -m bridge.admin`. **Không sửa DB bằng tay**, và không viết script tạm nữa —
+món nợ đó đã một lần làm mất token của clicker.
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin liet-ke
+.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217
+.\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
+.\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
+.\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
+.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING      # dat
+.\.venv\Scripts\python.exe -m bridge.admin sao-luu
+.\.venv\Scripts\python.exe -m bridge.admin bao-tri               # retention + sao luu + don ban cu
+.\.venv\Scripts\python.exe -m bridge.admin kiem-reason           # TEST-23
+```
+
+**Token thô chỉ hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc
+lại. `thu-hoi` không xoá dòng agent (sẽ mất lịch sử); nó đặt hash thành giá trị không token nào
+sinh ra được và tắt `enabled`.
+
+Đặt `bao-tri` chạy hằng ngày bằng Scheduled Task. Nó chạy retention (D-17), `VACUUM INTO` một
+bản sao lưu, giữ 14 bản gần nhất, rồi **tự mở lại bản vừa tạo để kiểm chứng** — vì một bản sao
+lưu chưa từng khôi phục thử thì không phải bản sao lưu.
+
+---
+
+## 5. Xem log và trạng thái
+
+Log: `logs/bridge.log`, xoay vòng theo ngày, giữ 30 ngày, UTF-8. Có bộ lọc che token —
+`grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06: 0 dòng trên ~15.000 dòng log).
+
+Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba thứ nhìn trước tiên:
+`run_mode`, canary của clicker, và số finding đối chiếu đang chờ.
+
+---
+
+## 6. Mạng và bảo mật — **CHƯA LÀM, phải làm trước khi dùng tiền thật**
+
+Những mục dưới đây **chưa được thực hiện hay kiểm chứng** ở lượt này vì cần môi trường thật
+(máy thứ ba, VPS, quyền quản trị mạng):
+
+- [ ] Cài Tailscale trên máy Bridge và các node agent; ghi địa chỉ `100.x.y.z` vào đây.
+- [ ] Tailscale ACL: chỉ node agent chạm được 8787, chỉ máy quản trị chạm được 8080.
+- [ ] Firewall Windows: chặn 8787 và 8080 trên **mọi** interface trừ interface Tailscale và
+      loopback. Không bao giờ mở ra Internet công cộng.
+- [ ] Kiểm bằng **máy thứ ba**: cả hai port không truy cập được từ ngoài Tailscale.
+- [ ] Đăng ký Bridge làm Windows Service (NSSM hoặc `pywin32`), tự khởi động khi máy bật.
+- [ ] Đăng ký clicker làm **Scheduled Task theo phiên đăng nhập** + autologon + tắt sleep.
+- [ ] Kiểm: giết tiến trình Bridge → dịch vụ tự bật lại, và bật lại ở `PAUSED`.
+- [ ] Kiểm: Telegram nhận alert CRITICAL trong vài giây; chặn mạng tới Telegram → luồng giao
+      dịch không chậm hay lỗi (đã có test tự động cho vế sau, chưa gửi tin thật lần nào).
+
+> Tailscale xác thực **máy**, không xác thực terminal hay tài khoản MT5 nào đang gửi lệnh. Token
+> ở tầng ứng dụng vẫn bắt buộc, không bỏ được.
+
+---
+
+## 7. Sự cố thường gặp
+
+| Hiện tượng | Nguyên nhân thường gặp | Xử lý |
+|---|---|---|
+| Master vào lệnh mà Client không copy | `run_mode = PAUSED`, hoặc clicker chưa chạy / canary đỏ | Xem dashboard. Clicker `DEGRADED` thì **cố ý không copy** và không rơi về đường EA (D-25). |
+| Alert `UI_OPEN_BUSY` | Hai lệnh Master trong ~600 ms; mỗi Client chỉ cho **một** `OPEN_UI` đang bay | Lệnh sau **bị bỏ** — đây là mất hedge thật, nên nó ở mức ERROR và đi ra Telegram. Kiểm và mở bù bằng tay. |
+| Alert `ORPHANED_MASTER` | Client đóng khi `can_close_master = 0` (D-20) | Đúng thiết kế. Quyết định bằng tay: đóng Master hay mở lại Client. |
+| Agent `DEGRADED` | Terminal mất kết nối broker nhưng EA còn sống | Bridge **ngừng gửi command** cho agent đó. Chờ terminal nối lại. |
+| Finding đối chiếu đang chờ | Sổ sách lệch với thực tế trên terminal | Mở finding trên dashboard, đọc `evidence_json` (có đủ ba nguồn) rồi mới `accept`. Không accept khi chưa đọc bằng chứng. |
+| EA gửi bù lặp không dứt | Đã sửa ở Phase 10: trần 3 lần cho mỗi mốc `from_seq` | Nếu tái diễn, xem `bridge/protocol/server.py`. |
+| Lệnh mở bị từ chối vì symbol lệch | Hộp thoại New Order lấy symbol theo chart đang mở | **Giới hạn đã biết** (`BACKLOG.md` B-01): mỗi terminal Client copy được một symbol. Mở đúng chart đó. |
+
+---
+
+## 8. Trước khi chuyển sang tài khoản thật
+
+Đây là điều kiện vận hành, không phải checklist kỹ thuật. Không mục nào được bỏ.
+
+1. **Chạy ổn định trên demo ít nhất một tuần liên tục** trước khi động vào tiền thật.
+2. **Hoàn thành toàn bộ mục 6** ở trên. Hiện chưa mục nào được kiểm chứng.
+3. **Chạy TEST-19 thật** — rút điện hoặc tắt máy ảo đột ngột, rồi kiểm không mất event và bộ đối
+   chiếu bắt đúng sai lệch. Đây là lý do `synchronous = FULL` tồn tại, và hiện nó **chưa từng
+   được chứng minh bằng quan sát** (`BACKLOG.md` B-02).
+4. **Đọc điều khoản của cả hai broker** về hedging, bonus, giao dịch nhiều tài khoản và copy
+   trading. Một số broker cấm hoặc huỷ lợi nhuận từ các mô hình này.
+5. **Đối chiếu tay khác biệt giữa hai sàn:** tên symbol, contract size, volume tối thiểu và bước
+   volume, spread và giá báo, thời gian khớp lệnh, giờ giao dịch từng symbol.
+6. **Bắt đầu bằng volume nhỏ nhất có thể và một symbol duy nhất.** Mở rộng dần sau khi quan sát
+   ít nhất vài chục lệnh.
+7. **Người vận hành phải biết cách bấm dừng khẩn cấp trước khi cần dùng tới nó.** Thử một lần
+   trên demo.
+8. Biết rõ những gì **chưa từng chạy trên sàn thật** — `docs/ACCEPTANCE.md` cột "Nguồn", mọi
+   dòng ghi TEST hoặc KHÔNG.

@@ -126,7 +126,7 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = Non
     for migration in discover_migrations(migrations_dir):
         if migration.version <= applied_before:
             continue
-        log.info("Áp dụng migration %03d_%s", migration.version, migration.name)
+        log.info("Ap dung migration %03d_%s", migration.version, migration.name)
 
         statements = split_statements(migration.read_sql())
         # PRAGMA không chạy được trong giao dịch (journal_mode chẳng hạn) và dù sao cũng phải
@@ -150,5 +150,5 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path | None = Non
         version = migration.version
 
     if version == applied_before:
-        log.info("Schema đã ở version %d, không có migration nào phải chạy", version)
+        log.info("Schema da o version %d, khong co migration nao phai chay", version)
     return version

@@ -242,15 +242,16 @@ def xem_truoc_he_so(multiplier: float, volume_min: float = 0.01,
     Nhìn trường hợp đẹp thì ai cũng thấy ổn; chỉ khi thấy dòng thứ hai người ta mới nhận ra hệ
     số 0.50 sẽ làm rơi mọi lệnh nhỏ.
     """
-    from decimal import ROUND_DOWN, Decimal
+    from decimal import Decimal
+
+    from bridge.engine.sizing import round_to_step
 
     dong = []
-    # Vi du thu hai la lenh **nho nhat** sàn cho phep: do la cho he so nho lam roi lenh,
-    # va la cho nguoi ta khong nghi toi khi chi nhin truong hop dep.
+    # Dung thang `round_to_step` cua engine chu khong viet lai phep lam tron o day: mot ban xem
+    # truoc lech voi thu engine that su lam con te hon la khong co xem truoc.
     for master in ("1.00", "0.01"):
         thô = Decimal(master) * Decimal(str(multiplier))
-        buoc = Decimal(str(volume_step))
-        lam_tron = (thô / buoc).quantize(Decimal(1), rounding=ROUND_DOWN) * buoc
+        lam_tron = round_to_step(thô, Decimal(str(volume_step)), "DOWN")
         if lam_tron < Decimal(str(volume_min)):
             dong.append(f"Master {master} → {thô.normalize()}, "
                         f"dưới mức tối thiểu {volume_min} → bỏ qua lệnh")

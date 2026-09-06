@@ -142,7 +142,7 @@ class Database:
         try:
             return int(raw)
         except ValueError:
-            log.warning("system_config[%s] = %r không phải số, dùng mặc định %d", key, raw, default)
+            log.warning("system_config[%s] = %r khong phai so, dung mac dinh %d", key, raw, default)
             return default
 
     def set_config(self, key: str, value: str) -> None:
@@ -362,7 +362,7 @@ class Database:
                 (master_position_id, client_id),
             ).fetchone() is not None:
                 log.info(
-                    "Đã có pair cho (master_position_id=%s, client_id=%s), bỏ qua event lặp",
+                    "Da co pair cho (master_position_id=%s, client_id=%s), bo qua event lap",
                     master_position_id, client_id,
                 )
                 return None
@@ -398,7 +398,7 @@ class Database:
                 if duplicate is None:
                     raise
                 log.info(
-                    "Đã có pair cho (master_position_id=%s, client_id=%s), bỏ qua event lặp",
+                    "Da co pair cho (master_position_id=%s, client_id=%s), bo qua event lap",
                     master_position_id, client_id,
                 )
                 return None
@@ -520,7 +520,7 @@ class Database:
                 ).fetchone()
                 if existing is None:
                     raise
-                log.info("Event %s đã có trong DB, bỏ qua bản trùng", event_id,
+                log.info("Event %s da co trong DB, bo qua ban trung", event_id,
                          extra={"event_id": event_id})
                 return existing, False
             row = conn.execute("SELECT * FROM event WHERE event_id = ?", (event_id,)).fetchone()

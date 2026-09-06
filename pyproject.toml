@@ -37,5 +37,8 @@ select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = [
+    "cham: kiem thu tai, chay rieng bang -m cham",
+]
 testpaths = ["tests"]
 pythonpath = ["."]

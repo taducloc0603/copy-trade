@@ -242,7 +242,7 @@ async def test_dong_rac_khong_lam_sap_ket_noi(server: BridgeServer, agents_db: D
                                volume_after=1.0, event_id="EVT-SAU-RAC")
 
         await _wait_until(lambda: agents_db.get_event("EVT-SAU-RAC") is not None)
-        assert any("không giải mã được" in r.getMessage() for r in caplog.records)
+        assert any("khong giai ma duoc" in r.getMessage() for r in caplog.records)
     finally:
         await agent.kill()
 

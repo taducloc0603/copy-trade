@@ -16,6 +16,7 @@ import signal
 
 import uvicorn
 
+from bridge.alerting import tao_kenh
 from bridge.config import ConfigError, load_config
 from bridge.db.repo import Database
 from bridge.engine.processor import EventProcessor
@@ -27,6 +28,23 @@ from bridge.web.app import Dashboard, tao_app
 log = get_logger(__name__)
 
 
+def ep_ve_paused(db: Database) -> str | None:
+    """Ép `run_mode` về `PAUSED` mỗi lần khởi động (D-15). Trả về giá trị trước đó.
+
+    Không phải chỉ cảnh báo. `run_mode` nằm trong DB nên nó **sống sót qua mất điện**: máy tự bật
+    lại lúc 3 giờ sáng với `RUNNING` còn nguyên trong bảng `config` là hệ thống tự hồi sinh và vào
+    lệnh khi chưa ai kịp nhìn màn hình — đúng thứ D-15 tồn tại để chặn. Cái giá là mỗi lần khởi
+    động lại đều phải bấm `RUNNING` bằng tay, và đó là chủ đích.
+    """
+    truoc = db.get_config("run_mode")
+    if truoc != "PAUSED":
+        db.set_config("run_mode", "PAUSED")
+        db.create_alert("WARNING", "KHOI_DONG_EP_PAUSED",
+                        f"Bridge khoi dong lai: dat run_mode tu {truoc} ve PAUSED theo D-15")
+        log.warning("run_mode dang la %s, da dat ve PAUSED (D-15)", truoc)
+    return truoc
+
+
 async def run() -> int:
     try:
         config = load_config()
@@ -35,12 +53,8 @@ async def run() -> int:
         return 2
 
     db = Database(config.db_path)
-    run_mode = db.get_config("run_mode")
-    log.info("Bridge khoi dong, database %s, run_mode = %s", config.db_path, run_mode)
-    if run_mode != "PAUSED":
-        # Khong tu sua ve PAUSED: gia tri nay do nguoi van hanh dat, va tu doi
-        # trang thai van hanh sau lung ho la viec khong duoc phep.
-        log.warning("run_mode dang la %s chu khong phai PAUSED", run_mode)
+    truoc = ep_ve_paused(db)
+    log.info("Bridge khoi dong, database %s, run_mode truoc do = %s", config.db_path, truoc)
 
     server = BridgeServer(db, ServerConfig(host=config.bridge.host, port=config.bridge.port))
     dispatcher = CommandDispatcher(db, server)
@@ -56,6 +70,11 @@ async def run() -> int:
         tao_app(dashboard), host=config.bridge.host, port=config.bridge.web_port,
         log_level="warning", access_log=False))
     web_task = asyncio.create_task(web.serve())
+
+    # Kênh cảnh báo ra ngoài chạy ở task riêng. Nó hỏng thì chỉ mất thông báo, luồng giao dịch
+    # không hề biết (plan 10.4).
+    kenh = tao_kenh(db, config.security)
+    await kenh.start()
     log.info("Dashboard tai http://%s:%d", config.bridge.host, config.bridge.web_port)
 
     stop = asyncio.Event()
@@ -70,6 +89,7 @@ async def run() -> int:
         pass
     finally:
         log.info("Bridge dung lai")
+        await kenh.stop()
         web.should_exit = True
         with contextlib.suppress(asyncio.CancelledError, Exception):
             await asyncio.wait_for(web_task, timeout=5)

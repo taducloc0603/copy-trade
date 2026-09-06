@@ -669,7 +669,10 @@ class EventProcessor:
             (client_id,),
         )
         if inflight is not None:
-            self._alert("WARNING", "UI_OPEN_BUSY",
+            # Muc ERROR chu khong phai WARNING (chot o phase 10). Bo mot lenh copy nghia la
+            # **mat hedge**, va tu phase 10 chi ERROR/CRITICAL moi di ra Telegram — de o WARNING
+            # thi no nam lai trong dashboard cho toi luc co nguoi tinh co mo ra xem.
+            self._alert("ERROR", "UI_OPEN_BUSY",
                         f"Client {client_id} dang co lenh mo qua giao dien "
                         f"{inflight['command_id']} chua xong, bo qua lenh nay",
                         agent_id=clicker_id)

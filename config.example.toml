@@ -9,3 +9,9 @@ db_path = "data/bridge.db"
 
 [security]
 # Token thật đặt trong config.toml, file này nằm trong .gitignore
+dashboard_password = ""
+
+# Kenh canh bao ngoai (plan 10.4). Thieu hai muc nay thi kenh im lang, khong loi.
+# Chi alert muc ERROR va CRITICAL moi duoc gui ra; INFO/WARNING o lai trong dashboard.
+telegram_token = ""
+telegram_chat_id = ""

@@ -60,11 +60,11 @@ def label(group: dict[str, str], key: str) -> str:
     thiếu một nhãn không đáng làm sập dashboard.
     """
     if key is None:
-        _log.warning("label() nhận key None")
+        _log.warning("label() nhan key None")
         return ""
     text = group.get(key)
     if text is None:
-        _log.warning("Thiếu nhãn tiếng Việt cho key %r", key)
+        _log.warning("Thieu nhan tieng Viet cho key %r", key)
         return key
     return text
 

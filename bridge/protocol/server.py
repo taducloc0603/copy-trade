@@ -107,7 +107,7 @@ class AgentConnection:
             self.writer.write(encode_line(message.model_dump(exclude_none=True)))
             await self.writer.drain()
         except (ConnectionError, RuntimeError) as exc:
-            log.warning("Không gửi được message tới agent: %s", exc,
+            log.warning("Khong gui duoc message toi agent: %s", exc,
                         extra={"agent_id": self.agent_id})
 
     def close(self) -> None:
@@ -148,7 +148,7 @@ class BridgeServer:
             self._handle_client, self.config.host, self.config.port
         )
         self._monitor_task = asyncio.create_task(self._monitor_loop())
-        log.info("Bridge lắng nghe trên %s:%d", self.config.host, self.port)
+        log.info("Bridge lang nghe tren %s:%d", self.config.host, self.port)
 
     async def stop(self) -> None:
         if self._monitor_task is not None:
@@ -225,15 +225,15 @@ class BridgeServer:
                 return
             await self._read_loop(reader, connection)
         except TimeoutError:
-            log.warning("Agent tại %s không gửi hello trong %.1fs, đóng kết nối",
+            log.warning("Agent tai %s khong gui hello trong %.1fs, dong ket noi",
                         peer, self.config.hello_timeout_sec)
             await _send_error(writer, ERR_HELLO_TIMEOUT, "Khong gui hello dung han")
         except (ConnectionError, asyncio.IncompleteReadError):
-            log.info("Agent tại %s ngắt kết nối", peer)
+            log.info("Agent tai %s ngat ket noi", peer)
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("Lỗi không lường trước khi phục vụ agent tại %s", peer)
+            log.exception("Loi khong luong truoc khi phuc vu agent tai %s", peer)
         finally:
             if connection is not None:
                 self._unregister(connection)
@@ -252,11 +252,11 @@ class BridgeServer:
                 try:
                     message = parse_agent_message(decode_line(line))
                 except (ProtocolDecodeError, ValidationError, ValueError) as exc:
-                    log.warning("Message đầu tiên từ %s không hợp lệ: %s", peer, exc)
+                    log.warning("Message dau tien tu %s khong hop le: %s", peer, exc)
                     await _send_error(writer, ERR_BAD_MESSAGE, "Message dau tien khong hop le")
                     return None
                 if not isinstance(message, HelloMessage):
-                    log.warning("Agent tại %s gửi %r trước khi hello", peer, message.kind)
+                    log.warning("Agent tai %s gui %r truoc khi hello", peer, message.kind)
                     await _send_error(writer, ERR_HELLO_EXPECTED, "Phai gui hello truoc")
                     return None
                 hello = message
@@ -265,23 +265,23 @@ class BridgeServer:
         agent = self._find_agent_by_token(hello.token)
         if agent is None:
             # Không bao giờ ghi token vào log, kể cả token sai.
-            log.warning("Từ chối agent tại %s: token không khớp agent nào", peer)
+            log.warning("Tu choi agent tai %s: token khong khop agent nao", peer)
             await _send_error(writer, ERR_BAD_TOKEN, "Token khong hop le")
             return None
 
         agent_id = agent["agent_id"]
         if not agent["enabled"]:
-            log.warning("Từ chối agent %s tại %s: đã bị vô hiệu hoá", agent_id, peer)
+            log.warning("Tu choi agent %s tai %s: da bi vo hieu hoa", agent_id, peer)
             await _send_error(writer, ERR_AGENT_DISABLED, "Agent da bi vo hieu hoa")
             return None
         if agent["role"] != hello.role:
-            log.warning("Từ chối agent %s tại %s: role khai báo %s, DB ghi %s",
+            log.warning("Tu choi agent %s tai %s: role khai bao %s, DB ghi %s",
                         agent_id, peer, hello.role, agent["role"])
             await _send_error(writer, ERR_ROLE_MISMATCH, "Role khong khop")
             return None
         if agent["account_login"] is not None and agent["account_login"] != hello.account_login:
             # Một token chỉ dùng cho đúng một tài khoản MT5.
-            log.warning("Từ chối agent %s tại %s: account_login %s không khớp %s trong DB",
+            log.warning("Tu choi agent %s tai %s: account_login %s khong khop %s trong DB",
                         agent_id, peer, hello.account_login, agent["account_login"])
             await _send_error(writer, ERR_ACCOUNT_MISMATCH, "account_login khong khop")
             return None
@@ -289,7 +289,7 @@ class BridgeServer:
         # Terminal khởi động lại là chuyện thường; kết nối cũ chỉ là xác chết.
         existing = self.connections.get(agent_id)
         if existing is not None:
-            log.info("Agent %s mở kết nối mới từ %s, đóng kết nối cũ tại %s",
+            log.info("Agent %s mo ket noi moi tu %s, dong ket noi cu tai %s",
                      agent_id, peer, existing.peer)
             existing.close()
 
@@ -308,7 +308,7 @@ class BridgeServer:
             agent_id=agent_id, last_seq=last_seq, config=self._agent_config(),
             ts=utc_now_iso(),
         ))
-        log.info("Agent %s (%s) đã kết nối từ %s, last_seq = %d",
+        log.info("Agent %s (%s) da ket noi tu %s, last_seq = %d",
                  agent_id, hello.role, peer, last_seq)
 
         if hello.seq > last_seq:
@@ -352,14 +352,14 @@ class BridgeServer:
         while not connection.closing:
             chunk = await reader.read(65536)
             if not chunk:
-                log.info("Agent %s đóng kết nối", connection.agent_id,
+                log.info("Agent %s dong ket noi", connection.agent_id,
                          extra={"agent_id": connection.agent_id})
                 return
             try:
                 lines = connection.buffer.feed(chunk)
             except LineTooLong as exc:
                 # Không để một agent lỗi làm cạn bộ nhớ Bridge.
-                log.error("Agent %s gửi dòng quá dài, đóng kết nối: %s",
+                log.error("Agent %s gui dong qua dai, dong ket noi: %s",
                           connection.agent_id, exc, extra={"agent_id": connection.agent_id})
                 connection.close()
                 return
@@ -371,13 +371,13 @@ class BridgeServer:
         try:
             payload = decode_line(line)
         except ProtocolDecodeError as exc:
-            log.error("Agent %s gửi dòng không giải mã được: %s", connection.agent_id, exc,
+            log.error("Agent %s gui dong khong giai ma duoc: %s", connection.agent_id, exc,
                       extra={"agent_id": connection.agent_id})
             return
         try:
             message = parse_agent_message(payload)
         except (ValidationError, ValueError) as exc:
-            log.warning("Agent %s gửi message sai schema: %s", connection.agent_id, exc,
+            log.warning("Agent %s gui message sai schema: %s", connection.agent_id, exc,
                         extra={"agent_id": connection.agent_id})
             await connection.send(ErrorMessage(code=ERR_BAD_MESSAGE, message="Message sai schema",
                                                ts=utc_now_iso()))
@@ -395,7 +395,7 @@ class BridgeServer:
         elif isinstance(message, SnapshotMessage):
             self._handle_snapshot(connection, message)
         elif isinstance(message, HelloMessage):
-            log.warning("Agent %s gửi hello lần hai trên cùng kết nối, bỏ qua",
+            log.warning("Agent %s gui hello lan hai tren cung ket noi, bo qua",
                         connection.agent_id, extra={"agent_id": connection.agent_id})
 
     # -- từng loại message -----------------------------------------------------------------
@@ -428,7 +428,7 @@ class BridgeServer:
 
         if message.seq <= last_seq:
             # Event đã có. `record_event()` dedup theo `event_id`, không tạo bản ghi thứ hai.
-            log.info("Agent %s gửi lại event seq=%d (last_seq=%d), bỏ qua",
+            log.info("Agent %s gui lai event seq=%d (last_seq=%d), bo qua",
                      agent_id, message.seq, last_seq,
                      extra={"agent_id": agent_id, "event_id": message.id})
             self._record(message, agent_id)
@@ -540,7 +540,7 @@ class BridgeServer:
 
     async def _request_resend(self, connection: AgentConnection, from_seq: int,
                               reason: str) -> None:
-        log.warning("Lỗ hổng chuỗi sự kiện của agent %s (%s), yêu cầu gửi bù từ seq=%d",
+        log.warning("Lo hong chuoi su kien cua agent %s (%s), yeu cau gui bu tu seq=%d",
                     connection.agent_id, reason, from_seq,
                     extra={"agent_id": connection.agent_id})
         await connection.send(ResendMessage(from_seq=from_seq, ts=utc_now_iso()))
@@ -549,7 +549,7 @@ class BridgeServer:
                           message: AckMessage) -> None:
         command = self.db.get_command(message.command_id)
         if command is None:
-            log.warning("Agent %s ack command %s không có trong DB", connection.agent_id,
+            log.warning("Agent %s ack command %s khong co trong DB", connection.agent_id,
                         message.command_id, extra={"agent_id": connection.agent_id,
                                                    "command_id": message.command_id})
             return
@@ -578,7 +578,7 @@ class BridgeServer:
             executed_volume=message.executed_volume,
             result_position_id=message.result_position_id,
         )
-        log.info("Command %s nhận ack %s (retcode=%s)", message.command_id, message.status,
+        log.info("Command %s nhan ack %s (retcode=%s)", message.command_id, message.status,
                  message.retcode, extra={"agent_id": connection.agent_id,
                                          "command_id": message.command_id,
                                          "pair_id": command["pair_id"]})
@@ -591,13 +591,13 @@ class BridgeServer:
                              message: SymbolSpecsMessage) -> None:
         specs = [spec.model_dump(exclude_none=True) for spec in message.symbols]
         written = self.db.replace_symbol_specs(connection.agent_id, specs)
-        log.info("Agent %s đẩy lên %d symbol spec", connection.agent_id, written,
+        log.info("Agent %s day len %d symbol spec", connection.agent_id, written,
                  extra={"agent_id": connection.agent_id})
 
     def _handle_snapshot(self, connection: AgentConnection, message: SnapshotMessage) -> None:
         # Phase này chỉ lưu lại, chưa xử lý. Đối chiếu là việc của phase 8.
         self.latest_snapshots[connection.agent_id] = message
-        log.info("Agent %s gửi snapshot với %d vị thế", connection.agent_id,
+        log.info("Agent %s gui snapshot voi %d vi the", connection.agent_id,
                  len(message.positions), extra={"agent_id": connection.agent_id})
 
     # -- theo dõi nhịp sống ----------------------------------------------------------------
@@ -608,7 +608,7 @@ class BridgeServer:
             try:
                 self.check_heartbeats()
             except Exception:
-                log.exception("Lỗi trong vòng quét heartbeat")
+                log.exception("Loi trong vong quet heartbeat")
 
     def check_heartbeats(self) -> None:
         """Đánh dấu OFFLINE các agent quá hạn heartbeat. Tách riêng để test gọi thẳng."""
@@ -627,7 +627,7 @@ class BridgeServer:
             if doi:
                 # Vòng quét chạy mỗi vài trăm ms; in mỗi vòng cho một agent **đã** OFFLINE làm
                 # nhoè log đúng lúc cần đọc log để tìm nguyên nhân.
-                log.warning("Agent %s im lặng quá %dms, chuyển OFFLINE",
+                log.warning("Agent %s im lang qua %dms, chuyen OFFLINE",
                             connection.agent_id, self._heartbeat_timeout_ms(),
                             extra={"agent_id": connection.agent_id})
 

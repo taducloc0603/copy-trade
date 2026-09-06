@@ -318,7 +318,7 @@ def test_get_config_int_gia_tri_hong_thi_dung_mac_dinh(db: Database,
                                                        caplog_bridge) -> None:
     db.set_config("event_retention_days", "ba muoi")
     assert db.get_config_int("event_retention_days", 30) == 30
-    assert any("không phải số" in r.getMessage() for r in caplog_bridge.records)
+    assert any("khong phai so" in r.getMessage() for r in caplog_bridge.records)
 
 
 def test_event_lap_khong_dot_mat_pair_id(seeded: Database) -> None:

@@ -172,14 +172,14 @@ def run_retention(db: Database, *, retention_days: int | None = None,
         | set(_months(db, "command", "created_at", DELETABLE_COMMAND_STATUSES, cutoff))
     )
     if not months:
-        log.info("Retention: không có bản ghi nào cũ hơn %d ngày (mốc %s)", days, cutoff)
+        log.info("Retention: khong co ban ghi nao cu hon %d ngay (moc %s)", days, cutoff)
         return report
 
     for month in months:
         _copy_and_delete(db, directory / f"{month}.db", month, cutoff, report)
 
     log.info(
-        "Retention: lưu trữ %d event và %d command, xoá %d event và %d command, mốc %s",
+        "Retention: luu tru %d event va %d command, xoa %d event va %d command, moc %s",
         report.archived_events, report.archived_commands,
         report.deleted_events, report.deleted_commands, cutoff,
     )

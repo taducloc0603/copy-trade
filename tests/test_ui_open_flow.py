@@ -540,7 +540,11 @@ async def test_mot_lenh_dang_bay_moi_client(env: Env) -> None:
 
     assert len(env.commands("OPEN_UI")) == 1
     assert len(env.pairs()) == 1
-    assert len(env.alerts("UI_OPEN_BUSY")) == 1
+    canh_bao = env.alerts("UI_OPEN_BUSY")
+    assert len(canh_bao) == 1
+    # Muc ERROR, khong phai WARNING: bo mot lenh copy la mat hedge, va chi ERROR tro len moi
+    # duoc kenh canh bao gui ra ngoai (`bridge/alerting.py`, MUC_GUI).
+    assert canh_bao[0]["level"] == "ERROR"
 
 
 # -- canary --------------------------------------------------------------------------------

@@ -56,3 +56,40 @@ def test_moi_nhom_co_du_trang_thai_cot_loi() -> None:
     """Chốt lại các enum mà phase sau chắc chắn sẽ dùng, tránh xoá nhầm."""
     assert {"PENDING_OPEN", "OPEN", "CLOSED", "ORPHANED", "OPEN_FAILED"} <= set(PAIR_STATUS)
     assert {"RUNNING", "PAUSE_NEW_ENTRIES", "PAUSED", "EMERGENCY"} <= set(RUN_MODE)
+
+
+def test_log_va_alert_khong_co_dau_tieng_viet(project_root) -> None:
+    """D-16: enum, log và message dùng tiếng Anh không dấu; tiếng Việt chỉ ở tầng hiển thị.
+
+    Đây không phải chuyện thẩm mỹ. Console Windows mặc định cp1252 và sẽ ném
+    `UnicodeEncodeError` giữa lúc đang ghi log — tức là mất log đúng lúc cần nó nhất. Phase 10
+    tìm thấy 41 chỗ lệch; test này giữ cho nó không quay lại.
+
+    Chỉ soi **đối số chuỗi của `log.*` và `create_alert`**. Docstring, chú thích và nhãn tiếng
+    Việt trong `labels_vi.py` không liên quan — chúng chưa bao giờ đi vào log hay DB.
+    """
+    import ast
+    import unicodedata
+
+    def co_dau(s: str) -> bool:
+        return any(ord(c) > 127 and "LATIN" in unicodedata.name(c, "") for c in s)
+
+    lech = []
+    for path in sorted((project_root / "bridge").rglob("*.py")):
+        cay = ast.parse(path.read_text(encoding="utf-8"))
+        for nut in ast.walk(cay):
+            if not isinstance(nut, ast.Call):
+                continue
+            ham = nut.func
+            ten = ham.attr if isinstance(ham, ast.Attribute) else getattr(ham, "id", "")
+            doi_tuong = getattr(getattr(ham, "value", None), "id", "")
+            la_log = ten in {"info", "warning", "error", "critical", "exception",
+                             "debug"} and doi_tuong in {"log", "_log"}
+            if not (la_log or ten == "create_alert"):
+                continue
+            for tham_so in nut.args:
+                if isinstance(tham_so, ast.Constant) and isinstance(tham_so.value, str) \
+                        and co_dau(tham_so.value):
+                    lech.append(f"{path.name}:{nut.lineno}: {tham_so.value[:60]}")
+
+    assert not lech, "Chuoi log/alert con dau tieng Viet (D-16):\n" + "\n".join(lech)

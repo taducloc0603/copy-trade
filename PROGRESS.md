@@ -1514,3 +1514,127 @@ Và bảng **sắp đúng theo mức nghiêm trọng**: mất hedge lên đầu,
   ghi — mới có API `verify` cho symbol và các hộp xác nhận đã chuẩn bị nhãn. Ghi rõ ở đây để
   không tưởng nhầm là đã xong.
 - Tiêu chí "một người chưa từng đọc code ngồi vào và hiểu được" cần người thật thử.
+
+---
+
+## Phase 10 — Đóng gói, vận hành và nghiệm thu
+
+*(2026-09-06.)*
+
+### Migration đã chạy thật — rủi ro treo từ phase 6b đã đóng
+
+`002_index_van_hanh.sql` (`idx_finding_dang_cho`, `idx_command_dang_bay`, `idx_alert_chua_xu_ly`)
+đã chạy trên `data/bridge.db` **có dữ liệu thật**: version 1 → 2, sao lưu trước khi chạy, đối
+chiếu sau khi chạy — 27 pair / 147 event / 87 command / 3 agent / 30 alert / 2 finding nguyên vẹn.
+Tới trước lượt này bộ migration **chưa từng chạy quá version 1**, tức là đường nâng cấp schema
+chưa từng được chứng minh. Giờ thì có.
+
+Hai test migration trước đây khoá cứng `SCHEMA_VERSION` là con số cuối cùng nên hỏng ngay khi
+thêm migration thứ hai — đã đổi sang so với `max(m.version for m in discover_migrations())`.
+
+### Vận hành: `bridge/ops.py`, `bridge/alerting.py`, `bridge/admin.py`
+
+Sao lưu bằng `VACUUM INTO` chứ không copy file — an toàn với WAL và không cần dừng dịch vụ. Copy
+`bridge.db` khi WAL còn dữ liệu chưa checkpoint sẽ ra bản thiếu **đúng những giao dịch mới nhất**.
+`bao_tri_hang_ngay` chạy retention rồi sao lưu rồi **tự mở lại bản vừa tạo để kiểm chứng**.
+
+Kênh cảnh báo **đọc alert từ DB theo chu kỳ** chứ không móc vào `create_alert()`. Một lời gọi
+mạng nằm trong đường ghi alert là một chỗ để cả hệ thống treo theo. Cái giá là trễ vài giây.
+`_moc` khởi tạo bằng `MAX(id)` hiện tại nên khởi động lại không dội lịch sử cảnh báo vào điện
+thoại người vận hành.
+
+`bridge/admin.py` trả một món nợ ghi từ phase 3: cấp agent và cấp token vẫn làm bằng script tạm
+viết ra scratchpad rồi vứt đi, và món nợ đó **đã cắn thật** — token clicker mất theo scratchpad
+một phiên trước. Giờ là lệnh có tên: `liet-ke`, `them-agent`, `cap-token`, `thu-hoi`, `sao-luu`,
+`bao-tri`, `run-mode`, `kiem-reason`.
+
+### Audit D-01…D-26: hai chỗ lệch, đã sửa cả hai
+
+Plan/10 vẫn viết "đối chiếu D-01…D-20" — hợp đồng nay là **D-01…D-26 (kèm D-07b)**, và
+`docs/DECISIONS.md` đã đủ 27 mục. Đối chiếu từng mục với code:
+
+1. **D-15 lệch thật.** `bridge/__main__.py` chỉ **cảnh báo** khi `run_mode != PAUSED` rồi chạy
+   tiếp, với lý do "không đổi trạng thái sau lưng người vận hành". Nhưng `run_mode` nằm trong DB
+   nên nó **sống sót qua mất điện**: máy tự bật lại lúc 3 giờ sáng với `RUNNING` còn nguyên là hệ
+   thống tự vào lệnh khi chưa ai nhìn màn hình — đúng thứ D-15 tồn tại để chặn. Nay `ep_ve_paused()`
+   đặt lại thật, kèm alert `KHOI_DONG_EP_PAUSED`. Cái giá là mỗi lần khởi động lại phải bấm
+   `RUNNING` bằng tay, và đó là chủ đích.
+
+2. **D-16 lệch ở 41 chỗ.** 41 chuỗi truyền cho `log.*` còn dấu tiếng Việt, tập trung ở module
+   phase 3–4 (`server.py` 26, `dispatcher.py` 5, `repo.py` 4, còn lại rải rác). Không phải chuyện
+   thẩm mỹ: console Windows mặc định cp1252 và ném `UnicodeEncodeError` giữa lúc ghi log — mất
+   log đúng lúc cần nó nhất, và lỗi đó đã xảy ra thật trong phiên này. Đã bỏ dấu toàn bộ và
+   **khoá bằng test** (`test_log_va_alert_khong_co_dau_tieng_viet`) quét bằng AST, chỉ soi đối số
+   chuỗi của `log.*` và `create_alert` nên không đụng docstring hay `labels_vi.py`.
+
+Một chỗ nữa không phải lệch quyết định nhưng cùng loại rủi ro: `xem_truoc_he_so()` ở dashboard
+**viết lại** phép làm tròn thay vì gọi `round_to_step()` của engine. Một bản xem trước lệch với
+thứ engine thật sự làm còn tệ hơn là không có xem trước. Đã đổi sang dùng chung.
+
+Các quyết định còn lại đối chiếu **khớp**: D-01…D-14, D-17…D-26 đều có điểm neo trong code
+(`MAX_RESEND_ATTEMPTS`, `DEFAULT_CASCADE_WAIT_MS = 15000`, `can_close_master DEFAULT 0`,
+`ROUND_FLOOR`, `effective_multiplier` khoá lúc tạo pair, `open_tag_for`, `OPEN_UI` là loại
+command riêng, `MENU_NEW_ORDER = 32848`, cổng canary).
+
+### `UI_OPEN_BUSY`: chốt phương án 1
+
+Ba lựa chọn ghi từ phase 6b, nay chọn **nâng WARNING → ERROR**, một dòng, không đụng hợp đồng.
+Lý do quyết định là thứ mới có từ lượt này: từ Phase 10 chỉ **ERROR và CRITICAL** mới đi ra
+Telegram. Bỏ một lệnh copy là **mất hedge**; để ở WARNING thì nó nằm lại trong dashboard cho tới
+lúc có người tình cờ mở ra xem.
+
+### TEST-23 thành một truy vấn chạy lại được
+
+Bộ nghiệm thu yêu cầu kiểm **tự động**, không nhìn bằng mắt — vì nhìn mắt thì người ta xem ba
+dòng đầu rồi kết luận, mà cái sai duy nhất có thể nằm ở dòng thứ hai mươi. `kiem_reason_client()`
++ `python -m bridge.admin kiem-reason`. Chạy trên database thật ngày 2026-09-06:
+**`TEST-23 DAT: 25/25`**. Hai cặp `OPEN_FAILED` có `client_open_reason IS NULL` (chưa từng mở
+được vị thế nào bên Client) nên không tính là vi phạm.
+
+### Kiểm thử tải
+
+| Bài | Kết quả |
+|---|---|
+| 10.000 event | nhận 802–831/s, xử lý 878–953/s, **0 event tồn**, không mất event |
+| WAL | 4.144.752 byte → **0** sau `wal_checkpoint(TRUNCATE)` |
+| 5 Client cùng lúc | 1 lệnh Master → **5 pair**, đóng Master → **cả 5 đóng**, đúng 5 command `CLOSE` |
+
+Bài 5 Client lộ ra một chỗ đáng ghi: `position_id` chỉ duy nhất **trong phạm vi một tài khoản**,
+và năm terminal khác nhau thật sự cùng sinh ra số `900001`. Đó chính là lý do ràng buộc duy nhất
+là `(client_id, client_position_id)` chứ không phải riêng `client_position_id`. Test ban đầu
+kiểm sai (theo một cột) và hỏng — **không phải lỗi sản phẩm**, đã sửa test.
+
+### Ba tài liệu
+
+`docs/RUNBOOK.md`, `docs/ACCEPTANCE.md`, `docs/BACKLOG.md`.
+
+`ACCEPTANCE.md` có cột **Nguồn** với ba mức: **DEMO** (chạy trên sàn thật, đối chiếu journal hai
+bên), **TEST** (chỉ mock, chưa chạm sàn), **KHÔNG** (chưa đạt, có lý do). Tổng: **DEMO 13 ·
+TEST 9 · KHÔNG 3**. Tách ba mức là có chủ đích — một bảng toàn dấu tích không cho biết cái gì đã
+được sàn thật xác nhận, mà đó là khác biệt đáng kể nhất khi chuyển sang tiền thật. Phase 7 đã
+chứng minh: bộ test dùng số tròn nên **không** lộ ra lỗi float `0.030000000000000002`, chỉ phiên
+demo mới lộ.
+
+### 484 test xanh (+28) và 3 test tải
+
+`ruff` sạch. `grep -ri "token" logs/` ra **0 dòng** trên ~15.000 dòng log thật.
+
+### Không làm được trong lượt này — cần môi trường thật
+
+Không phải "chưa kịp", mà là **không thực hiện được trên một laptop cá nhân**:
+
+- Đăng ký Windows Service / NSSM cho Bridge, Scheduled Task + autologon cho clicker.
+- Tailscale ACL, firewall Windows, và bài kiểm port bằng **máy thứ ba**.
+- **TEST-19 — rút điện thật.** Đây là mục duy nhất mà việc không chạy để lại **rủi ro chưa đo**:
+  toàn bộ lập luận về mất điện hiện dựa vào `synchronous = FULL` chứ không dựa vào quan sát.
+- Chạy 24 giờ liên tục (rò rỉ bộ nhớ, tốc độ tăng DB).
+- Gửi tin Telegram thật (đường gửi có test, nhưng chưa từng có tin nào tới điện thoại).
+- TEST-08 nhiều symbol — **chặn bởi B-01**, không phải bởi thời gian.
+
+Cả sáu đều đã vào `RUNBOOK.md` mục 6 và mục 8, và `BACKLOG.md`. Không mục nào biến mất.
+
+### Trạng thái để lại
+
+`run_mode = PAUSED`, Bridge và clicker đã tắt. Không đặt lệnh thật nào trong lượt này. Còn
+`PAIR-000025` (`ORPHANED`) và `PAIR-000027` (`PARTIALLY_CLOSED`) — giữ lại làm dữ liệu thật.
+`data/bridge.db` ở schema version 2, có một bản sao lưu đã kiểm chứng trong `data/backup/`.

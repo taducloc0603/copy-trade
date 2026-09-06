@@ -28,17 +28,24 @@ from tests.conftest import CLIENT_ID, MASTER_POSITION_ID
 
 
 def test_migration_chay_hai_lan_khong_loi(db_path: Path) -> None:
+    """Chạy lại không được làm gì thêm và không được lỗi.
+
+    So với **version mới nhất tìm được**, không phải một con số cứng: thêm migration mới là
+    chuyện bình thường, và một test về cơ chế không nên vỡ mỗi lần đó xảy ra.
+    """
+    moi_nhat = max(m.version for m in discover_migrations())
     first = Database(db_path)
-    assert current_version(first.conn) == SCHEMA_VERSION
-    assert apply_migrations(first.conn) == SCHEMA_VERSION
-    assert apply_migrations(first.conn) == SCHEMA_VERSION
-    rows = first.query_all("SELECT version FROM schema_version")
-    assert [r["version"] for r in rows] == [SCHEMA_VERSION], "Không được ghi hai dòng version"
+    assert current_version(first.conn) == moi_nhat
+    assert apply_migrations(first.conn) == moi_nhat
+    assert apply_migrations(first.conn) == moi_nhat
+    rows = first.query_all("SELECT version FROM schema_version ORDER BY version")
+    da_ghi = [r["version"] for r in rows]
+    assert da_ghi == list(range(SCHEMA_VERSION, moi_nhat + 1)), "Version bi ghi lap hoac thieu"
     first.close()
 
     # Mở lại từ đầu trên đúng file đó cũng không được chạy lại migration.
     second = Database(db_path)
-    assert current_version(second.conn) == SCHEMA_VERSION
+    assert current_version(second.conn) == moi_nhat
     second.close()
 
 
@@ -82,15 +89,17 @@ def test_split_statements_bao_loi_khi_sql_do_dang() -> None:
 
 def test_migration_hong_thi_rollback_ca_cum(tmp_path: Path, db_path: Path) -> None:
     """Migration lỗi giữa chừng không được để lại nửa bảng."""
-    (tmp_path / "002_hong.sql").write_text(
+    # Version phải cao hơn mọi migration thật, nếu không nó bị coi là "đã chạy rồi" và bỏ qua.
+    (tmp_path / "999_hong.sql").write_text(
         "CREATE TABLE tam (a INTEGER);\nCAU LENH SAI CU PHAP;\n", encoding="utf-8"
     )
     database = Database(db_path)
+    truoc = current_version(database.conn)
     with pytest.raises(MigrationError):
         apply_migrations(database.conn, tmp_path)
     exists = database.query_one("SELECT name FROM sqlite_master WHERE name = 'tam'")
     assert exists is None, "Bảng của migration hỏng vẫn còn — giao dịch không được rollback"
-    assert current_version(database.conn) == SCHEMA_VERSION
+    assert current_version(database.conn) == truoc
     database.close()
 
 

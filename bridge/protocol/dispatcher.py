@@ -76,7 +76,7 @@ class CommandDispatcher:
             payload_json=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
             deadline_at=deadline_at,
         )
-        log.info("Tạo command %s type=%s cho agent %s", command_id, command_type,
+        log.info("Tao command %s type=%s cho agent %s", command_id, command_type,
                  target_agent_id, extra={"agent_id": target_agent_id, "pair_id": pair_id,
                                          "command_id": command_id})
         await self._send(command_id, target_agent_id, command_type, pair_id, payload,
@@ -94,7 +94,7 @@ class CommandDispatcher:
         if sent:
             self.db.mark_command_sent(command_id)
         else:
-            log.warning("Agent %s đang offline, command %s nằm lại PENDING",
+            log.warning("Agent %s dang offline, command %s nam lai PENDING",
                         target_agent_id, command_id,
                         extra={"agent_id": target_agent_id, "command_id": command_id,
                                "pair_id": pair_id})
@@ -153,7 +153,7 @@ class CommandDispatcher:
                                 payload, row["deadline_at"]):
                 sent += 1
         if sent:
-            log.info("Đã gửi bù %d command tồn đọng cho agent %s", sent, agent_id,
+            log.info("Da gui bu %d command ton dong cho agent %s", sent, agent_id,
                      extra={"agent_id": agent_id})
         return sent
 
@@ -170,7 +170,7 @@ class CommandDispatcher:
             f"Command {command_id} type {command['type']} qua han truoc khi gui duoc, da huy",
             pair_id=command["pair_id"], agent_id=command["target_agent_id"],
         )
-        log.warning("Command %s quá hạn trước khi gửi được, huỷ thay vì gửi lệnh cũ",
+        log.warning("Command %s qua han truoc khi gui duoc, huy thay vi gui lenh cu",
                     command_id, extra={"command_id": command_id, "pair_id": command["pair_id"],
                                        "agent_id": command["target_agent_id"]})
 
@@ -200,7 +200,7 @@ class CommandDispatcher:
                 f"Command {command_id} type {row['type']} khong nhan duoc ack truoc han",
                 pair_id=row["pair_id"], agent_id=row["target_agent_id"],
             )
-            log.error("Command %s quá hạn mà chưa có ack, chuyển TIMEOUT", command_id,
+            log.error("Command %s qua han ma chua co ack, chuyen TIMEOUT", command_id,
                       extra={"command_id": command_id, "pair_id": row["pair_id"],
                              "agent_id": row["target_agent_id"]})
             if self.on_timeout is not None:
