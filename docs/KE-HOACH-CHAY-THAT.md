@@ -64,13 +64,15 @@ Thoát khác 0 khi có việc cần làm.
 Bật lại Telegram sau này chỉ là điền hai khoá vào `config.toml` — code vẫn còn nguyên trong
 `bridge/alerting.py` và cấu hình trống thì kênh im lặng chứ không lỗi.
 
-### 1.3 Chạy lại toàn bộ nghiệm thu sau khi EA đổi
+### 1.3 ~~Chạy lại nghiệm thu sau khi EA đổi~~ — **ĐÃ XONG** (2026-09-06)
 
-EA Client đã bị **chuyển 190 dòng** sang file dùng chung ở phase 11, và EA Master có thêm khả
-năng đóng lệnh. Cả hai đều nằm trên đường đi của mọi lệnh thật.
+EA Client bị chuyển 190 dòng sang file dùng chung, EA Master có thêm khả năng đóng lệnh, và cách
+kiểm quyền giao dịch được viết lại. Chạy lại toàn bộ trên demo với 3 lệnh:
 
-Chạy lại tối thiểu: TEST-02 (copy khác chiều), TEST-03 (đóng đúng cặp), TEST-06 (đóng một phần),
-TEST-21 (đóng khẩn cấp), TEST-23 (`kiem-reason`). Chi phí: ~6 lệnh demo.
+TEST-02, TEST-03 (272 ms), TEST-06 (285 ms), TEST-07 (cặp đối chứng không bị đụng), TEST-21
+(Master về 0 vị thế, 1.101 ms), TEST-23 (**40/40**) — **đạt tất cả**.
+
+**Giai đoạn 1 hoàn tất.** Bước tiếp theo là dựng VPS (giai đoạn 2).
 
 ---
 

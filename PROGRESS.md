@@ -1944,3 +1944,28 @@ lại vị thế Master một chiều cần xử lý tay.**
 clicker đã thu hồi, Bridge và clicker đã tắt.
 
 **524 test xanh (+1), `ruff` sạch.**
+
+### Mục 1.3 — chạy lại nghiệm thu sau khi EA đổi: ĐẠT
+
+*(2026-09-06. Giai đoạn 1 của `KE-HOACH-CHAY-THAT.md` hoàn tất.)*
+
+EA Client bị chuyển 190 dòng sang file dùng chung, EA Master có thêm khả năng đóng lệnh, và cách
+kiểm quyền giao dịch được viết lại — cả ba đều nằm trên đường đi của mọi lệnh thật, nên phải chạy
+lại chứ không suy ra từ lần trước.
+
+Ba lệnh Master dựng ba cặp cùng `BTCUSD.s`, rồi:
+
+| Bài | Kết quả |
+|---|---|
+| TEST-02 | Master BUY→Client SELL và Master SELL→Client BUY, 1:1, `reason = 0` cả ba |
+| TEST-03 | Đóng hẳn `71489808` → `PAIR-000013` `CLOSED` sau **272 ms**, đúng một lệnh `CLOSE` |
+| TEST-06 | Đóng bớt 0.01 của `71489810` → Client 0.02→**0.01**, `CLOSE_PARTIAL` volume đúng 0.01, **285 ms** |
+| TEST-07 | Cặp đối chứng `PAIR-000015` **không bị đụng** — chứng minh tra theo `position_id` chứ không theo symbol |
+| TEST-21 | Đóng khẩn cấp: `master_position` OPEN = **0**, hai lệnh đóng Master `ACK_OK`, Client 09:30:46.005 **trước** Master 09:30:46.598, toàn bộ 1.101 ms |
+| TEST-23 | `kiem-reason` → **40/40** |
+
+Dùng 3 lệnh demo. Trả máy sạch: `run_mode = PAUSED`, 0 vị thế trên cả hai terminal, 0 cặp chưa
+đóng, token clicker đã thu hồi, Bridge và clicker đã tắt.
+
+**Giai đoạn 1 xong.** Còn lại là giai đoạn 2 (dựng VPS: B-08 phiên RDP ngắt, TEST-19 mất điện,
+chạy 24 giờ) và giai đoạn 3 (điều khoản broker).
