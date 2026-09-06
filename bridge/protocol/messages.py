@@ -239,11 +239,17 @@ class HeartbeatMessage(_Envelope):
 
     `broker_connected` là **bắt buộc**: trạng thái "agent còn sống nhưng terminal mất kết nối
     sàn" trông giống hệt trạng thái khoẻ mạnh nếu chỉ nhìn heartbeat.
+
+    `trade_allowed` **không** bắt buộc, vì clicker không có khái niệm đó và EA bản cũ không gửi.
+    Thiếu trường này nghĩa là "không biết", và Bridge xử lý "không biết" khác hẳn "biết là tắt".
     """
 
     kind: Literal["heartbeat"] = "heartbeat"
     seq: int = Field(ge=0, default=0)
     broker_connected: bool
+    #: EA co dat duoc lenh khong (`MQL_TRADE_ALLOWED`). `None` = agent khong bao (clicker, hoac
+    #: EA ban cu) — khi do Bridge khong ket luan gi.
+    trade_allowed: bool | None = None
     equity: float | None = None
     margin_level: float | None = None
     positions_count: int | None = Field(default=None, ge=0)

@@ -333,3 +333,30 @@ def test_khong_phu_thuoc_gi_ngoai_may(project_root) -> None:
             encoding="utf-8")
         ngoai = re.findall(r"https?://[^\s\"')]+", noi_dung)
         assert not ngoai, f"{ten} tham chieu ra ngoai may: {ngoai}"
+
+
+async def test_dashboard_hien_trang_thai_algo_trading(seeded: Database) -> None:
+    """B-09: người vận hành phải NHÌN THẤY được, không phải đợi lệnh đóng thất bại mới biết."""
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET trade_allowed = 0 WHERE role = 'CLIENT'")
+        conn.execute("UPDATE agent SET trade_allowed = 1 WHERE role = 'MASTER'")
+
+    agents = views.trang_thai_chung(seeded)["agents"]
+    client = next(a for a in agents if a["role"] == "CLIENT")
+    master = next(a for a in agents if a["role"] == "MASTER")
+
+    assert client["trade_allowed"] is False
+    assert "TẮT" in client["canh_bao"]
+    assert master["trade_allowed"] is True
+    assert "canh_bao" not in master
+
+
+async def test_khong_bao_biet_thi_hien_khong_biet(seeded: Database) -> None:
+    """`NULL` phải hiện là "không biết", không được hiển thị thành "ổn"."""
+    with seeded.transaction() as conn:
+        conn.execute("UPDATE agent SET trade_allowed = NULL")
+
+    for a in views.trang_thai_chung(seeded)["agents"]:
+        if a["role"] != "CLICKER":
+            assert a["trade_allowed"] is None
+            assert "canh_bao" not in a

@@ -684,3 +684,36 @@ async def test_agent_ve_offline_khi_bridge_dung(server: BridgeServer,
         assert agents_db.get_agent(MASTER_AGENT)["status"] == "OFFLINE"
     finally:
         await agent.kill()
+
+
+async def test_bao_khi_terminal_tat_algo_trading(db: Database) -> None:
+    """B-09: Bridge phải NHÌN THẤY được `MQL_TRADE_ALLOWED`, và chỉ báo khi nó ĐỔI."""
+    db.upsert_agent(MASTER_AGENT, role="MASTER", token_hash=hash_token(MASTER_TOKEN),
+                    magic_number=770001, account_login=MASTER_LOGIN)
+    server = BridgeServer(db, ServerConfig(host="127.0.0.1", port=0, hello_timeout_sec=2.0))
+    await server.start()
+
+    def so_alert(code: str) -> int:
+        return len([a for a in db.query_all("SELECT * FROM alert") if a["code"] == code])
+
+    try:
+        agent = MockAgent(host="127.0.0.1", port=server.port, token=MASTER_TOKEN,
+                          role="MASTER", account_login=MASTER_LOGIN, magic=770001)
+        await agent.start()
+        try:
+            await agent.send_heartbeat(trade_allowed=False)
+            await _wait_until(lambda: db.get_agent(MASTER_AGENT)["trade_allowed"] == 0)
+            assert so_alert("TRADE_NOT_ALLOWED") == 1
+
+            # Nhip nua o cung trang thai: KHONG duoc de ra alert thu hai.
+            await agent.send_heartbeat(trade_allowed=False)
+            await asyncio.sleep(0.3)
+            assert so_alert("TRADE_NOT_ALLOWED") == 1, "Bao lai moi nhip se lam ngap bang alert"
+
+            await agent.send_heartbeat(trade_allowed=True)
+            await _wait_until(lambda: db.get_agent(MASTER_AGENT)["trade_allowed"] == 1)
+            assert so_alert("TRADE_ALLOWED_AGAIN") == 1
+        finally:
+            await agent.kill()
+    finally:
+        await server.stop()

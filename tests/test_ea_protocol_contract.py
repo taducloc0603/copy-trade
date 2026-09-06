@@ -132,11 +132,23 @@ def test_hello_cua_ea_hop_le() -> None:
 def test_heartbeat_cua_ea_hop_le() -> None:
     message = parse_agent_message({
         "v": 1, "kind": "heartbeat", "ts": "2026-09-04T09:00:00.000Z", "seq": 12,
-        "broker_connected": True, "equity": 10000.0, "margin_level": 500.0,
+        "broker_connected": True, "trade_allowed": True, "equity": 10000.0,
+        "margin_level": 500.0,
         "positions_count": 3, "ts_agent": "2026-09-04T09:00:00.000Z",
     })
     assert isinstance(message, HeartbeatMessage)
     assert message.broker_connected is True
+    assert message.trade_allowed is True
+
+
+def test_heartbeat_thieu_trade_allowed_van_hop_le() -> None:
+    """EA bản cũ không gửi trường này. Thiếu = "không biết", và Bridge không kết luận gì (B-09)."""
+    message = parse_agent_message({
+        "v": 1, "kind": "heartbeat", "ts": "2026-09-04T09:00:00.000Z", "seq": 12,
+        "broker_connected": True, "ts_agent": "2026-09-04T09:00:00.000Z",
+    })
+    assert isinstance(message, HeartbeatMessage)
+    assert message.trade_allowed is None
 
 
 def test_symbol_specs_cua_ea_hop_le() -> None:
@@ -260,10 +272,18 @@ def test_dung_timer_khong_dua_vao_ontick() -> None:
     assert "void OnTick(" not in master
 
 
-def test_heartbeat_luon_mang_broker_connected() -> None:
+def test_heartbeat_luon_mang_broker_connected_va_trade_allowed() -> None:
+    """Hai trạng thái mà nhìn từ ngoài đều giống hệt lúc khoẻ mạnh, nên phải nằm trong heartbeat.
+
+    `trade_allowed` thêm ở B-09: đường MỞ phía Client đi qua giao diện nên không cần quyền giao
+    dịch, còn đường ĐÓNG đi qua EA nên cần — thiếu nó thì Bridge mù với một terminal chỉ mở được
+    mà không đóng được.
+    """
     source = (EA_DIR / "CopyBridgeCommon.mqh").read_text(encoding="utf-8")
     assert 'writer.Bool("broker_connected"' in source
     assert "TERMINAL_CONNECTED" in source
+    assert 'writer.Bool("trade_allowed"' in source
+    assert "MQL_TRADE_ALLOWED" in source
 
 
 def test_chi_ea_client_duoc_MO_lenh() -> None:

@@ -590,3 +590,36 @@ async def test_clicker_tu_choi_command_khong_phai_open_ui(env: Env) -> None:
     command = env.db.get_command(command_id)
     assert command["retmsg"] and "khong nhan command loai OPEN" in command["retmsg"]
     assert env.clicker.clicked == []
+
+
+# -- B-09: dung mo cai ma khong dong duoc -------------------------------------------------------
+
+async def test_khong_mo_lenh_khi_client_tat_algo_trading(env: Env) -> None:
+    """Đường MỞ đi qua giao diện nên không cần Algo Trading; đường ĐÓNG đi qua EA nên cần.
+
+    Copy tiếp trong trạng thái đó là mỗi lệnh mở thành một vị thế **không có đường đóng tự
+    động** — tích luỹ rủi ro một chiều mà không ai thấy cho tới lúc cần đóng (B-09).
+    """
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE agent SET trade_allowed = 0 WHERE agent_id = ?",
+                     (CLIENT_AGENT,))
+
+    await env.emit_master_open(700101)
+
+    assert env.commands("OPEN_UI") == []
+    assert env.pairs() == []
+    assert len(env.alerts("CLIENT_TRADE_NOT_ALLOWED")) == 1
+
+
+async def test_khong_biet_thi_khong_chan(env: Env) -> None:
+    """`NULL` nghĩa là agent không báo (EA bản cũ, hoặc clicker) — khác hẳn "biết là tắt".
+
+    Chặn vì không biết sẽ làm hệ thống tự dừng mỗi khi nâng cấp lệch phiên bản.
+    """
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE agent SET trade_allowed = NULL")
+
+    await env.emit_master_open(700102)
+
+    assert len(env.commands("OPEN_UI")) == 1
+    assert env.alerts("CLIENT_TRADE_NOT_ALLOWED") == []

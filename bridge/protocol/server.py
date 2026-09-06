@@ -402,13 +402,18 @@ class BridgeServer:
 
     def _handle_heartbeat(self, connection: AgentConnection, message: HeartbeatMessage) -> None:
         latency_ms = _latency_ms(message.ts_agent)
+        cu = self.db.get_agent(connection.agent_id)
+        truoc = None if cu is None or cu["trade_allowed"] is None else bool(cu["trade_allowed"])
         with self.db.transaction() as conn:
             conn.execute(
                 "UPDATE agent SET broker_connected = ?, last_seen_at = ?, "
                 "latency_ms = COALESCE(?, latency_ms), equity = COALESCE(?, equity), "
-                "margin_level = COALESCE(?, margin_level), updated_at = ? WHERE agent_id = ?",
+                "margin_level = COALESCE(?, margin_level), trade_allowed = ?, "
+                "updated_at = ? WHERE agent_id = ? ",
                 (int(message.broker_connected), utc_now_iso(), latency_ms,
-                 message.equity, message.margin_level, utc_now_iso(), connection.agent_id),
+                 message.equity, message.margin_level,
+                 None if message.trade_allowed is None else int(message.trade_allowed),
+                 utc_now_iso(), connection.agent_id),
             )
         # Cố ý KHÔNG đặt `status` trong câu UPDATE trên: `_alert_on_transition()` cần đọc được
         # trạng thái CŨ để biết đây có phải một lần chuyển trạng thái không.
@@ -420,6 +425,25 @@ class BridgeServer:
             )
         else:
             self._clear_transition(connection.agent_id, "ONLINE")
+
+        # Chi bao khi co DOI, va khoa theo chinh co nay chu khong theo `status`:
+        # `_alert_on_transition` khoa theo status agent nen dung o day se lan lon hai thu.
+        # KHONG dat agent sang DEGRADED — terminal van gui su kien va so sach van dung; cai
+        # hong la kha nang DONG. Cong chan nam o duong MO, o day chi lam no NHIN THAY duoc.
+        if message.trade_allowed is False and truoc is not False:
+            self.db.create_alert(
+                "ERROR", "TRADE_NOT_ALLOWED",
+                f"Agent {connection.agent_id}: Algo Trading dang TAT tren terminal. Lenh DONG "
+                "se that bai, trong khi lenh MO qua giao dien van chay — tich luy vi the mot "
+                "chieu. Bat nut Algo Trading len.",
+                agent_id=connection.agent_id)
+            log.error("Agent %s: Algo Trading dang TAT", connection.agent_id,
+                      extra={"agent_id": connection.agent_id})
+        elif message.trade_allowed is True and truoc is False:
+            self.db.create_alert(
+                "INFO", "TRADE_ALLOWED_AGAIN",
+                f"Agent {connection.agent_id}: Algo Trading da bat lai.",
+                agent_id=connection.agent_id)
 
     async def _handle_event(self, connection: AgentConnection,
                             message: EventMessage) -> None:

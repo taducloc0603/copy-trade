@@ -87,6 +87,9 @@ UI = {
     "run_mode_label": "Chế độ vận hành",
     "agents": "Trạng thái agent",
     "canary_last_ok": "Canary gần nhất",
+    "trade_allowed": "Algo Trading",
+    "trade_not_allowed": ("Algo Trading đang TẮT trên terminal này. Lệnh ĐÓNG sẽ thất "
+                          "bại, trong khi lệnh MỞ qua giao diện vẫn chạy."),
     "canary_never": "chưa lần nào",
 
     "metric_p50": "Độ trễ copy p50",

@@ -74,6 +74,15 @@ def _mo_ta_agent(row: Any) -> dict[str, Any]:
         "status_label": label(AGENT_STATUS, trang_thai),
         "broker_connected": bool(row["broker_connected"]),
     }
+    # `None` = agent khong bao (clicker, hoac EA ban cu). Hien "khong biet" chu khong hien
+    # thanh "on" — day dung la loai trang thai ma dashboard khong duoc phep doan (B-09).
+    if row["role"] != "CLICKER":
+        mo_ta["trade_allowed"] = (None if row["trade_allowed"] is None
+                                  else bool(row["trade_allowed"]))
+        mo_ta["trade_allowed_label"] = UI["trade_allowed"]
+        if row["trade_allowed"] == 0:
+            mo_ta["canh_bao"] = UI["trade_not_allowed"]
+
     if row["role"] == "CLICKER":
         # Cùng một enum, nghĩa khác. Nhãn phải nói đúng thứ người vận hành cần hiểu.
         if trang_thai == "DEGRADED":

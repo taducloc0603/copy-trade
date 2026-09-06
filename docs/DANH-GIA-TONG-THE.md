@@ -4,6 +4,11 @@
 không sửa một dòng code nào. Mọi kết luận neo vào code (`file:dòng`), database thật
 `data/bridge.db`, hoặc quan sát trực tiếp trên hai terminal demo 538216 / 538217.*
 
+> **Đây là bản ghi tại một thời điểm, cố ý không sửa lại.** Toàn bộ F-01…F-12 đã được xử lý ở
+> phase 11 — F-01…F-06 và F-09 sửa hẳn (F-01 kéo theo việc cấp khả năng đóng cho EA Master),
+> F-07/F-08/F-10…F-12 chuyển thành B-08…B-13 rồi cũng đóng nốt. Số test, tên hàm và tên test nêu
+> dưới đây là của ngày kiểm toán; xem `PROGRESS.md` mục Phase 11 để biết hiện trạng.
+
 ---
 
 # PHẦN A — SẴN SÀNG CHẠY TIỀN THẬT CHƯA

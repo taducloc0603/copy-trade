@@ -79,21 +79,6 @@ RDP chứ không Sign out), rồi từ xa kiểm qua database xem lệnh tiếp 
 độ hỏng cần phân biệt: canary đỏ (an toàn — Bridge ngừng gửi `OPEN_UI`) so với canary xanh mà cú
 bấm không tới nơi (nguy hiểm).
 
-### B-09 — Bridge không biết Algo Trading của terminal đang bật hay tắt
-
-`MQL_TRADE_ALLOWED` chỉ được kiểm **bên trong EA**, lúc khởi động và lúc nhận command; nó không
-bao giờ đi vào `hello` hay `heartbeat`, nên dashboard và bộ đối chiếu đều mù với nó.
-
-Bất đối xứng nguy hiểm: đường **mở** phía Client đi qua giao diện nên **không cần** Algo Trading,
-còn đường **đóng** đi qua EA nên **cần**. Một terminal có Algo Trading tắt sẽ vẫn mở lệnh bình
-thường và chỉ hỏng khi đóng — tức là tích luỹ vị thế một chiều rồi mới báo `CLOSE_FAILED`.
-
-Sau khi VPS khởi động lại hoặc MT5 tự cập nhật, Algo Trading tắt là trạng thái hoàn toàn có thật.
-
-**Cách trả:** thêm `trade_allowed` vào heartbeat, hiện trên dashboard cạnh canary, và cho Bridge
-từ chối gửi lệnh mở khi phía Client không đóng được. Chi phí: sửa EA (phải biên dịch và **gỡ ra
-gắn lại**, xem RUNBOOK mục 2), sửa schema message, sửa dashboard.
-
 ---
 
 ## Mở rộng — không thuộc MVP
@@ -159,3 +144,7 @@ Ghi lại để lần sau không phải đi tìm:
 - ~~B-12: vài dòng `pair` còn số liệu sai~~ → `don_so_sach()`, chạy trong `bao_tri_hang_ngay`.
   Đã chạy thật trên `data/bridge.db`: sửa 2 dòng, còn 0.
 - ~~B-13: guard D-16 chưa quét `clicker/`~~ → quét cả hai gói.
+- ~~B-09: Bridge không biết Algo Trading của terminal~~ → EA gửi `trade_allowed` trong heartbeat,
+  Bridge lưu (migration `003`), báo `TRADE_NOT_ALLOWED` mức ERROR **khi cờ đổi**, hiện trên
+  dashboard, và thêm **cổng thứ ba** ở đường mở: Client không đóng được thì **không mở lệnh mới**.
+  `NULL` (EA bản cũ) không chặn — "không biết" khác "biết là tắt".

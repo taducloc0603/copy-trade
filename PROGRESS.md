@@ -1813,3 +1813,42 @@ Server thì 4 GB RAM là mức nên có; 2 GB sẽ chật.
 mục 6 chỗ nào thay bằng gì, và đổi tiêu đề mục 6 thành "kiến trúc NHIỀU MÁY" để không ai đọc nhầm.
 
 Không sửa code ở lượt này. 512 test xanh, `ruff` sạch, `run_mode = PAUSED`.
+
+### B-09 — Bridge nhìn thấy được Algo Trading, và không mở cái không đóng được
+
+*(2026-09-06, sau lượt rà soát VPS.)*
+
+Bất đối xứng: đường **mở** phía Client đi qua giao diện nên không cần Algo Trading, đường **đóng**
+đi qua EA nên cần. Một terminal tắt Algo Trading vẫn mở lệnh bình thường và chỉ hỏng lúc đóng —
+tích luỹ vị thế một chiều rồi mới báo `CLOSE_FAILED`. Sau khi VPS khởi động lại hoặc MT5 tự cập
+nhật, đây là trạng thái hoàn toàn có thật.
+
+- EA gửi `trade_allowed` (`MQL_TRADE_ALLOWED`) trong heartbeat, cả Master lẫn Client.
+- `HeartbeatMessage.trade_allowed` là **tuỳ chọn**: clicker không có khái niệm đó và EA bản cũ
+  không gửi. **"Không biết" khác "biết là tắt"** — chặn vì không biết sẽ làm hệ thống tự dừng mỗi
+  khi nâng cấp lệch phiên bản.
+- Migration `003` thêm cột `agent.trade_allowed`. Đã chạy trên `data/bridge.db`: version 2 → 3,
+  37 pair / 191 event / 263 command / 3 agent / 57 alert / 7 finding nguyên vẹn.
+- Báo `TRADE_NOT_ALLOWED` mức ERROR **khi cờ đổi**, không phải mỗi nhịp heartbeat — khoá theo
+  chính cờ này chứ không dùng `_alert_on_transition` (hàm đó khoá theo `status` của agent, dùng
+  ở đây là lẫn lộn hai thứ). Bật lại thì báo `TRADE_ALLOWED_AGAIN` mức INFO.
+- **Cổng thứ ba ở `_ui_route_blocked`:** Client báo `trade_allowed = 0` thì **không gửi `OPEN_UI`**.
+  Đừng mở cái mà không đóng được.
+- Dashboard hiện trạng thái này cho agent EA; `NULL` hiện là "không biết", không hiện thành "ổn".
+
+Cố ý **không** đặt agent sang `DEGRADED`: terminal vẫn gửi event và sổ sách vẫn đúng, cái hỏng chỉ
+là khả năng đóng. Cổng chặn nằm ở đường mở.
+
+Ba file EA biên dịch lại: **0 lỗi, 0 cảnh báo**. Chưa nạp lại trên terminal — cần gỡ EA ra gắn lại
+(RUNBOOK mục 2), và **chưa nghiệm thu đầu-cuối trên demo**.
+
+### Rà soát tài liệu
+
+- `docs/ACCEPTANCE.md` ghi "478 test xanh" đã lạc hậu → 518.
+- `docs/DANH-GIA-TONG-THE.md` là bản ghi tại một thời điểm, **cố ý giữ nguyên**; thêm khối dẫn ở
+  đầu nói rõ F-01…F-12 đã xử lý xong, để người đọc không tưởng đó là hiện trạng.
+- `docs/RUNBOOK.md` mục 7 thêm `TRADE_NOT_ALLOWED` và `CLIENT_TRADE_NOT_ALLOWED`.
+- Đối chiếu lại: 27 quyết định khớp giữa `DECISIONS.md` và `plan/00-README.md`; `ARCHITECTURE.md`
+  không có chỗ nào mâu thuẫn với việc EA Master nay đóng được lệnh.
+
+**518 test xanh (+2) và 3 test tải, `ruff` sạch.**

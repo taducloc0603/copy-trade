@@ -197,13 +197,18 @@ class MockAgent:
 
     async def send_heartbeat(self, *, broker_connected: bool = True, equity: float = 10000.0,
                              margin_level: float | None = 500.0,
+                             trade_allowed: bool | None = True,
                              ts_agent: str | None = None) -> None:
-        await self.send_raw({
+        """`trade_allowed=None` mô phỏng EA bản cũ: không gửi trường này chút nào."""
+        goi = {
             "v": 1, "kind": "heartbeat", "ts": utc_now_iso(), "seq": self.seq,
             "broker_connected": broker_connected, "equity": equity,
             "margin_level": margin_level, "positions_count": len(self.positions),
             "ts_agent": ts_agent or utc_now_iso(),
-        })
+        }
+        if trade_allowed is not None:
+            goi["trade_allowed"] = trade_allowed
+        await self.send_raw(goi)
 
     async def send_snapshot(self, command_id: str | None = None) -> None:
         await self.send_raw({

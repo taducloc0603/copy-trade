@@ -1583,6 +1583,11 @@ public:
       writer.Int("seq", m_seq);
       writer.Bool("broker_connected",
                   (bool)TerminalInfoInteger(TERMINAL_CONNECTED));
+      // Bridge phai NHIN THAY duoc trang thai nay. Duong MO phia Client di qua giao dien
+      // nen khong can quyen giao dich, con duong DONG di qua EA nen can. Mot terminal tat
+      // Algo Trading se van mo lenh binh thuong roi chi hong luc dong, tuc tich luy vi the
+      // mot chieu truoc khi bao loi (B-09).
+      writer.Bool("trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED));
       writer.Dbl("equity", AccountInfoDouble(ACCOUNT_EQUITY), 2);
       writer.Dbl("margin_level", AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
       writer.Int("positions_count", PositionsTotal());

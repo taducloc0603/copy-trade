@@ -642,7 +642,7 @@ class EventProcessor:
     def _ui_route_blocked(self, client: sqlite3.Row) -> str | None:
         """Lý do KHÔNG được gửi `OPEN_UI` lúc này, hoặc ``None`` nếu đi được.
 
-        Hai cổng, cả hai đều **chỉ biết bỏ qua**. Rơi về đường EA khi clicker hỏng là lặng lẽ
+        Ba cổng, cả ba đều **chỉ biết bỏ qua**. Rơi về đường EA khi clicker hỏng là lặng lẽ
         đặt một lệnh `EXPERT` — đúng thứ phase này tồn tại để làm cho bất khả thi (D-25).
         """
         client_id = client["client_id"]
@@ -677,6 +677,21 @@ class EventProcessor:
                         f"{inflight['command_id']} chua xong, bo qua lenh nay",
                         agent_id=clicker_id)
             return "clicker dang ban"
+
+        # Cổng 3 — **đừng mở cái mà không đóng được** (B-09). Đường mở đi qua giao diện nên
+        # không cần Algo Trading, còn đường đóng đi qua EA nên cần. Nếu EA của Client đang báo
+        # `trade_allowed = false` mà vẫn copy thì mỗi lệnh mở là một vị thế không có đường đóng
+        # tự động — đúng cách tích luỹ rủi ro một chiều mà không ai thấy cho tới lúc cần đóng.
+        #
+        # `None` (agent không báo, hoặc EA bản cũ) **không** chặn: "không biết" khác "biết là
+        # tắt", và chặn vì không biết sẽ làm hệ thống tự dừng khi nâng cấp lệch phiên bản.
+        agent = self.db.get_agent(client["agent_id"])
+        if agent is not None and agent["trade_allowed"] == 0:
+            self._alert("ERROR", "CLIENT_TRADE_NOT_ALLOWED",
+                        f"Client {client_id}: Algo Trading dang TAT tren terminal cua "
+                        f"{client['agent_id']}, nen lenh DONG se that bai. KHONG mo lenh moi.",
+                        agent_id=client["agent_id"])
+            return "Algo Trading tat phia Client"
         return None
 
     async def _on_ui_ack(self, pair: sqlite3.Row, command: sqlite3.Row, message: Any) -> None:
