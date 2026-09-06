@@ -1969,3 +1969,35 @@ Dùng 3 lệnh demo. Trả máy sạch: `run_mode = PAUSED`, 0 vị thế trên 
 
 **Giai đoạn 1 xong.** Còn lại là giai đoạn 2 (dựng VPS: B-08 phiên RDP ngắt, TEST-19 mất điện,
 chạy 24 giờ) và giai đoạn 3 (điều khoản broker).
+
+### File hướng dẫn cho người dùng cuối
+
+*(2026-09-06.)*
+
+`docs/HUONG-DAN-SU-DUNG.html` — một file tự chứa 200 KB, mở offline được, gửi qua email/chat được.
+Viết cho **người biết dùng máy nhưng không biết lập trình**, khác hẳn `RUNBOOK.md` vốn giả định đã
+theo dự án từ đầu.
+
+Chia hai phần theo đúng yêu cầu: **A — tất cả trên một VPS** và **B — Master ở máy riêng**.
+
+Điều quan trọng nhất trong tài liệu này không phải phần cài đặt mà là **một khối cảnh báo ở đầu
+Phần B**: kiến trúc nhiều máy **chưa bao giờ được chạy**. Mọi agent từ trước tới nay nối qua
+`127.0.0.1`, và `RUNBOOK.md` mục 6 không có dòng nào được tick. Viết Phần B bằng giọng chắc chắn
+như Phần A sẽ là nói dối người đọc, nên nó được đánh dấu rõ là viết theo thiết kế chứ không theo
+kinh nghiệm.
+
+Đầu file cũng có khối nêu thẳng ba giới hạn: một symbol mỗi terminal, chưa đo phiên RDP ngắt,
+không có cảnh báo gửi ra ngoài.
+
+**Hình ảnh:** hai sơ đồ SVG tự vẽ (kiến trúc, so sánh hai cách bố trí) và **năm ảnh chụp màn hình
+thật** — thanh công cụ có nút Algo Trading, Navigator, hộp thoại New Order (thấy rõ ô Comment),
+tab Inputs của EA, và trang theo dõi. Chụp bằng `PrintWindow`; token trong ảnh tab Inputs **đã
+được che bằng cách vẽ đè lên pixel**, không phải chỉ làm mờ.
+
+Một ảnh **cố ý không đưa vào**: tab Common có ô "Allow Algo Trading". MT5 tự vẽ tab đó nên
+`PrintWindow` bắt được một khung rỗng. Theo đúng nguyên tắc "không nhét ảnh hỏng", chỗ đó dùng một
+khối cảnh báo bằng chữ — và đây chính là cái bẫy đã cắn ở lượt trước nên nó được mô tả kỹ.
+
+Kiểm chứng: không tham chiếu ra ngoài nào (mở được khi mất mạng), không token/mật khẩu thật trong
+file, sáu lệnh nhắc trong hướng dẫn đều tồn tại trong `bridge/admin.py`, và toàn bộ trang đã render
+kiểm bằng trình duyệt.
