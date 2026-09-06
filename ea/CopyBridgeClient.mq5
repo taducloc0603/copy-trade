@@ -132,9 +132,9 @@ public:
          return(SendAck(command_id, "rejected", 0, refused, -1, 0, 1));
         }
 
-      if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      if(!CbTradeAllowed())
          return(SendAck(command_id, "rejected", 0,
-                        "Auto trading is disabled in the terminal", -1, 0, 1));
+                        "Trading not allowed: " + CbTradeBlockReason(), -1, 0, 1));
 
       if(type == "OPEN")
          return(DoOpen(command_id, payload));
@@ -163,9 +163,9 @@ int OnInit()
      }
 
    // Khac EA Master: Client PHAI dat duoc lenh, khong thi khong lam gi duoc.
-   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
-      CbLog("ERROR", "Auto trading dang TAT. EA Client se tu choi moi command " +
-            "cho toi khi bat len.");
+   if(!CbTradeAllowed())
+      CbLog("ERROR", "KHONG dat duoc lenh: " + CbTradeBlockReason() +
+            "EA Client se TU CHOI moi command cho toi khi sua xong.");
 
    if(!g_agent.Init(BridgeHost, BridgePort, AgentToken, "CLIENT", MagicNumber))
      {
@@ -219,7 +219,7 @@ void ShowStatus()
   {
    string connection = g_agent.IsConnected() ? "DA KET NOI" : "MAT KET NOI";
    string broker = ((bool)TerminalInfoInteger(TERMINAL_CONNECTED)) ? "co" : "KHONG";
-   string trading = MQLInfoInteger(MQL_TRADE_ALLOWED) ? "BAT" : "TAT";
+   string trading = CbTradeAllowed() ? "BAT" : "TAT";
 
    string text = "CopyBridge CLIENT\n";
    text += "Bridge: " + connection + "  (" + BridgeHost + ":" +

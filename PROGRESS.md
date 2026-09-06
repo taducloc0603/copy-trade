@@ -1899,3 +1899,48 @@ ghi Telegram thành món nợ rồi "sửa" nó.
 `bridge/alerting.py` giữ nguyên — bật lại chỉ là điền hai khoá vào `config.toml`.
 
 **523 test xanh (+5), `ruff` sạch.**
+
+### Nghiệm thu B-09 trên demo — và một lỗi chỉ lộ ra khi chạy thật
+
+*(2026-09-06.)*
+
+Bản sửa B-09 đầu tiên **kiểm sai cờ**. `MQLInfoInteger(MQL_TRADE_ALLOWED)` không phải nút
+**Algo Trading** trên thanh công cụ — nó là ô tick *riêng của EA* trong hộp thoại thuộc tính. Nút
+trên thanh công cụ là `TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)`.
+
+Đo được trên demo: tắt nút Algo Trading trên Client, `trade_allowed` **vẫn báo 1** với heartbeat
+mới 0,6 giây. Ép EA đóng một lệnh thì nó **không** từ chối mà gọi thẳng `OrderSend`, và terminal
+trả về `retcode 10027 "AutoTrading disabled by client"`.
+
+Đây không phải lỗi mới của phase 11: chỗ kiểm sẵn có trong `OnCommand` **luôn** dùng đúng cờ sai
+đó, và thông báo của nó ghi *"Auto trading is disabled in the terminal"* — nói "terminal" trong
+khi đọc cờ của chương trình. Nó chưa bao giờ lộ ra vì chưa ai tắt nút đó rồi thử đóng lệnh.
+
+**Sửa:** `CbTradeAllowed()` trong `CopyBridgeCommon.mqh` kiểm **cả bốn** điều kiện —
+`TERMINAL_TRADE_ALLOWED`, `MQL_TRADE_ALLOWED`, `ACCOUNT_TRADE_ALLOWED`, `ACCOUNT_TRADE_EXPERT`.
+Mọi chỗ kiểm quyền giao dịch trong hai EA gọi hàm này; test hợp đồng cấm gọi cờ lẻ.
+
+**Rồi lỗi thứ hai, cùng loại:** sau khi bật lại nút Algo Trading, `trade_allowed` **vẫn** là 0, và
+bản sửa không nói được điều kiện nào đang chặn — nó chỉ biết "tắt". Thêm `CbTradeBlockReason()`
+viết ra đúng chỗ đang chặn, dùng cả trong log khởi động lẫn thông báo từ chối. Nguyên nhân thật:
+**ô "Allow Algo Trading" riêng của EA bị bỏ tick** khi gắn EA lúc nút toàn cục đang tắt — và bật
+lại nút trên thanh công cụ **không** tick lại ô đó. Đây là cái bẫy vận hành sẽ gặp lại trên VPS.
+
+**Nghiệm thu, đủ bốn vế:**
+
+| Vế | Kết quả |
+|---|---|
+| Khoẻ | `trade_allowed = 1` cho cả hai EA; clicker `NULL` đúng thiết kế |
+| Tắt Algo Trading | `= 0` trong ~1 giây, alert `TRADE_NOT_ALLOWED` mức ERROR |
+| Cổng chặn | **0** lệnh `OPEN_UI`, **0** cặp mới, event `IGNORED` lý do "Algo Trading tat phia Client", alert `CLIENT_TRADE_NOT_ALLOWED` |
+| Phục hồi | `TRADE_ALLOWED_AGAIN` mức INFO, copy chạy lại: `PAIR-000012`, `reason = 0` |
+
+Hệ quả phụ quan sát được: hai lệnh Master bị cổng chặn **nằm lại không có cặp**, nên nút đóng
+khẩn cấp không biết tới chúng (nó chỉ duyệt bảng `pair`). Bộ đối chiếu bắt đúng cả hai thành
+`UNPAIRED_MASTER`. Đây là hành vi đúng, nhưng người vận hành phải biết: **chặn copy nghĩa là để
+lại vị thế Master một chiều cần xử lý tay.**
+
+Đã dùng 5 lệnh demo. Trả máy sạch: `run_mode = PAUSED`, hai terminal không còn vị thế nào, token
+clicker đã thu hồi, Bridge và clicker đã tắt.
+
+**524 test xanh (+1), `ruff` sạch.**

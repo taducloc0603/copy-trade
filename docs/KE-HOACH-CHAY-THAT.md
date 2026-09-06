@@ -20,18 +20,14 @@ thường của VPS chứ không phải tình huống hiếm.
 
 Làm xong giai đoạn này rồi mới dựng VPS; sửa trên laptop rẻ hơn sửa trên VPS.
 
-### 1.1 Nghiệm thu B-09 đầu-cuối *(cần bạn: ~2 phút)*
+### 1.1 ~~Nghiệm thu B-09~~ — **ĐÃ XONG** (2026-09-06)
 
-Mã đã viết và **biên dịch sạch**, nhưng terminal vẫn chạy bản EA cũ và cơ chế chưa từng chạy thật.
+Chạy thật trên demo, đạt cả bốn vế: `trade_allowed = 1` khi khoẻ → tắt nút thì `= 0` kèm alert
+`TRADE_NOT_ALLOWED` → lệnh Master tiếp theo sinh **0** `OPEN_UI`, **0** cặp mới, event `IGNORED`
+với lý do *"Algo Trading tat phia Client"* kèm `CLIENT_TRADE_NOT_ALLOWED` → bật lại thì
+`TRADE_ALLOWED_AGAIN` và copy chạy lại (`PAIR-000012`, `reason = 0`).
 
-1. Gỡ EA khỏi chart rồi gắn lại trên **cả hai** terminal (đổi khung thời gian **không** đủ — MT5
-   không đọc lại `.ex5`; xem `RUNBOOK.md` mục 2).
-2. Tôi bật stack, xác nhận `agent.trade_allowed = 1` cho cả hai EA.
-3. **Tắt** nút Algo Trading trên terminal Client → phải thấy alert `TRADE_NOT_ALLOWED` (ERROR),
-   và lệnh Master tiếp theo **không** sinh `OPEN_UI`, kèm `CLIENT_TRADE_NOT_ALLOWED`.
-4. Bật lại → `TRADE_ALLOWED_AGAIN`, copy chạy lại bình thường.
-
-Chi phí: ~2 lệnh demo.
+**Phép thử tìm ra một lỗi thật trong chính bản sửa đầu**, xem `PROGRESS.md`.
 
 ### 1.2 ~~Telegram~~ — đã quyết định BỎ, và đây là hệ quả
 

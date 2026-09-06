@@ -52,6 +52,47 @@ string CbUtf8Decode(const uchar &data[], const int start, const int count)
 //| chuoi se pha vo khung NDJSON (D-02) va lam Bridge doc sai ranh    |
 //| gioi message.                                                    |
 //+------------------------------------------------------------------+
+//| Co dat duoc lenh khong. Bon dieu kien, thieu mot la khong dat duoc.|
+//|                                                                    |
+//| MQL_TRADE_ALLOWED KHONG phai nut Algo Trading tren thanh cong cu;   |
+//| no la o tick trong thuoc tinh cua chinh EA. Nut tren thanh cong cu  |
+//| la TERMINAL_TRADE_ALLOWED. Truoc phase 11 code chi kiem cai dau,    |
+//| nen tat nut tren thanh cong cu thi EA VAN goi OrderSend roi bi      |
+//| terminal tra ve 10027 "AutoTrading disabled by client" - do duoc    |
+//| tren demo 2026-09-06.                                              |
+//|                                                                    |
+//| Hai dieu kien tai khoan la phia broker: co the sang mo tai khoan    |
+//| khong cho EA giao dich, va khi do khong nut nao bat len duoc.       |
+//+------------------------------------------------------------------+
+string CbTradeBlockReason();
+
+bool CbTradeAllowed()
+  {
+   return(StringLen(CbTradeBlockReason()) == 0);
+  }
+
+//+------------------------------------------------------------------+
+//| Dieu kien NAO dang chan, viet ra chu de doc.                      |
+//|                                                                    |
+//| "Khong dat duoc lenh" ma khong noi vi sao thi nguoi van hanh phai  |
+//| doan giua bon cho bam khac nhau, trong do hai cho nam ben broker   |
+//| va khong bam duoc. Ham nay ton tai de cau tra loi nam trong log.   |
+//+------------------------------------------------------------------+
+string CbTradeBlockReason()
+  {
+   string ly_do = "";
+   if(!(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      ly_do += "nut Algo Trading tren thanh cong cu DANG TAT; ";
+   if(!(bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
+      ly_do += "o 'Allow Algo Trading' trong thuoc tinh EA DANG TAT; ";
+   if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
+      ly_do += "tai khoan khong duoc phep giao dich (phia broker); ";
+   if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      ly_do += "tai khoan khong cho EA giao dich (phia broker); ";
+   return(ly_do);
+  }
+
+//+------------------------------------------------------------------+
 string CbJsonEscape(const string text)
   {
    string out = "";
@@ -1587,7 +1628,7 @@ public:
       // nen khong can quyen giao dich, con duong DONG di qua EA nen can. Mot terminal tat
       // Algo Trading se van mo lenh binh thuong roi chi hong luc dong, tuc tich luy vi the
       // mot chieu truoc khi bao loi (B-09).
-      writer.Bool("trade_allowed", (bool)MQLInfoInteger(MQL_TRADE_ALLOWED));
+      writer.Bool("trade_allowed", CbTradeAllowed());
       writer.Dbl("equity", AccountInfoDouble(ACCOUNT_EQUITY), 2);
       writer.Dbl("margin_level", AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
       writer.Int("positions_count", PositionsTotal());

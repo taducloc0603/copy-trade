@@ -237,7 +237,7 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 | Alert `UI_OPEN_BUSY` | Hai lệnh Master trong ~600 ms; mỗi Client chỉ cho **một** `OPEN_UI` đang bay | Lệnh sau **bị bỏ** — đây là mất hedge thật, nên nó ở mức ERROR và đi ra Telegram. Kiểm và mở bù bằng tay. |
 | Alert `ORPHANED_MASTER` | Client đóng khi `can_close_master = 0` (D-20) | Đúng thiết kế. Quyết định bằng tay: đóng Master hay mở lại Client. |
 | Agent `DEGRADED` | Terminal mất kết nối broker nhưng EA còn sống | Bridge **ngừng gửi command** cho agent đó. Chờ terminal nối lại. |
-| Alert `TRADE_NOT_ALLOWED` | Algo Trading TẮT trên terminal của agent đó | Bật nút **Algo Trading**. Đường MỞ qua giao diện vẫn chạy nhưng đường ĐÓNG sẽ hỏng — đừng bỏ qua. |
+| Alert `TRADE_NOT_ALLOWED` | Terminal của agent đó không đặt được lệnh | **Đọc tab Experts để biết chỗ nào đang chặn** — EA ghi rõ. Có **bốn** chỗ, và bật nút trên thanh công cụ chỉ sửa được một: (1) nút **Algo Trading** trên thanh công cụ, (2) ô **"Allow Algo Trading"** trong thuộc tính EA — bị bỏ tick khi gắn EA lúc nút toàn cục đang tắt, và **bật lại nút KHÔNG tick lại ô này**, (3) tài khoản không được phép giao dịch, (4) tài khoản không cho EA giao dịch. Hai cái cuối ở phía broker. |
 | Alert `CLIENT_TRADE_NOT_ALLOWED` | Bridge **từ chối mở lệnh mới** vì Client không đóng được | Đúng thiết kế: đừng mở cái không đóng được. Bật Algo Trading rồi copy chạy lại. |
 | Alert `FINDING_BO_QUEN` | Có sai lệch nằm chờ quá `finding_nhac_sau_phut` (mặc định 60) | Mở dashboard, xử lý từng finding. Đặt khoá này về 0 để tắt nhắc. |
 | Finding đối chiếu đang chờ | Sổ sách lệch với thực tế trên terminal | Mở finding trên dashboard, đọc `evidence_json` (có đủ ba nguồn) rồi mới `accept`. Không accept khi chưa đọc bằng chứng. |

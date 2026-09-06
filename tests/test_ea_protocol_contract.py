@@ -283,7 +283,25 @@ def test_heartbeat_luon_mang_broker_connected_va_trade_allowed() -> None:
     assert 'writer.Bool("broker_connected"' in source
     assert "TERMINAL_CONNECTED" in source
     assert 'writer.Bool("trade_allowed"' in source
+    # Phai kiem CA nut tren thanh cong cu lan o tick cua EA. `MQL_TRADE_ALLOWED` mot minh la
+    # SAI: no la co cua rieng chuong trinh. Do tren demo 2026-09-06 — tat nut Algo Trading thi
+    # co do van bao true, EA van goi OrderSend, va terminal tra ve 10027.
+    assert "TERMINAL_TRADE_ALLOWED" in source
     assert "MQL_TRADE_ALLOWED" in source
+
+
+def test_moi_cho_kiem_quyen_giao_dich_deu_dung_ham_chung() -> None:
+    """Không nơi nào được tự kiểm một cờ lẻ — bốn điều kiện phải đi cùng nhau.
+
+    Đây chính là cách lỗi cũ tồn tại lâu: mỗi chỗ tự gọi `MQLInfoInteger(MQL_TRADE_ALLOWED)`,
+    và không ai đối chiếu nó với nút mà người vận hành thực sự bấm.
+    """
+    for name in ("CopyBridgeClient.mq5", "CopyBridgeMaster.mq5"):
+        code = _code_only(EA_DIR / name)
+        assert "MQLInfoInteger(MQL_TRADE_ALLOWED)" not in code, (
+            f"{name} kiểm cờ lẻ thay vì gọi CbTradeAllowed()"
+        )
+        assert "CbTradeAllowed()" in code
 
 
 def test_chi_ea_client_duoc_MO_lenh() -> None:

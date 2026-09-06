@@ -53,9 +53,9 @@ public:
          return(SendAck(command_id, "rejected", 0, refused, -1, 0, 1));
         }
 
-      if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      if(!CbTradeAllowed())
          return(SendAck(command_id, "rejected", 0,
-                        "Auto trading is disabled in the terminal", -1, 0, 1));
+                        "Trading not allowed: " + CbTradeBlockReason(), -1, 0, 1));
 
       if(type == "CLOSE")
          return(DoClose(command_id, payload));
@@ -84,9 +84,9 @@ int OnInit()
 
    // Tu phase 11 EA Master PHAI dat duoc lenh dong, neu khong thi nut dung khan
    // cap va cascade (D-09) khong lam gi duoc ngoai viec bao loi.
-   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
-      CbLog("ERROR", "Auto trading dang TAT. EA Master van gui su kien duoc nhung se " +
-            "TU CHOI moi lenh dong cho toi khi bat len.");
+   if(!CbTradeAllowed())
+      CbLog("ERROR", "KHONG dat duoc lenh: " + CbTradeBlockReason() +
+            "EA Master van gui su kien duoc nhung se TU CHOI moi lenh dong.");
 
    if(!g_agent.Init(BridgeHost, BridgePort, AgentToken, "MASTER", MagicNumber))
      {
