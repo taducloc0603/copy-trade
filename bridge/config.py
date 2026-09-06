@@ -31,7 +31,9 @@ class ConfigError(Exception):
 class BridgeSection:
     """Mục ``[bridge]`` trong ``config.toml``."""
 
-    host: str = "0.0.0.0"
+    #: Mac dinh chi nghe loopback. Mo ra ngoai la mot quyet dinh phai co y thuc, va khi do
+    #: `parse_config` bat buoc phai co `dashboard_password` (F-02).
+    host: str = "127.0.0.1"
     port: int = 8787
     web_port: int = 8080
     db_path: str = "data/bridge.db"
@@ -97,6 +99,14 @@ def _require_port(value: Any, field: str) -> int:
     return value
 
 
+#: Địa chỉ chỉ máy này chạm được. Nghe ngoài phạm vi này thì bắt buộc phải có mật khẩu.
+LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _la_loopback(host: str) -> bool:
+    return host.strip().lower() in LOOPBACK
+
+
 def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) -> Config:
     """Kiểm tra và dựng ``Config`` từ dict đã parse. Tách riêng để test không cần file thật."""
     bridge_raw = raw.get("bridge", {})
@@ -119,6 +129,19 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
     security_raw = raw.get("security", {})
     if not isinstance(security_raw, Mapping):
         raise ConfigError("Mục [security] phải là một bảng TOML")
+
+    # Không mật khẩu thì `Dashboard.hop_le()` cho qua MỌI request, kể cả không cookie — đó là
+    # lựa chọn có ý thức khi chỉ nghe loopback. Nhưng mặc định cũ là `host = "0.0.0.0"` cộng mật
+    # khẩu rỗng, tức làm đúng theo RUNBOOK sẽ ra một nút đóng khẩn cấp không khoá. Kiểm toán
+    # 2026-09-06 gọi thẳng `/api/emergency` không cookie và nó đóng 3 cặp (F-02).
+    if not _la_loopback(host) and not str(security_raw.get("dashboard_password") or "").strip():
+        raise ConfigError(
+            f"bridge.host = {host!r} nghe tren moi interface nhung "
+            "security.dashboard_password de trong, nghia la dashboard KHONG co xac thuc: ai "
+            "cham duoc toi cong web deu bam duoc nut dong khan cap va doi duoc run_mode. "
+            "Sua mot trong hai: dat security.dashboard_password, hoac doi bridge.host thanh "
+            "127.0.0.1"
+        )
 
     return Config(
         bridge=BridgeSection(host=host, port=port, web_port=web_port, db_path=db_path),

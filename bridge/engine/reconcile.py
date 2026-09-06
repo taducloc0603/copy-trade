@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+from decimal import Decimal
 from typing import Any
 
 from bridge.clock import parse_iso, utc_now, utc_now_iso
@@ -107,12 +108,20 @@ class Reconciler:
         # và con số báo ra phải là số dòng THẬT sự được ghi trong vòng này.
         so = self.db.query_one(
             "SELECT COUNT(*) n FROM reconcile_finding WHERE run_id = ?", (run_id,))["n"]
+        # `so` la so dong GHI DUOC trong vong nay — cong loc trung o `_create_finding` da bo bot.
+        # Bao mot minh con so do ra ngoai la noi doi: hom kiem toan 2026-09-06 log ghi "0 sai
+        # lech" trong khi 2/2 cap deu sai va mot finding dang nam cho (F-06). Nen luon kem ca
+        # TONG SO DANG CHO XU LY.
+        dang_cho = self.db.query_one(
+            "SELECT COUNT(*) n FROM reconcile_finding WHERE resolution = 'PENDING'")["n"]
 
-        log.info("Doi chieu %s (%s): %d sai lech", run_id, trigger, so)
+        log.info("Doi chieu %s (%s): %d sai lech moi, %d dang cho xu ly",
+                 run_id, trigger, so, dang_cho)
         if so:
             self._alert("WARNING", "RECONCILE_FINDINGS",
-                        f"Doi chieu {run_id} ({trigger}) phat hien {so} sai lech giua so sach "
-                        "va thuc te. Can nguoi xu ly tung dong.")
+                        f"Doi chieu {run_id} ({trigger}) phat hien {so} sai lech moi giua so "
+                        f"sach va thuc te; tong cong {dang_cho} dang cho xu ly. Can nguoi xem "
+                        "tung dong.")
         return run_id
 
     async def _snapshot(self, agent_id: str) -> dict[int, Any] | None:
@@ -186,11 +195,36 @@ class Reconciler:
                 so += self._soi_cap_dang_mo(run_id, pair, co_master, co_client, bang_chung)
             elif pair["status"] == "PENDING_OPEN":
                 so += self._soi_cap_dang_cho(run_id, pair, co_master, snap_client, bang_chung)
+            elif pair["status"] == "ORPHANED":
+                so += self._soi_cap_mo_coi(run_id, pair, co_master, co_client, bang_chung)
 
             if co_client and vi_the_client is not None:
                 so += self._soi_lech_volume(run_id, pair, vi_the_client, bang_chung)
                 so += self._soi_reason(run_id, pair, bang_chung)
         return so
+
+    def _soi_cap_mo_coi(self, run_id: str, pair: sqlite3.Row, co_master: bool,
+                        co_client: bool, bang_chung: dict) -> int:
+        """Cặp `ORPHANED` mà **cả hai chân đều đã biến mất** thì người ta đã xử lý xong ngoài đời.
+
+        `ORPHANED` cố ý nằm ngoài `LIVE_STATUSES` để không đẻ finding trùng cho việc đã biết. Hệ
+        quả không lường: cặp đó **không bao giờ được xem lại nữa**, nên khi người vận hành đóng
+        nốt chân còn lại trên terminal thì sổ sách nằm nguyên như cũ mãi mãi. Kiểm toán
+        2026-09-06 tìm thấy `PAIR-20260905-000025` ở đúng tình trạng đó (F-05), trong khi một
+        cặp khác **cùng hoàn cảnh ngoài đời** nhưng ở trạng thái `PARTIALLY_CLOSED` thì được phát
+        hiện ngay.
+
+        Chỉ soi đúng trường hợp này — hai chân đều sạch — nên không quay lại kiểu rác cũ; cổng
+        chống trùng ở `_create_finding` lo phần lặp.
+        """
+        if co_master or co_client:
+            return 0
+        self._create_finding(
+            run_id, "SAFE", "ORPHAN_RESOLVED", suggested_action="MARK_CLOSED",
+            pair_id=pair["pair_id"], master_position_id=pair["master_position_id"],
+            client_id=pair["client_id"],
+            evidence_json=json.dumps(bang_chung, ensure_ascii=False))
+        return 1
 
     def _soi_cap_dang_mo(self, run_id: str, pair: sqlite3.Row, co_master: bool,
                          co_client: bool, bang_chung: dict) -> int:
@@ -350,10 +384,14 @@ class Reconciler:
         mong_doi = to_decimal(pair["master_current_volume"] or 0) * to_decimal(
             pair["effective_multiplier"] or 1)
         that = to_decimal(vi_the.volume)
-        if abs(float(that - mong_doi)) <= VOLUME_EPS:
+        # Dung sai theo `volume_step`, khong phai epsilon (D-19 ban phase 11): dong mot phan
+        # **luon** lam tron xuong, nen mot cap khoe manh van lech tren duoi mot buoc volume.
+        # Truoc phase 11 cho nay dung EPS = 1e-6 roi bu lai bang cach TAT han voi moi cap khong
+        # phai OPEN — tuc bo do lech bi tat dung tren nhom cap duy nhat co the lech (F-04/F-05).
+        buoc = self._buoc_volume(pair)
+        if abs(float(that - mong_doi)) <= float(buoc) + VOLUME_EPS:
             return 0
-        # Đóng một phần hợp lệ cũng làm lệch tạm thời; chỉ báo khi cặp đang ở trạng thái ổn định.
-        if pair["status"] != "OPEN":
+        if pair["status"] not in LIVE_STATUSES:
             return 0
         chi_tiet = dict(bang_chung)
         chi_tiet["volume_mong_doi"] = float(mong_doi)
@@ -364,6 +402,14 @@ class Reconciler:
             client_id=pair["client_id"],
             evidence_json=json.dumps(chi_tiet, ensure_ascii=False))
         return 1
+
+    def _buoc_volume(self, pair: sqlite3.Row) -> Decimal:
+        """`volume_step` của symbol Client, hoặc 0 nếu chưa có spec (khi đó siết về đúng epsilon)."""
+        client = self.db.get_client_account(pair["client_id"])
+        if client is None:
+            return Decimal(0)
+        spec = self.db.get_symbol_spec(client["agent_id"], pair["client_symbol"])
+        return to_decimal(spec["volume_step"]) if spec is not None else Decimal(0)
 
     def _soi_reason(self, run_id: str, pair: sqlite3.Row, bang_chung: dict) -> int:
         """Mục tiêu của cả phase 6b, kiểm lại ở đây thay vì tin."""
@@ -407,8 +453,10 @@ class Reconciler:
         if hanh_dong == "CLOSE_CLIENT" and pair is not None:
             await self.closing.close_pair_now(pair, "BOT")
         elif hanh_dong == "MARK_CLOSED" and pair is not None:
+            # `master_da_dong=True`: finding nay chi sinh ra khi snapshot cho thay vi the
+            # Master da bien mat khoi terminal — tuc co bang chung, khong phai suy dien.
             self.db.mark_pair_closed(pair["pair_id"], close_source="BROKER",
-                                     close_time_client=utc_now_iso())
+                                     close_time_client=utc_now_iso(), master_da_dong=True)
         elif hanh_dong == "MARK_ORPHANED" and pair is not None:
             self.db.update_pair(pair["pair_id"], status="ORPHANED", orphan_side="MASTER",
                                 close_source="CLIENT")
@@ -462,7 +510,7 @@ class Reconciler:
             await self.closing.close_pair_now(pair, "BOT")
         elif action == "MARK_CLOSED" and pair is not None:
             self.db.mark_pair_closed(pair["pair_id"], close_source="MANUAL",
-                                     close_time_client=utc_now_iso())
+                                     close_time_client=utc_now_iso(), master_da_dong=True)
         elif action == "MARK_ORPHANED" and pair is not None:
             self.db.update_pair(pair["pair_id"], status="ORPHANED", orphan_side="MASTER")
         elif action != "NOTHING":

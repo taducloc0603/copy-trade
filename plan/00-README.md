@@ -85,7 +85,7 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 | D-16 | Enum trong DB, log và message dùng tiếng Anh không dấu. Tiếng Việt chỉ ở tầng hiển thị, qua một file nhãn duy nhất. |
 | D-17 | Giữ 30 ngày dữ liệu event/command trong SQLite nóng, cũ hơn thì xuất sang file archive. Không bao giờ xoá `pair` và `master_position` theo thời gian. |
 | D-18 | Làm tròn volume mặc định là làm tròn **xuống**. Nếu kết quả dưới mức tối thiểu của sàn thì **bỏ qua lệnh và cảnh báo**, không tự nâng volume. |
-| D-19 | `effective_multiplier` (tỷ lệ thực tế sau làm tròn) được khoá tại thời điểm mở cặp và dùng cho mọi phép tính đóng một phần về sau. |
+| D-19 | *(sửa ở phase 11)* Đóng một phần lấy **tỷ lệ trên volume còn lại của hai bên tại thời điểm đóng**, không nhân lại từ hệ số cấu hình. `effective_multiplier` vẫn khoá lúc mở cặp nhưng dùng cho **đối chiếu**, không dùng cho phép tính đóng. |
 | D-20 | Cờ `can_close_master` đặt theo từng Client, mặc định TẮT. |
 | D-21 | Lệnh **MỞ** phía Client đi qua giao diện MT5 để mang `DEAL_REASON_CLIENT`. Đường **ĐÓNG** vẫn dùng `OrderSend` của EA. |
 | D-22 | Kênh mở lệnh là tiến trình riêng `clicker`, cùng giao thức NDJSON/TCP, role `CLICKER`, token riêng. Loại command riêng `OPEN_UI` để EA không thể lặng lẽ đặt lệnh `EXPERT` khi định tuyến sai. |

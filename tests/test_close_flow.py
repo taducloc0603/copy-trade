@@ -162,6 +162,13 @@ async def env_cascade(db: Database) -> AsyncIterator[Env]:
         yield e
 
 
+@pytest.fixture
+async def env_2client(db: Database) -> AsyncIterator[Env]:
+    """Hai Client chung một vị thế Master — đủ để kiểm việc chống đóng Master hai lần."""
+    async for e in _make_env(db, so_client=2, can_close_master=0):
+        yield e
+
+
 async def _make_env(db: Database, so_client: int, can_close_master: int):
     tokens = await _dung_env(db, so_client, can_close_master)
     server = BridgeServer(db, ServerConfig(host="127.0.0.1", port=0, hello_timeout_sec=1.0,
@@ -483,15 +490,69 @@ async def test_paused_thi_khong_dong_bo_dong(env: Env) -> None:
     assert env.db.get_master_position(900001)["status"] == "CLOSED"
 
 
-async def test_emergency_dong_het_client_truoc(env: Env) -> None:
+async def test_emergency_dong_het_ca_hai_phia(env: Env) -> None:
+    """TEST-21. Bản trước của test này chỉ kiểm phía Client và **khoá lại chính khiếm khuyết**.
+
+    Nút dừng khẩn cấp im lặng bỏ qua phía Master suốt mười phase: nó cắt một chân hedge, để
+    nguyên chân kia, rồi báo thành công (kiểm toán 2026-09-06, F-01). Bài kiểm quyết định không
+    phải `pair.status` — trạng thái đó do ack của Client quyết định nên nó luôn đẹp — mà là
+    **vị thế Master có thật sự được đóng không**.
+    """
     await env.master_open(900001, 1.0)
     await env.master_open(900002, 1.0)
     await _wait_until(lambda: len(env.pairs(status="OPEN")) == 2, timeout=3.0)
 
     so = await env.processor.closing.emergency_close_all()
-    assert so == 2
+    assert so == {"client": 2, "master": 2}, so
     await _wait_until(lambda: len(env.pairs(status="CLOSED")) == 2, timeout=4.0)
     assert env.alerts("EMERGENCY_CLOSE_ALL")
+
+    # Vế bị bỏ quên: phải có lệnh đóng gửi cho EA của MASTER, và vị thế Master phải phẳng.
+    lenh_master = [c for c in env.commands("CLOSE") if c["target_agent_id"] == MASTER_AGENT]
+    assert len(lenh_master) == 2, "Khong co lenh dong nao gui cho Master"
+    for position_id in (900001, 900002):
+        await _wait_until(
+            lambda pid=position_id: env.db.get_master_position(pid)["status"] == "CLOSED",
+            timeout=4.0)
+
+    # Va so sach phai theo kip: nghiem thu demo 2026-09-06 thay cap `CLOSED` van con
+    # `master_current_volume = 0.02` vi con so do chi duoc don khi Client ack.
+    for cap in env.pairs():
+        assert cap["master_current_volume"] == 0, cap["pair_id"]
+
+
+async def test_emergency_dong_client_truoc_master_sau(env: Env) -> None:
+    """Thứ tự là một phần của hợp đồng, không phải chi tiết cài đặt.
+
+    Đóng Master trước sẽ kích hoạt đồng bộ đóng thông thường ngay giữa lúc cần mọi thứ đơn giản
+    nhất, nên lệnh cho Client phải được tạo trước lệnh cho Master.
+    """
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: bool(env.pairs(status="OPEN")))
+
+    await env.processor.closing.emergency_close_all()
+
+    lenh = [c for c in env.commands("CLOSE")]
+    vai_tro = [env.db.get_agent(c["target_agent_id"])["role"] for c in lenh]
+    assert vai_tro == ["CLIENT", "MASTER"], vai_tro
+
+
+async def test_emergency_nhieu_cap_chung_mot_master_chi_dong_master_mot_lan(
+        env_2client: Env) -> None:
+    """Một vị thế Master có N Client thì vẫn chỉ có **một** lệnh đóng Master.
+
+    Gửi hai lệnh đóng cho cùng một vị thế là cách tạo ra lỗi "đóng nhầm lệnh vừa mở" trên tài
+    khoản hedging.
+    """
+    env = env_2client
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: len(env.pairs(status="OPEN")) == 2, timeout=3.0)
+
+    so = await env.processor.closing.emergency_close_all()
+    assert so == {"client": 2, "master": 1}, so
+
+    lenh_master = [c for c in env.commands("CLOSE") if c["target_agent_id"] == MASTER_AGENT]
+    assert len(lenh_master) == 1
 
 
 # -- hai lỗ hổng của plan 7.4b ---------------------------------------------------------------
@@ -607,3 +668,54 @@ async def test_volume_con_lai_khong_co_sai_so_float(env: Env) -> None:
 
     con = env.db.get_pair(cap_id)["client_current_volume"]
     assert repr(con) == "0.03", f"Sai so float: {con!r}"
+
+
+async def test_dong_mot_phan_lay_ty_le_tren_volume_con_lai_khong_phai_he_so_khoa(
+        env: Env) -> None:
+    """D-19 bản phase 11, ghim bằng con số chính xác chứ không phải một khoảng.
+
+    Đây là chuỗi mà hai công thức cho kết quả **khác nhau** — chỗ mà bộ test cũ không đi tới vì
+    nó chỉ khẳng định `0 < volume < 0.5`:
+
+    * lấy tỷ lệ trên volume còn lại (đang chạy) → Client còn **0.13**
+    * `delta × effective_multiplier` (chữ của D-19 bản 1) → Client còn 0.14
+    * lý tưởng không làm tròn → 0.125
+
+    Bản đang chạy gần lý tưởng hơn vì phần dư do làm tròn xuống được thu lại ở lần đóng sau, thay
+    vì tồn tại vĩnh viễn. Đó là lý do phase 11 sửa quyết định theo code chứ không ngược lại.
+    """
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: bool(env.pairs(status="OPEN")))
+    cap_id = env.pair_of(900001)["pair_id"]
+    assert env.db.get_pair(cap_id)["client_current_volume"] == 0.5
+
+    for _ in range(3):
+        truoc = env.db.get_pair(cap_id)["client_current_volume"]
+        await env.master_close(900001, volume_delta=0.25)
+        await _wait_until(
+            lambda muc=truoc: env.db.get_pair(cap_id)["client_current_volume"] < muc,
+            timeout=3.0)
+
+    sau = env.db.get_pair(cap_id)
+    assert abs(sau["master_current_volume"] - 0.25) < 1e-9
+    assert abs(sau["client_current_volume"] - 0.13) < 1e-9, sau["client_current_volume"]
+
+
+async def test_he_so_cau_hinh_doi_giua_chung_khong_co_duong_nao_cham_toi_cap_dang_chay(
+        env: Env) -> None:
+    """FR-06 vẫn được bảo đảm sau khi sửa D-19 — mạnh hơn bản cũ, không yếu đi.
+
+    Đường đóng một phần **không đọc `client_account`** chút nào, nên hệ số cấu hình đổi giữa
+    chừng không có cách nào ảnh hưởng tới cặp đang chạy.
+    """
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: bool(env.pairs(status="OPEN")))
+    cap_id = env.pair_of(900001)["pair_id"]
+
+    env.db.upsert_client_account("CL-01", agent_id="AG-CLIENT-1", volume_multiplier=5.0)
+    await env.master_close(900001, volume_delta=0.5)
+    await _wait_until(
+        lambda: env.db.get_pair(cap_id)["client_current_volume"] < 0.5, timeout=3.0)
+
+    # 50% cua 0.50 con lai = 0.25. He so 5.0 vua doi khong xuat hien o dau ca.
+    assert abs(env.db.get_pair(cap_id)["client_current_volume"] - 0.25) < 1e-9

@@ -459,17 +459,49 @@ class Database:
 
     def mark_pair_closed(self, pair_id: str, close_source: str,
                          close_time_client: str | None = None,
-                         close_time_master: str | None = None) -> None:
-        """Chuyển pair sang ``CLOSED``. Volume hai bên về 0."""
+                         close_time_master: str | None = None,
+                         master_da_dong: bool | None = None) -> None:
+        """Chuyển pair sang ``CLOSED``.
+
+        `client_current_volume` luôn về 0 — hàm này chỉ được gọi khi chân Client đã đóng xong.
+
+        `master_current_volume` thì **không**: bản cũ đưa cả hai về 0 chỉ dựa vào ack của Client,
+        nên sổ sách khẳng định Master đã phẳng trong khi chưa ai đụng tới nó. Đó là thứ làm cho
+        lỗi "đóng khẩn cấp không đóng Master" trở nên vô hình suốt mười phase (kiểm toán
+        2026-09-06, F-01). Nay chỉ về 0 khi biết chắc:
+
+        * `master_da_dong=True` — người gọi có bằng chứng (đối chiếu thấy vị thế đã biến mất khỏi
+          terminal);
+        * để `None` — tự đọc `master_position.status`, nguồn sự thật do EA báo về.
+        """
         now = _now()
+        if master_da_dong is None:
+            row = self.query_one(
+                "SELECT mp.status FROM pair p JOIN master_position mp "
+                "ON mp.master_position_id = p.master_position_id WHERE p.pair_id = ?", (pair_id,))
+            master_da_dong = row is not None and row["status"] == "CLOSED"
+        dat_master = "master_current_volume = 0, " if master_da_dong else ""
         with self.transaction() as conn:
             conn.execute(
                 "UPDATE pair SET status = 'CLOSED', close_source = ?, "
-                "master_current_volume = 0, client_current_volume = 0, "
+                f"{dat_master}client_current_volume = 0, "
                 "close_time_client = COALESCE(?, close_time_client, ?), "
                 "close_time_master = COALESCE(?, close_time_master, ?), "
                 "updated_at = ? WHERE pair_id = ?",
                 (close_source, close_time_client, now, close_time_master, now, now, pair_id),
+            )
+
+    def zero_master_volume(self, master_position_id: int) -> None:
+        """Đưa `master_current_volume` về 0 cho mọi cặp của một vị thế Master **đã đóng thật**.
+
+        Tách riêng khỏi `mark_pair_closed` vì hai việc xảy ra ở hai thời điểm khác nhau: cặp
+        được đóng sổ khi Client ack, còn chân Master chỉ chắc chắn phẳng khi chính EA Master ack.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE pair SET master_current_volume = 0, updated_at = ? "
+                "WHERE master_position_id = ? AND master_current_volume <> 0",
+                (_now(), master_position_id),
             )
 
     def list_pairs_needing_attention(self) -> list[sqlite3.Row]:

@@ -1638,3 +1638,106 @@ Cả sáu đều đã vào `RUNBOOK.md` mục 6 và mục 8, và `BACKLOG.md`. K
 `run_mode = PAUSED`, Bridge và clicker đã tắt. Không đặt lệnh thật nào trong lượt này. Còn
 `PAIR-000025` (`ORPHANED`) và `PAIR-000027` (`PARTIALLY_CLOSED`) — giữ lại làm dữ liệu thật.
 `data/bridge.db` ở schema version 2, có một bản sao lưu đã kiểm chứng trong `data/backup/`.
+
+- **[Đánh giá tổng thể 2026-09-06](docs/DANH-GIA-TONG-THE.md)** — kiểm toán độc lập sau Phase 10. Kết luận **NO-GO**; ba lỗi đang hoạt động (F-01 nút khẩn cấp không đóng Master, F-02 dashboard không xác thực, F-03 clicker rớt OFFLINE) và một lệch hợp đồng D-19.
+
+---
+
+## Phase 11 — Sửa các lỗi kiểm toán tìm ra
+
+*(2026-09-06, ngay sau lượt kiểm toán độc lập.)*
+
+### Việc quan trọng nhất: nút dừng khẩn cấp giờ mới thật sự dừng
+
+Kiểm toán tìm ra `emergency_close_all()` chỉ đóng phía Client rồi kết thúc, trong khi docstring và
+alert CRITICAL đều nói "Client trước Master sau" (F-01). Sửa xong ở tầng Bridge thì **nghiệm thu
+trên demo lộ ra một tầng sâu hơn**: EA Master trả về `Command type not supported by this agent
+role` — nó **không thực thi được lệnh nào**, và test hợp đồng `test_chi_ea_client_duoc_dat_lenh`
+cấm hẳn `OrderSend` trong file Master.
+
+Tức là **hai quyết định không thể cùng đúng**: ranh giới "chỉ EA Client đặt lệnh" so với D-09
+(cascade đóng Master) và TEST-21 (đóng khẩn cấp, Client trước Master sau). Mâu thuẫn này tồn tại
+từ phase 5 và không ai thấy vì đường đóng Master **chưa từng chạy đầu-cuối** — kiểm toán đếm được
+0 lệnh đóng nào từng gửi cho Master trong toàn bộ lịch sử database.
+
+Đã dừng lại hỏi thay vì tự chọn. Hướng người dùng chọn: **cho EA Master ĐÓNG, vẫn cấm MỞ.**
+
+Ranh giới mới tinh hơn nên cũng khoá tinh hơn (`test_chi_ea_client_duoc_MO_lenh`): mọi `OrderSend`
+trong code dùng chung phải đặt `request.position` — chỉ đóng được vị thế đã tồn tại; đường mở chỉ
+nằm trong `CopyBridgeClient.mq5`; `CMasterAgent::OnCommand` cố ý không nhận loại `OPEN`.
+
+Cách cài: chuyển `PickFilling`, `Guard`, `DoClose`, `DoClosePartial`, `ClosePartOf` **nguyên văn**
+từ `CopyBridgeClient.mq5` lên `CBridgeAgent` trong `CopyBridgeCommon.mqh`, không đổi cây kế thừa.
+Client mất 190 dòng trùng lặp, Master thêm một `OnCommand` chỉ nhận lệnh đóng.
+
+### Nghiệm thu TEST-21 trên demo: ĐẠT
+
+Ba vòng đo, và hai vòng đầu **không đạt** — ghi lại vì chúng là phần có ích nhất:
+
+| Vòng | Kết quả |
+|---|---|
+| 13:35 (EA cũ) | 2 lệnh đóng gửi tới Master, cả hai `ACK_FAILED`. Cặp chuyển `ORPHANED` + 2 alert CRITICAL. **Đúng cách hỏng** — trước phase 11 cùng tình huống báo `closed: 3` và ghi `CLOSED`. |
+| 13:44 (đã biên dịch, chưa nạp) | Vẫn `ACK_FAILED`. Nguyên nhân: **đổi khung thời gian chart chỉ gọi lại `OnInit` trên bản EA đã nạp trong bộ nhớ, MT5 không đọc lại `.ex5`**. Phải gỡ EA rồi gắn lại. Đã ghi vào RUNBOOK. |
+| 13:49 (bản mới đã nạp) | **ĐẠT.** `master_position` còn OPEN = **0**; hai lệnh `CLOSE` tới `AG-MASTER` đều `ACK_OK` (10009 Request executed); thứ tự đúng — Client 06:49:19.179, Master 06:49:20.304; toàn bộ **1.125 ms**. |
+
+Biên dịch bằng dòng lệnh, không cần mở giao diện:
+`MetaEditor64.exe /compile:"<file>.mq5" /log:"<log>"` → cả ba file **0 lỗi, 0 cảnh báo**.
+(Lượt đầu tôi kết luận vội là không biên dịch được ở đây; người dùng chỉ ra là sai.)
+
+### Năm sửa còn lại
+
+- **F-02** — `parse_config` từ chối khởi động khi `host` không phải loopback mà
+  `dashboard_password` rỗng; mặc định `host` đổi thành `127.0.0.1`. Chứng minh bằng chính
+  `config.toml` đang dùng: Bridge từ chối chạy, kèm thông báo nêu cả hai đường sửa. Sau khi đặt
+  mật khẩu, `/api/emergency`, `/api/run_mode` và `/api/snapshot` gọi không cookie đều trả **401**
+  (trước đó cả ba trả 200).
+- **F-03** — nhịp heartbeat của clicker 5 s → **1 s**, khớp EA, trong khi hạn của Bridge là 5 s.
+  Đo 36 phút liên tục: **0** alert `AGENT_OFFLINE` cho clicker (hôm kiểm toán: 1 lần trong ~10 phút).
+- **F-05** — thêm `ORPHAN_RESOLVED`: cặp `ORPHANED` mà **cả hai chân đều biến mất** thì sinh
+  finding đề xuất `MARK_CLOSED`. Chạy thật: hai cặp mồ côi được phát hiện, duyệt, và đóng sổ —
+  vòng khép kín này trước phase 11 không tồn tại.
+- **F-06** — báo cáo đối chiếu nay ghi cả *"N sai lệch mới"* lẫn *"M đang chờ xử lý"*. Thấy ngay
+  trong log thật: `0 sai lech moi, 4 dang cho xu ly`.
+- **F-01b** — `mark_pair_closed()` từng đưa **cả** `master_current_volume` về 0 chỉ dựa vào ack
+  của Client; đó là lý do F-01 vô hình. Nay chỉ về 0 khi `master_position` thật sự `CLOSED`, và
+  `zero_master_volume()` dọn nốt khi EA Master ack.
+
+### D-19: sửa quyết định, không sửa code
+
+Kiểm toán phát hiện `effective_multiplier` **không hề xuất hiện** trong đường đóng một phần —
+code lấy tỷ lệ trên volume còn lại. Hai công thức lệch nhau khi có làm tròn (Master 1.00 hệ số
+0.5, đóng 0.25 ba lần: bản đang chạy để lại 0.130, chữ của D-19 để lại 0.140, lý tưởng 0.125).
+
+Bản đang chạy **đúng hơn** vì nó tự thu lại phần dư do làm tròn xuống. Người dùng chọn sửa quyết
+định cho khớp code. Đã cập nhật `docs/DECISIONS.md` và `plan/00-README.md`, và cho
+`_soi_lech_volume` dùng cùng công thức: dung sai theo `volume_step` thay vì `1e-6`, và bỏ chặn
+`status != OPEN` — bộ dò lệch trước đó **bị tắt đúng trên nhóm cặp duy nhất có thể lệch**.
+
+### 500 test xanh (+16), `ruff` sạch
+
+Test đáng chú ý nhất là bản thay thế cho `test_emergency_dong_het_client_truoc` — test cũ mang
+tên "đóng hết Client trước" nhưng **không kiểm gì về phía Master**, tức nó đang khoá lại chính
+khiếm khuyết. Bản mới kiểm `master_position.status`, số lệnh gửi cho agent MASTER, thứ tự
+Client-trước-Master, trường hợp nhiều cặp chung một vị thế Master chỉ sinh **một** lệnh đóng, và
+sổ sách không còn giữ volume Master cũ.
+
+Thêm test ghim D-19 bằng **con số chính xác** (0.13) thay vì một khoảng — chuỗi đóng mà hai công
+thức cho kết quả khác nhau, đúng chỗ bộ test cũ đi lướt qua.
+
+### Đã dùng 8/10 lệnh demo
+
+Cấu hình đã trả về `OPPOSITE`/1.0, `run_mode = PAUSED`, Bridge và clicker đã tắt, token clicker đã
+thu hồi, hai terminal **không còn vị thế nào**, 35 cặp `CLOSED` + 2 `OPEN_FAILED`.
+
+**`config.toml` hiện mang mật khẩu thử `kiem-thu-phase-11` — phải đổi trước khi dùng thật.**
+
+### Còn treo
+
+Bốn finding `PENDING` (1 `BOTH_CLOSED`, 3 `UNPAIRED_MASTER`) giữ nguyên — xử lý chúng là sửa dữ
+liệu, không thuộc lượt này. `PAIR-000007` và `000008` là `CLOSED` nhưng còn `master_current_volume`
+khác 0: dữ liệu sinh ra giữa lúc đang sửa, ghi thành B-12.
+
+F-07, F-08, F-10…F-12 chuyển thành **B-08…B-13** trong `docs/BACKLOG.md`, không mục nào rơi mất.
+
+Một test dao động: `test_ack_rejected_duoc_thu_lai` hỏng một lần rồi xanh lại khi chạy riêng và ở
+mọi lần chạy sau. Phụ thuộc thời gian, chưa truy nguyên.

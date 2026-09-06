@@ -1,6 +1,6 @@
 # RUNBOOK — vận hành MT5 Copy Bridge
 
-*Chốt ngày 2026-09-06 (Phase 10). Đọc `docs/DECISIONS.md` trước nếu bạn định sửa hành vi;
+*Chốt ngày 2026-09-06 (Phase 10), cập nhật sau Phase 11. Đọc `docs/DECISIONS.md` trước nếu bạn định sửa hành vi;
 tài liệu này chỉ nói cách **chạy**.*
 
 ---
@@ -25,7 +25,7 @@ hành phải biết cách bấm nó **trước khi** cần dùng tới.
 | Tiến trình | Chạy ở đâu | Vai trò |
 |---|---|---|
 | **Bridge** (`python -m bridge`) | Máy Bridge | TCP server 8787, dashboard 8080, toàn bộ logic. |
-| **EA** (`CopyBridgeClient.mq5`) | Trong mỗi terminal MT5 | Gửi event, thực thi lệnh **ĐÓNG**. |
+| **EA** (`CopyBridgeClient.mq5`, `CopyBridgeMaster.mq5`) | Trong mỗi terminal MT5 | Gửi event, thực thi lệnh **ĐÓNG**. Client mở được lệnh, **Master thì không** — xem D-01. |
 | **clicker** (`python -m clicker`) | Cùng phiên đăng nhập Windows với terminal Client | Mở lệnh qua hộp thoại New Order (D-21, D-22, D-26). |
 
 Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
@@ -48,7 +48,7 @@ Copy-Item config.example.toml config.toml     # roi dien gia tri that
 
 ```toml
 [bridge]
-host = "0.0.0.0"        # nghe tren moi interface; firewall moi la thu chan (muc 6)
+host = "127.0.0.1"      # MAC DINH: chi may nay cham duoc
 port = 8787             # agent
 web_port = 8080         # dashboard
 db_path = "data/bridge.db"
@@ -59,7 +59,20 @@ telegram_token   = ""    # de trong thi kenh canh bao im lang, khong loi
 telegram_chat_id = ""
 ```
 
+> **Bridge sẽ TỪ CHỐI khởi động** nếu `host` không phải loopback mà `dashboard_password` để
+> trống. Không có mật khẩu thì dashboard không bắt đăng nhập, và khi đó bất kỳ ai chạm được tới
+> cổng 8080 đều bấm được nút đóng khẩn cấp — kiểm toán 2026-09-06 đã gọi `/api/emergency` không
+> kèm cookie và nó đóng sạch 3 cặp. Muốn agent từ máy khác nối vào thì đặt `host = "0.0.0.0"`
+> **và** đặt mật khẩu.
+
 Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA (mục 4).
+
+> **Sau khi biên dịch lại EA, phải GỠ EA khỏi chart rồi GẮN LẠI.** Đổi khung thời gian chỉ gọi
+> lại `OnInit` trên bản đã nạp trong bộ nhớ — MT5 **không** đọc lại `.ex5` từ đĩa. Dấu hiệu nạp
+> đúng bản mới: tab Experts hiện `CopyBridgeMaster khoi dong [co kha nang DONG lenh]`.
+>
+> Biên dịch không cần mở giao diện MetaEditor:
+> `& "C:\Program Files\MetaTrader 5 1\MetaEditor64.exe" /compile:"<duong-dan>.mq5" /log:"<log>"`
 
 ---
 

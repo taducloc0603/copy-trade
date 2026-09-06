@@ -2,8 +2,15 @@
 //| CopyBridgeMaster.mq5                                             |
 //| EA phia Master. Gan vao MOT chart bat ky cua terminal Master.     |
 //|                                                                  |
-//| O phase 4, EA nay CHI GUI. No khong thuc thi command nao ngoai    |
-//| REQUEST_SNAPSHOT. Viec Master nhan lenh dong la cua phase 7.      |
+//| EA nay GUI su kien va thuc thi lenh DONG (CLOSE, CLOSE_PARTIAL).  |
+//| No KHONG BAO GIO mo vi the: khong co duong nao tu day toi mot     |
+//| lenh mo, va do la ranh gioi an toan cua tai khoan Master.         |
+//|                                                                  |
+//| Kha nang dong duoc them o phase 11. Truoc do EA nay tu choi MOI   |
+//| command, nen D-09 (cascade dong Master) va TEST-21 (dong khan     |
+//| cap) khong the chay - nghiem thu tren demo 2026-09-06 phat hien   |
+//| bang cach bam nut that va nhan ve "Command type not supported by  |
+//| this agent role".                                                 |
 //|                                                                  |
 //| EA khong chua logic nghiep vu (D-01): khong tinh volume, khong    |
 //| anh xa symbol, khong biet Pair ID la gi, khong biet database.     |
@@ -20,7 +27,43 @@ input int    BridgePort  = 8787;          // Cong Bridge
 input string AgentToken  = "";            // Token cua agent nay
 input long   MagicNumber = 770001;        // Magic number co dinh cua bot (D-07)
 
-CBridgeAgent g_agent;
+//+------------------------------------------------------------------+
+//| Agent phia Master: chi them duong DONG, tuyet doi khong them MO.  |
+//+------------------------------------------------------------------+
+class CMasterAgent : public CBridgeAgent
+  {
+public:
+   virtual string    OnCommand(const string command_id, const string type,
+                               CJsonReader &reader)
+     {
+      // CO Y khong co "OPEN" o day. Tai khoan Master khong bao gio duoc mo
+      // vi the tu lenh cua Bridge; no chi phan anh thao tac cua nguoi dung.
+      if(type != "CLOSE" && type != "CLOSE_PARTIAL")
+         return(CBridgeAgent::OnCommand(command_id, type, reader));
+
+      CJsonReader payload;
+      string raw = reader.GetRaw("payload");
+      if(StringLen(raw) == 0 || !payload.Parse(raw))
+         return(SendAck(command_id, "rejected", 0, "Missing or invalid payload", -1, 0, 1));
+
+      string refused = Guard(type, payload, reader.GetStr("deadline_ts"));
+      if(StringLen(refused) > 0)
+        {
+         CbLog("WARNING", "Tu choi command " + command_id + ": " + refused);
+         return(SendAck(command_id, "rejected", 0, refused, -1, 0, 1));
+        }
+
+      if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+         return(SendAck(command_id, "rejected", 0,
+                        "Auto trading is disabled in the terminal", -1, 0, 1));
+
+      if(type == "CLOSE")
+         return(DoClose(command_id, payload));
+      return(DoClosePartial(command_id, payload));
+     }
+  };
+
+CMasterAgent g_agent;
 datetime     g_last_status = 0;
 
 //+------------------------------------------------------------------+
@@ -39,9 +82,11 @@ int OnInit()
       return(INIT_FAILED);
      }
 
+   // Tu phase 11 EA Master PHAI dat duoc lenh dong, neu khong thi nut dung khan
+   // cap va cascade (D-09) khong lam gi duoc ngoai viec bao loi.
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
-      CbLog("WARNING", "Auto trading dang tat. EA Master van gui su kien duoc, " +
-            "nhung hay bat de dung cho phase sau.");
+      CbLog("ERROR", "Auto trading dang TAT. EA Master van gui su kien duoc nhung se " +
+            "TU CHOI moi lenh dong cho toi khi bat len.");
 
    if(!g_agent.Init(BridgeHost, BridgePort, AgentToken, "MASTER", MagicNumber))
      {
@@ -53,7 +98,7 @@ int OnInit()
    // khong co tick, OnTick khong chay nhung ta van can doc socket va gui heartbeat.
    EventSetMillisecondTimer(100);
 
-   CbLog("INFO", "CopyBridgeMaster khoi dong. Tai khoan " +
+   CbLog("INFO", "CopyBridgeMaster khoi dong [co kha nang DONG lenh]. Tai khoan " +
          IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) +
          ", Bridge " + BridgeHost + ":" + IntegerToString(BridgePort));
    ShowStatus();

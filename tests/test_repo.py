@@ -238,8 +238,12 @@ def test_vong_doi_day_du_tu_pending_open_toi_closed(seeded: Database) -> None:
 
     seeded.mark_command_sent("CMD-2")
     seeded.mark_command_acked("CMD-2", "ACK_OK", retcode=10009, executed_volume=0.5)
-    seeded.mark_pair_closed(pair_id, close_source="MASTER")
+    # Thu tu quan trong, va day la thu tu cua luong that (`CloseFlow.on_master_close`): vi the
+    # Master duoc ghi nhan CLOSED TRUOC, roi lenh dong Client moi di, roi ack moi goi
+    # `mark_pair_closed`. Tu phase 11 ham do khong con tu nhan la Master da phang chi vi Client
+    # da ack (F-01) — no doc `master_position.status`.
     seeded.set_master_position_status(MASTER_POSITION_ID, "CLOSED", current_volume=0.0)
+    seeded.mark_pair_closed(pair_id, close_source="MASTER")
     seeded.mark_event_processed("EVT-M-2", "DONE", pair_id=pair_id)
 
     closed = seeded.get_pair(pair_id)

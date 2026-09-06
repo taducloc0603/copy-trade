@@ -487,3 +487,63 @@ async def test_khong_doi_chieu_khi_master_chua_len(db: Database) -> None:
         await processor.stop()
         await client.kill()
         await server.stop()
+
+
+# -- F-05: cap ORPHANED phai duoc xem lai khi tinh huong da thay doi ---------------------------
+
+async def test_cap_orphaned_hai_chan_deu_bien_mat_thi_bao_da_xong(env: Env) -> None:
+    """`ORPHANED` nằm ngoài `LIVE_STATUSES` nên trước phase 11 nó **không bao giờ** được soi lại.
+
+    Kiểm toán 2026-09-06 tìm thấy `PAIR-20260905-000025` ở đúng tình trạng này: người vận hành đã
+    đóng tay chân Master từ hôm trước, sổ sách vẫn ghi Master còn 0.01 lot, và không vòng đối
+    chiếu nào từng nhắc tới nó (F-05).
+    """
+    pair_id = env.tao_cap(900001, 800001, status="ORPHANED")
+    # Khong khai bao vi the nao ca: ca hai chan deu da bien mat khoi terminal.
+
+    run_id = await env.processor.reconciler.run("TEST")
+    f = env.findings(run_id, "ORPHAN_RESOLVED")
+    assert len(f) == 1
+    assert f[0]["severity"] == "SAFE"
+    assert f[0]["suggested_action"] == "MARK_CLOSED"
+    assert f[0]["pair_id"] == pair_id
+
+
+async def test_cap_orphaned_con_mot_chan_thi_van_im_lang(env: Env) -> None:
+    """Chân Client còn đó nghĩa là chưa ai xử lý xong — im lặng, đúng lý do ORPHANED bị loại ra."""
+    env.tao_cap(900001, 800001, status="ORPHANED")
+    env.vi_the_client(800001)
+
+    run_id = await env.processor.reconciler.run("TEST")
+    assert env.findings(run_id, "ORPHAN_RESOLVED") == []
+
+
+async def test_orphan_resolved_khong_lap_lai_moi_vong(env: Env) -> None:
+    """Đúng lý do khiến ORPHANED bị loại ra ban đầu: không được đẻ một dòng mỗi phút."""
+    env.tao_cap(900001, 800001, status="ORPHANED")
+
+    dau = await env.processor.reconciler.run("TEST")
+    sau = await env.processor.reconciler.run("TEST")
+    assert len(env.findings(dau, "ORPHAN_RESOLVED")) == 1
+    assert env.findings(sau, "ORPHAN_RESOLVED") == []
+
+
+# -- F-06: bao cao phai noi dung dieu no do ----------------------------------------------------
+
+async def test_bao_cao_phan_biet_sai_lech_moi_va_tong_dang_cho(env: Env, caplog) -> None:
+    """"0 sai lech" tung co nghia la "0 finding MOI", nhung doc ra thanh "so sach khop thuc te".
+
+    Hôm kiểm toán, log ghi `0 sai lech` trong khi 2/2 cặp đều sai và một finding đang chờ.
+    """
+    import logging
+
+    env.tao_cap(900001, 800001, status="ORPHANED")
+    await env.processor.reconciler.run("TEST")          # sinh 1 finding, no nam PENDING
+
+    caplog.set_level(logging.INFO, logger="bridge.engine.reconcile")
+    await env.processor.reconciler.run("TEST")          # vong hai: 0 moi, nhung 1 dang cho
+
+    dong = [r.getMessage() for r in caplog.records if "Doi chieu" in r.getMessage()]
+    assert dong, "Khong thay dong bao cao doi chieu"
+    assert "0 sai lech moi" in dong[-1], dong[-1]
+    assert "1 dang cho xu ly" in dong[-1], dong[-1]

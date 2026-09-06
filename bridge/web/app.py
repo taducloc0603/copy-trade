@@ -174,10 +174,12 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return JSONResponse({"error": "wrong_phrase", "message": UI["emergency_wrong"]},
                                 status_code=400)
         dashboard.db.set_config("run_mode", "EMERGENCY")
-        so = 0
+        # Bao ra so lenh da gui cho TUNG VE. Ban cu tra `len(pairs)` — so cap duoc xet — nen no
+        # bao "closed: 3" ke ca khi khong dong duoc gi, va che mat viec phia Master bi bo qua.
+        so = {"client": 0, "master": 0}
         if dashboard.processor is not None:
             so = await dashboard.processor.closing.emergency_close_all()
-        return {"ok": True, "closed": so}
+        return {"ok": True, "closed": so["client"] + so["master"], **so}
 
     @app.post("/api/findings/{finding_id}/accept")
     async def api_accept(finding_id: int, sid: str | None = Cookie(None)) -> Any:

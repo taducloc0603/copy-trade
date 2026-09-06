@@ -266,19 +266,39 @@ def test_heartbeat_luon_mang_broker_connected() -> None:
     assert "TERMINAL_CONNECTED" in source
 
 
-def test_chi_ea_client_duoc_dat_lenh() -> None:
-    """Ranh giới D-01: chỉ EA Client đặt lệnh.
+def test_chi_ea_client_duoc_MO_lenh() -> None:
+    """Ranh giới an toàn, bản phase 11: **Master được ĐÓNG, không bao giờ được MỞ.**
 
-    EA Master **chỉ gửi** sự kiện. File dùng chung cũng không được đặt lệnh — nếu `OrderSend`
-    lọt vào đó thì EA Master sẽ có khả năng giao dịch mà không ai chủ ý cho phép.
+    Bản trước là "chỉ EA Client đặt lệnh", khoá bằng cách cấm `OrderSend` trong file Master và
+    file dùng chung. Ranh giới đó đơn giản nhưng **mâu thuẫn với chính hợp đồng**: D-09 (cascade
+    đóng vị thế Master) và TEST-21 (đóng khẩn cấp, Client trước Master sau) đều đòi hỏi Master
+    đóng được. Nghiệm thu trên demo 2026-09-06 bấm nút thật và nhận về `Command type not
+    supported by this agent role` — hai quyết định không thể cùng đúng.
+
+    Hướng đã chọn: cho Master **đóng**, vẫn cấm **mở**. Ranh giới mới tinh hơn nên cũng phải
+    khoá tinh hơn: mọi `OrderSend` trong code dùng chung phải đặt `request.position`, tức nó chỉ
+    có thể đóng một vị thế **đã tồn tại**. Đường mở — `OrderSend` không có `request.position` —
+    chỉ được phép nằm trong EA Client.
     """
-    for name in ("CopyBridgeCommon.mqh", "CopyBridgeMaster.mq5"):
-        assert "OrderSend(" not in _code_only(EA_DIR / name), (
-            f"{name} không được đặt lệnh"
-        )
-    assert "OrderSend(" in _code_only(EA_DIR / "CopyBridgeClient.mq5"), (
-        "EA Client phải đặt được lệnh"
-    )
+    master = _code_only(EA_DIR / "CopyBridgeMaster.mq5")
+    assert "OrderSend(" not in master, "EA Master không được tự đặt lệnh; nó kế thừa đường đóng"
+    assert '"OPEN"' not in master, "EA Master không được nhận command loại OPEN"
+
+    # Code dùng chung: mọi lời gọi OrderSend đều phải nằm sau một `request.position = ...`
+    # trong cùng một lần dựng request (`ZeroMemory(request)` đánh dấu đầu mỗi lần dựng).
+    common = _code_only(EA_DIR / "CopyBridgeCommon.mqh")
+    for khuc in common.split("ZeroMemory(request);")[1:]:
+        truoc_ordersend = khuc.split("OrderSend(")[0]
+        if "OrderSend(" in khuc:
+            assert "request.position" in truoc_ordersend, (
+                "CopyBridgeCommon.mqh có một OrderSend không đặt request.position — "
+                "tức là một đường MỞ lọt vào code dùng chung"
+            )
+
+    # Duong MO chi duoc o EA Client.
+    client = _code_only(EA_DIR / "CopyBridgeClient.mq5")
+    assert "OrderSend(" in client, "EA Client phải mở được lệnh"
+    assert "ORDER_TYPE_BUY" in client and "ORDER_TYPE_SELL" in client
 
 
 def test_ea_chi_ho_tro_tai_khoan_hedging() -> None:

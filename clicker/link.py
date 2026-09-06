@@ -32,7 +32,11 @@ log = get_logger(__name__)
 #: định tuyến không bao giờ biến thành một lệnh `EXPERT` lặng lẽ (plan 6b mục 6b.2).
 SUPPORTED_COMMAND = "OPEN_UI"
 
-DEFAULT_HEARTBEAT_SEC = 5.0
+#: Mot giay, khop voi EA. Bridge danh agent OFFLINE sau `heartbeat_timeout_ms` (mac dinh
+#: 5000), nen gui moi 5 giay la bien bang 0: chi can mot nhip cham la roi OFFLINE. Ma
+#: clicker khong ONLINE thi cong D-25 chan `OPEN_UI`, tuc NGUNG COPY. Do la lan nhap nhay
+#: quan sat duoc trong lan kiem toan 2026-09-06 (F-03).
+DEFAULT_HEARTBEAT_SEC = 1.0
 DEFAULT_RECONNECT_SEC = 3.0
 
 

@@ -353,15 +353,25 @@ class CloseFlow:
                     f"{master_position_id}, roi moi dong cac Client con lai.",
                     pair_id=pair_id, agent_id=agent["agent_id"])
 
-        command_id = await self.dispatcher.dispatch(
+        command_id = await self._gui_lenh_dong_master(master, master_position_id, pair_id)
+        self._spawn(self._cho_master_dong(master_position_id, pair_id, command_id))
+        return "DONE", None, pair_id
+
+    async def _gui_lenh_dong_master(self, master: sqlite3.Row, master_position_id: int,
+                                    pair_id: str) -> str:
+        """Gửi `CLOSE` cho **EA của Master**.
+
+        Tách riêng vì có hai nơi cần đóng vị thế Master — cascade (D-09) và đóng khẩn cấp — và
+        trước phase 11 thì đường khẩn cấp **không có** bước này: nó đóng phía Client rồi dừng,
+        biến một sổ đang hedge thành một sổ phơi nhiễm một chiều mà vẫn báo là đã xong.
+        """
+        return await self.dispatcher.dispatch(
             master["agent_id"], "CLOSE", pair_id=pair_id,
             payload={"position_id": master_position_id,
                      "magic": self.db.get_agent(master["agent_id"])["magic_number"]},
             deadline_ms=self.db.get_config_int("cascade_wait_master_ms",
                                                DEFAULT_CASCADE_WAIT_MS),
         )
-        self._spawn(self._cho_master_dong(master_position_id, pair_id, command_id))
-        return "DONE", None, pair_id
 
     def _dang_dong_master(self, master_position_id: int) -> bool:
         row = self.db.query_one(
@@ -431,6 +441,11 @@ class CloseFlow:
                 self.db.set_master_position_status(pair["master_position_id"], "CLOSED",
                                                    current_volume=0.0,
                                                    close_time=utc_now_iso())
+                # Bay gio moi CHAC CHAN chan Master da phang, nen moi duoc ghi 0 vao cac cap
+                # dung chung vi the nay. `mark_pair_closed` co y khong tu ghi con so nay khi
+                # chi co ack cua Client (F-01) — cai gia la phai don not o day, neu khong cap
+                # se nam lai voi mot volume Master cu vinh vien.
+                self.db.zero_master_volume(pair["master_position_id"])
                 return
             if command["type"] == "CLOSE_PARTIAL":
                 await self._sau_dong_bot(pair, message)
@@ -493,26 +508,73 @@ class CloseFlow:
 
     # -- EMERGENCY (plan 7.8) ------------------------------------------------------------------
 
-    async def emergency_close_all(self) -> int:
+    async def emergency_close_all(self) -> dict[str, int]:
         """Đóng toàn bộ cặp đang quản lý: **Client trước, Master sau**.
 
         Thứ tự không đảo được: đóng Master trước sẽ kích hoạt đồng bộ đóng thông thường và làm
         rối trạng thái ngay giữa lúc đang cần mọi thứ đơn giản nhất.
+
+        Tới hết phase 10 hàm này **chỉ làm vế đầu**: nó gửi lệnh đóng cho Client rồi dừng, không
+        có một dòng nào đụng tới Master, trong khi docstring và alert đều nói "Client trước Master
+        sau". Hậu quả là nút dừng khẩn cấp biến một sổ đang hedge đầy đủ thành một sổ phơi nhiễm
+        một chiều — rồi báo thành công. Kiểm toán 2026-09-06 bắt được (F-01); phase 11 sửa.
+
+        Trả về số lệnh đã gửi cho **từng vế**, không phải số cặp được xét — con số cũ (`len(pairs)`)
+        báo ra là 3 kể cả khi không đóng được gì.
         """
         pairs = self.db.query_all(
             "SELECT * FROM pair WHERE status NOT IN ('CLOSED','OPEN_FAILED') ORDER BY pair_id")
         if not pairs:
-            return 0
+            return {"client": 0, "master": 0}
         self._alert("CRITICAL", "EMERGENCY_CLOSE_ALL",
                     f"run_mode = EMERGENCY: dong toan bo {len(pairs)} cap, Client truoc Master sau.")
+
+        lenh_client: list[str] = []
         for pair in pairs:
             client = self.db.get_client_account(pair["client_id"])
             if pair["client_position_id"] is not None and not self.db.list_inflight_commands(
                     pair["pair_id"]):
                 self.db.update_pair(pair["pair_id"], status="CLOSING", close_source="BOT")
-                await self._gui_lenh_dong(pair, client, "CLOSE",
-                                          {"position_id": pair["client_position_id"]})
-        return len(pairs)
+                lenh_client.append(await self._gui_lenh_dong(
+                    pair, client, "CLOSE", {"position_id": pair["client_position_id"]}))
+
+        await self._cho_lenh_xong(lenh_client)
+        so_master = await self._dong_cac_master(pairs)
+        return {"client": len(lenh_client), "master": so_master}
+
+    async def _cho_lenh_xong(self, command_ids: list[str], han_sec: float = 10.0) -> None:
+        """Chờ các lệnh rời khỏi hàng đợi, có hạn.
+
+        Đây chính là chữ "trước" trong "Client trước, Master sau". Hết hạn thì vẫn đi tiếp: một
+        Client không ack **không được** trở thành lý do để vị thế Master nằm lại mà không ai đóng.
+        """
+        if not command_ids:
+            return
+        het = asyncio.get_running_loop().time() + han_sec
+        while asyncio.get_running_loop().time() < het:
+            con = [c for c in command_ids
+                   if (row := self.db.get_command(c)) is not None
+                   and row["status"] in ("PENDING", "SENT")]
+            if not con:
+                return
+            await asyncio.sleep(0.2)
+        log.warning("Dong khan cap: %d lenh Client chua xong sau %.0fs, van dong Master",
+                    len(command_ids), han_sec)
+
+    async def _dong_cac_master(self, pairs: list[sqlite3.Row]) -> int:
+        """Đóng **mỗi vị thế Master đúng một lần**, kể cả khi nhiều Client dùng chung nó."""
+        so = 0
+        for master_position_id in dict.fromkeys(p["master_position_id"] for p in pairs):
+            master = self.db.get_master_position(master_position_id)
+            if master is None or master["status"] == "CLOSED":
+                continue
+            if self._dang_dong_master(master_position_id):
+                continue
+            pair_id = next(p["pair_id"] for p in pairs
+                           if p["master_position_id"] == master_position_id)
+            await self._gui_lenh_dong_master(master, master_position_id, pair_id)
+            so += 1
+        return so
 
     # -- tiện ích ------------------------------------------------------------------------------
 

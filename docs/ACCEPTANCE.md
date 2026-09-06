@@ -1,6 +1,6 @@
 # Nghiệm thu — TEST-01 … TEST-25
 
-*Chốt ngày 2026-09-06 (Phase 10). Hai tài khoản demo Connext-Demo: **538216 Master**,
+*Chốt ngày 2026-09-06, cập nhật sau Phase 11. Hai tài khoản demo Connext-Demo: **538216 Master**,
 **538217 Client**. Cấu hình khi nghiệm thu: một Client, `copy_mode = OPPOSITE`,
 `volume_multiplier = 1.0`, symbol `BTCUSD.s` ở cả hai bên, `ui_fallback_match = STRICT`.*
 
@@ -19,7 +19,12 @@ thật xác nhận và cái gì mới chỉ đúng trong đầu người viết 
 kể nhất khi chuyển sang tiền thật. Phase 7 là ví dụ: bộ test dùng số tròn nên **không** lộ ra lỗi
 sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 
-**Tổng kết: DEMO 13 · TEST 9 · KHÔNG 3.**
+**Tổng kết: DEMO 15 · TEST 8 · KHÔNG 2.**
+
+*(Cập nhật 2026-09-06 sau phase 11. Con số của bản phase 10 ghi "DEMO 13 · TEST 9 · KHÔNG 3"
+**không khớp với chính bảng bên dưới** — đếm tay ra 11 · 12 · 2; kiểm toán độc lập bắt được
+chỗ này (F-09). Phase 11 nâng TEST-01, TEST-11, TEST-22 từ TEST lên DEMO, và TEST-21 lên DEMO
+sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 
 ---
 
@@ -27,7 +32,7 @@ sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 
 | Mã | Tình huống | Nguồn | Bằng chứng |
 |---|---|---|---|
-| TEST-01 | Copy cùng chiều, hệ số 0.50 | **TEST** | `test_sizing.py`, `test_open_flow.py`. Demo chạy `OPPOSITE` hệ số 1.0 nên nhánh `SAME` + hệ số phân số **chưa chạm sàn thật**. Phép nhân và làm tròn dùng chung một hàm `compute_client_volume` cho cả hai chiều, nên rủi ro thấp — nhưng vẫn là TEST, không phải DEMO. |
+| TEST-01 | Copy cùng chiều, hệ số 0.50 | **DEMO** | Chạy thật 2026-09-06 với `copy_mode = SAME`, hệ số 0.50: Master BUY 0.02 → Client **BUY** 0.01, `effective_multiplier = 0.5`, `reason = 0`. Lặp lại hai lần. Trước đó nhánh `SAME` và phép nhân phân số chưa từng chạm sàn thật. |
 | TEST-02 | Copy khác chiều | **DEMO** | Phase 6 và Phase 6b Bước 5: `22:05:02.616` Master buy 0.01 → `22:05:03.819` Client sell 0.01. Journal hai terminal khớp từng cặp. |
 | TEST-03 | Master đóng một lệnh → chỉ đóng đúng cặp đó | **DEMO** | Phase 7: `PAIR-000024` `CLOSED`, `close_source = MASTER`; cặp đối chứng cùng symbol `PAIR-000026` **không bị động tới**. Khoá thêm bằng `test_khong_co_cau_sql_nao_dong_lenh_theo_symbol`. |
 | TEST-04 | Client đóng, công tắc TẮT | **DEMO** | Phase 7: `PAIR-000025` → `ORPHANED`, `orphan_side = MASTER`, Master giữ nguyên 0.01, alert ERROR `ORPHANED_MASTER`. Journal: `22:51:47.487` Client sell → **không có deal Master nào**. |
@@ -37,7 +42,7 @@ sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 | TEST-08 | Nhiều symbol đồng thời | **KHÔNG** | **Chặn bởi giới hạn đã biết:** hộp thoại New Order lấy symbol theo chart đang mở, driver chỉ *kiểm tra* rồi từ chối nếu lệch (ComboBox 10331/10325 chưa đo). Mỗi terminal Client hiện copy được **đúng một symbol**. Đã đưa vào `docs/BACKLOG.md` mục B-01. |
 | TEST-09 | Khởi động lại EA và Bridge | **DEMO** | Phase 4 mục 6–7: tắt Bridge, giao dịch, bật lại → 8 event tồn về đủ, đúng thứ tự; restart EA → `seq` tiếp từ 15, không reset. Phase 5: gửi lại cùng `command_id` sau khi khởi động lại EA → **không mở lệnh thứ hai**. |
 | TEST-10 | Client thiếu margin | **TEST** | `retcode = 10019` **không ép được trên demo**: tài khoản có ~1.000.000 USD. Đường xử lý lỗi được kiểm bằng ép `10014 Invalid volume` trên demo (Phase 5) và bằng test cho `10019`. |
-| TEST-11 | Volume tính ra dưới mức tối thiểu | **TEST** | `test_dong_mot_phan_lam_tron_ra_0_thi_khong_gui_lenh` và bộ `test_sizing.py`. Không tự nâng volume (D-18). |
+| TEST-11 | Volume tính ra dưới mức tối thiểu | **DEMO** | Chạy thật 2026-09-06: Master 0.01 × 0.5 = 0.005 < mức tối thiểu 0.01 → event `IGNORED` với `ZERO_AFTER_ROUNDING`, alert `VOLUME_BELOW_MIN`, **không** có vị thế Client nào. Không tự nâng volume (D-18). |
 | TEST-12 | Đổi hệ số khi có cặp đang chạy | **TEST** | `test_doi_multiplier_giua_chung_khong_lam_lech_cap_dang_chay`. `effective_multiplier` khoá tại lúc mở cặp (D-19). |
 | TEST-13 | Master và Client cùng đóng trong 50 ms | **TEST** | `test_moi_cap_chi_mot_lenh_dong_dang_chay`, `test_ack_already_closed_van_la_dong_thanh_cong`. Trên demo có gặp `already_closed` thật (Phase 5) nhưng không dựng được đúng cửa sổ 50 ms. |
 | TEST-14 | Close-by để lại phần dư | **TEST** | `test_out_by_de_lai_vi_the_du_thi_bao_unpaired_master`. **Không thể lên DEMO:** broker Connext-Demo không hỗ trợ Close By. D-12 được cài mà không có dữ liệu thực nghiệm — ghi rõ ở đây thay vì để ngầm. |
@@ -47,15 +52,15 @@ sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 | TEST-18 | Terminal mất kết nối broker, EA vẫn sống | **DEMO** | Phase 4 mục 8: xảy ra **thật** lúc `11:44:39` → `broker_connected = false`, agent `DEGRADED`, alert ERROR. Không phải tình huống dựng ra. |
 | TEST-19 | Mất điện đột ngột máy Bridge | **KHÔNG** | Máy đo là laptop cá nhân của người vận hành; rút điện thật không thực hiện được ở đây. `synchronous = FULL` và `journal_mode = WAL` đã bật và có test (`test_repo.py`), nhưng đó là *cấu hình đúng*, không phải *bằng chứng chịu được mất điện*. Ghi vào `RUNBOOK.md` là việc **phải làm trước khi dùng tiền thật**. |
 | TEST-20 | Symbol không tồn tại trên sàn Client | **TEST** | Kiểm ở tầng cấu hình (`symbol_spec` phải có symbol thì mới lưu được ánh xạ) — `test_sizing.py`, `test_dashboard.py`. Trên demo có gặp ca "symbol không tồn tại → ack lỗi, không sập EA" (Phase 5). |
-| TEST-21 | Nút đóng khẩn cấp | **TEST** | `test_emergency_dong_het_client_truoc`, `test_emergency_tu_kich_hoat_va_chi_chay_mot_lan`. Thứ tự Client trước Master được khoá bằng test. Chưa bấm thật trên demo. |
-| TEST-22 | `PAUSE_NEW_ENTRIES` | **TEST** | `test_pause_new_entries_van_dong_bo_dong`, `test_paused_thi_khong_dong_bo_dong`. |
+| TEST-21 | Nút đóng khẩn cấp | **DEMO** | Chạy thật 2026-09-06 **sau khi sửa F-01 và cấp khả năng đóng cho EA Master**: 2 cặp đang hedge → bấm nút → `master_position` còn OPEN = **0**, hai lệnh `CLOSE` tới `AG-MASTER` đều `ACK_OK` (10009). Thứ tự đúng: Client 06:49:19.179, Master 06:49:20.304. Toàn bộ 1.125 ms. |
+| TEST-22 | `PAUSE_NEW_ENTRIES` | **DEMO** | Chạy thật 2026-09-06, cả hai vế: mở lệnh Master → `IGNORED` vì `run_mode = PAUSE_NEW_ENTRIES`, không sinh cặp; rồi Master đóng → Client đóng theo sau **336 ms**. |
 | TEST-23 | **Mọi** vị thế bot mở trên Client mang `DEAL_REASON_CLIENT` | **DEMO** | Truy vấn tự động, không nhìn bằng mắt: `python -m bridge.admin kiem-reason` → **`TEST-23 DAT: 25/25`** trên database thật ngày 2026-09-06. Hai cặp `OPEN_FAILED` có `client_open_reason IS NULL` (chưa từng mở được vị thế nào) nên không tính. Tiền đề đã kiểm riêng ở Phase 6b mục E3: cùng tài khoản 538217, 13 deal do EA đặt đều `EXPERT (3)`, 5 deal đặt tay đều `CLIENT (0)` — chứng minh trường này **thật sự phân biệt được hai kênh**. |
 | TEST-24 | Clicker mất khả năng điều khiển giao diện | **DEMO** | Phase 6b diễn tập 4: canary báo đỏ → clicker `DEGRADED` → **0** command `OPEN_UI`, **0** command `OPEN`, 0 pair mới, alert `CLICKER_NOT_AVAILABLE`. Không rơi về đường EA (D-25). |
 | TEST-25 | Giết clicker giữa lúc giữ chỗ và bấm, gửi lại cùng `command_id` | **DEMO** | Phase 6b diễn tập 1: ack `unknown`, command `TIMEOUT`, driver **được gọi lại 0 lần**, nhật ký ghi `clicked=None, ack=None` — bằng chứng chắc chắn chưa bấm. Không có lệnh thứ hai. |
 
 ---
 
-## Ba mục KHÔNG đạt, và điều đó có ý nghĩa gì
+## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì
 
 **TEST-08 (nhiều symbol)** là mục nghiêm trọng nhất, vì "nhiều symbol đồng thời" nằm trong phạm
 vi MVP ở `plan/00` mục 2. Hệ thống hiện chạy đúng nhưng **hẹp hơn phạm vi đã tuyên bố**. Không

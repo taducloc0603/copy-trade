@@ -31,7 +31,7 @@ def test_doc_duoc_file_mau(project_root: Path) -> None:
     with example.open("rb") as fh:
         raw = tomllib.load(fh)
     cfg = _parse(raw, project_root)
-    assert cfg.bridge == BridgeSection(host="0.0.0.0", port=8787, web_port=8080,
+    assert cfg.bridge == BridgeSection(host="127.0.0.1", port=8787, web_port=8080,
                                        db_path="data/bridge.db")
 
 
@@ -104,3 +104,34 @@ def test_secret_section_khong_lo_gia_tri_qua_repr() -> None:
     assert secrets["token"] == "sieu-bi-mat"
     assert len(secrets) == 2
     assert sorted(secrets) == ["password", "token"]
+
+
+# -- F-02: khong duoc phoi dashboard ra ngoai ma khong co mat khau ------------------------------
+
+def test_nghe_moi_interface_ma_khong_mat_khau_thi_tu_choi_khoi_dong(tmp_path: Path) -> None:
+    """Kiểm toán 2026-09-06 gọi `/api/emergency` không cookie và nó đóng 3 cặp.
+
+    Cơ chế "không mật khẩu thì không bắt đăng nhập" là có chủ đích và giữ nguyên; thứ phải chặn
+    là **tổ hợp** nghe ra ngoài + không mật khẩu.
+    """
+    with pytest.raises(ConfigError) as loi:
+        _parse({"bridge": {"host": "0.0.0.0"}}, tmp_path)
+    # Thong bao phai chi ra ca hai duong sua, khong chi bao "sai".
+    assert "dashboard_password" in str(loi.value) and "127.0.0.1" in str(loi.value)
+
+
+def test_nghe_moi_interface_co_mat_khau_thi_chay_duoc(tmp_path: Path) -> None:
+    cfg = _parse({"bridge": {"host": "0.0.0.0"},
+                  "security": {"dashboard_password": "mot-mat-khau-that"}}, tmp_path)
+    assert cfg.bridge.host == "0.0.0.0"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "  127.0.0.1  "])
+def test_loopback_thi_khong_bat_buoc_mat_khau(host: str, tmp_path: Path) -> None:
+    assert _parse({"bridge": {"host": host}}, tmp_path) is not None
+
+
+def test_mat_khau_toan_khoang_trang_khong_tinh_la_co(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError):
+        _parse({"bridge": {"host": "0.0.0.0"}, "security": {"dashboard_password": "   "}},
+               tmp_path)

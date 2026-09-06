@@ -265,3 +265,23 @@ def test_tham_so_bat_buoc() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):
         parser.parse_args(["--dry-run"])
+
+
+def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:
+    """F-03: gửi mỗi 5 giây với hạn 5 giây là biên bằng 0, và clicker OFFLINE = ngừng copy (D-25).
+
+    EA gửi mỗi 1000 ms với cùng hạn 5000 ms — biên gấp 5. Clicker phải cùng mức, không được là
+    ngoại lệ, vì nó là agent duy nhất mà trạng thái ONLINE quyết định có copy hay không.
+    """
+    # Doc thang tu schema chu khong chep tay: han doi thi test nay phai doi theo.
+    import re
+
+    from clicker.link import DEFAULT_HEARTBEAT_SEC
+
+    schema = (Path(__file__).resolve().parents[1]
+              / "bridge" / "db" / "schema.sql").read_text(encoding="utf-8")
+    han_bridge_sec = int(
+        re.search(r"'heartbeat_timeout_ms',\s*'(\d+)'", schema).group(1)) / 1000.0
+    assert DEFAULT_HEARTBEAT_SEC * 3 <= han_bridge_sec, (
+        f"Nhip {DEFAULT_HEARTBEAT_SEC}s so voi han {han_bridge_sec}s khong du bien"
+    )

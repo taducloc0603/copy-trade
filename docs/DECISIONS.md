@@ -32,7 +32,7 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-16 | Enum trong DB, log và message dùng tiếng Anh không dấu. Tiếng Việt chỉ ở tầng hiển thị, qua một file nhãn duy nhất. |
 | D-17 | Giữ 30 ngày dữ liệu event/command trong SQLite nóng, cũ hơn thì xuất sang file archive. Không bao giờ xoá `pair` và `master_position` theo thời gian. |
 | D-18 | Làm tròn volume mặc định là làm tròn **xuống**. Nếu kết quả dưới mức tối thiểu của sàn thì **bỏ qua lệnh và cảnh báo**, không tự nâng volume. |
-| D-19 | `effective_multiplier` (tỷ lệ thực tế sau làm tròn) được khoá tại thời điểm mở cặp và dùng cho mọi phép tính đóng một phần về sau. |
+| D-19 | *(sửa ở phase 11)* Đóng một phần lấy **tỷ lệ trên volume còn lại của hai bên tại thời điểm đóng**, không nhân lại từ hệ số cấu hình. `effective_multiplier` vẫn khoá lúc mở cặp nhưng dùng cho **đối chiếu**, không dùng cho phép tính đóng. |
 | D-20 | Cờ `can_close_master` đặt theo từng Client, mặc định TẮT. |
 | D-21 | Lệnh **MỞ** phía Client đi qua giao diện MT5 để mang `DEAL_REASON_CLIENT`. Đường **ĐÓNG** vẫn dùng `OrderSend` của EA. |
 | D-22 | Kênh mở lệnh là tiến trình riêng `clicker`, cùng giao thức NDJSON/TCP, role `CLICKER`, token riêng. Loại command riêng `OPEN_UI` để EA không thể lặng lẽ đặt lệnh `EXPERT` khi định tuyến sai. |
@@ -51,6 +51,18 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 Python cho phép viết test không cần MT5 và sửa quy tắc nghiệp vụ mà không đụng tới terminal.
 Ngoại lệ duy nhất: EA tự chọn filling mode theo `SYMBOL_FILLING_MODE`, vì đó là chi tiết kỹ thuật
 của broker chứ không phải quy tắc nghiệp vụ.
+
+**Ranh giới quyền giao dịch, làm rõ ở phase 11.** Từ phase 5 tới phase 10, ranh giới là *"chỉ EA
+Client được đặt lệnh"*, khoá bằng một test cấm `OrderSend` trong file Master và file dùng chung.
+Ranh giới đó **mâu thuẫn với D-09 và TEST-21**, vốn đều đòi hỏi đóng được vị thế Master — và mâu
+thuẫn này tồn tại suốt vì đường đóng Master chưa từng chạy đầu-cuối: kiểm toán 2026-09-06 đếm được
+**0 lệnh đóng nào từng gửi cho Master** trong toàn bộ lịch sử database. Bấm nút dừng khẩn cấp trên
+demo thì EA Master trả về `Command type not supported by this agent role`.
+
+Ranh giới mới, tinh hơn: **EA Master được ĐÓNG, không bao giờ được MỞ.** Cụ thể là mọi `OrderSend`
+trong code dùng chung đều phải đặt `request.position`, tức chỉ có thể đóng một vị thế đã tồn tại;
+đường mở chỉ nằm trong `CopyBridgeClient.mq5`; và `CMasterAgent::OnCommand` cố ý không nhận loại
+`OPEN`. Cả ba điều được khoá bằng `test_chi_ea_client_duoc_MO_lenh`.
 
 ### D-02 — Truyền tin bằng NDJSON trên TCP. Mỗi message một dòng kết thúc bằng `\n`.
 
@@ -176,11 +188,35 @@ chiếu với một vị thế còn đang mở nhiều tháng.
 **Lý do:** Làm tròn lên hoặc tự nâng lên mức tối thiểu là tự tăng phơi nhiễu vượt ý muốn của người
 dùng. Hedge thiếu một chút thì thấy được và sửa được; hedge thừa thì là một vị thế không ai yêu cầu.
 
-### D-19 — `effective_multiplier` khoá tại thời điểm mở cặp, dùng cho mọi phép tính đóng một phần.
+### D-19 — Đóng một phần lấy tỷ lệ trên volume **còn lại**; `effective_multiplier` dùng để đối chiếu.
 
-**Lý do:** Người vận hành đổi hệ số giữa chừng không được làm lệch các cặp đang chạy (FR-06).
-Tỷ lệ thật sau làm tròn cũng khác hệ số cấu hình — ví dụ Master 0.07 với hệ số 0.33 cho Client 0.02,
-tức tỷ lệ thật là 0.2857. Dùng 0.33 để tính đóng một phần sẽ sai dần theo từng lần đóng.
+**Bản 1 (phase 6 → 10):** *"`effective_multiplier` khoá tại thời điểm mở cặp và dùng cho **mọi**
+phép tính đóng một phần."* Yêu cầu gốc vẫn đúng và không đổi: người vận hành đổi hệ số giữa chừng
+không được làm lệch cặp đang chạy (FR-06), và hệ số cấu hình khác tỷ lệ thật sau làm tròn — Master
+0.07 với hệ số 0.33 cho Client 0.02, tức tỷ lệ thật 0.2857.
+
+**Sửa ở phase 11.** Kiểm toán 2026-09-06 phát hiện code **chưa bao giờ** làm theo chữ của bản 1:
+`effective_multiplier` chỉ được *ghi* lúc mở cặp và được *đọc* đúng một chỗ là bộ đối chiếu, còn
+`CloseFlow._close_pair_partially` tính bằng
+
+```
+ty_le   = master_delta / master_con_lai
+can_dong = lam_tron_xuong(client_con_lai * ty_le)
+```
+
+Hai công thức trùng nhau khi không có làm tròn, nhưng khác nhau khi có. Bản đang chạy **đúng
+hơn**: nó lấy tỷ lệ trên `client_current_volume` *thật*, nên phần dư do làm tròn xuống được thu
+lại ở các lần đóng sau thay vì tồn tại vĩnh viễn. Mô phỏng Master 1.00 hệ số 0.5 step 0.01, đóng
+0.25 ba lần: bản đang chạy để Client còn **0.130**, công thức theo chữ bản 1 để lại **0.140**,
+lý tưởng là 0.125.
+
+Vì bản 1 mô tả một cơ chế kém hơn cơ chế đang chạy, **quyết định được sửa theo code**, không phải
+ngược lại. FR-06 vẫn được bảo đảm — mạnh hơn là khác: đường đóng không hề đọc `client_account`
+nên hệ số cấu hình đổi giữa chừng **không có đường nào** chạm tới cặp đang chạy.
+
+`effective_multiplier` giữ nguyên vai trò khoá-lúc-mở, dùng làm **kỳ vọng khi đối chiếu**
+(`Reconciler._soi_lech_volume`). Vì làm tròn xuống luôn tạo lệch hợp lệ, dung sai ở đó phải tính
+theo `volume_step` chứ không phải một epsilon.
 
 ### D-20 — Cờ `can_close_master` đặt theo từng Client, mặc định TẮT.
 

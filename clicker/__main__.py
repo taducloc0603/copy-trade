@@ -15,7 +15,7 @@ from pathlib import Path
 
 from bridge.logging_setup import get_logger, setup_logging
 from clicker.journal import CommandJournal
-from clicker.link import ClickerLink, LinkConfig
+from clicker.link import DEFAULT_HEARTBEAT_SEC, ClickerLink, LinkConfig
 from clicker.ui.driver import DryRunDriver, Mt5UiDriver
 
 log = get_logger(__name__)
@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Mau tieu de cua so terminal, thuong chua so tai khoan")
     parser.add_argument("--journal", default=DEFAULT_JOURNAL,
                         help=f"Duong dan nhat ky append-only (mac dinh {DEFAULT_JOURNAL})")
-    parser.add_argument("--heartbeat-sec", type=float, default=5.0)
+    parser.add_argument("--heartbeat-sec", type=float, default=DEFAULT_HEARTBEAT_SEC)
     parser.add_argument("--dry-run", action="store_true",
                         help="Khong cham vao giao dien; moi OPEN_UI deu tra rejected DRY_RUN")
     return parser
