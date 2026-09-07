@@ -51,6 +51,10 @@ $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
 $script:TongBuoc = 11
+# Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
+# Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
+# nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
+$script:PhienBan = "2026-09-07"
 
 # So sanh khoa giua config.toml va config.example.toml. Viet bang Python chu khong phai
 # PowerShell vi PS 5.1 khong co bo doc TOML nao, va tomllib thi da nam san trong venv.
@@ -485,8 +489,18 @@ function in_buoc_tiep() {
  Chi tiet tung buoc: docs\CAI-DAT-VPS.md
 "@
     Write-Host ""
-    Get-Content (Join-Path $PSScriptRoot "canh-bao.txt") | ForEach-Object {
-        Write-Host $_ -ForegroundColor Yellow
+    # Duong chay duoc chinh docs/CAI-DAT-VPS.md khuyen nghi -- tai rieng cai-dat.ps1 roi chay de
+    # no tu clone -- dat $PSScriptRoot o Desktop, con canh-bao.txt thi nam trong ban vua clone.
+    # Khong do tim o $ThuMuc thi buoc cuoi nem mot cuc loi Get-Content mau do va khoi 6 canh bao
+    # "khong lam = mat tien" bien mat, dung cai phan dang ra phai doc ky nhat.
+    $canhBao = @(
+        (Join-Path $PSScriptRoot "canh-bao.txt"),
+        (Join-Path $ThuMuc "scripts\canh-bao.txt")
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($canhBao) {
+        Get-Content $canhBao | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
+    } else {
+        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 8 -- 6 viec script KHONG lam duoc."
     }
     if (-not $CapNhat) {
         Write-Host ""
@@ -500,7 +514,7 @@ function in_buoc_tiep() {
 # ---------------------------------------------------------------------------------------------
 try {
     Write-Host ""
-    Write-Host " MT5 Copy Bridge -- cai dat" -ForegroundColor Cyan
+    Write-Host " MT5 Copy Bridge -- cai dat (ban $script:PhienBan)" -ForegroundColor Cyan
     Write-Host " Thu muc dich: $ThuMuc" -ForegroundColor DarkGray
     if ($CapNhat) { Write-Host " Che do: CAP NHAT" -ForegroundColor Yellow }
 
