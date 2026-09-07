@@ -54,7 +54,7 @@ $script:TongBuoc = 11
 # Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
 # Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
 # nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
-$script:PhienBan = "2026-09-07"
+$script:PhienBan = "2026-09-07b"
 
 # So sanh khoa giua config.toml va config.example.toml. Viet bang Python chu khong phai
 # PowerShell vi PS 5.1 khong co bo doc TOML nao, va tomllib thi da nam san trong venv.
@@ -366,7 +366,12 @@ function bao_dam_config([string] $venvPy) {
         [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
         $matKhau = ([Convert]::ToBase64String($bytes)) -replace '[+/=]', ''
 
-        $noi = (Get-Content $mau -Raw -ErrorAction Stop) -replace 'dashboard_password = ""', "dashboard_password = `"$matKhau`""
+        # ReadAllText chu KHONG phai `Get-Content -Raw`: Get-Content cua PowerShell 5.1 mac dinh
+        # doc bang code page ANSI cua he thong, nen no doc config.example.toml (UTF-8) thanh
+        # mojibake roi WriteAllText ben duoi ghi mojibake do ra UTF-8. Ket qua: moi dong chu thich
+        # tieng Viet trong config.toml sinh ra deu hong. Khoa va gia tri toan ASCII nen TOML van
+        # parse duoc va khong ai phat hien -- cho toi luc co mot gia tri khong phai ASCII.
+        $noi = [System.IO.File]::ReadAllText($mau) -replace 'dashboard_password = ""', "dashboard_password = `"$matKhau`""
         # PHAI la UTF-8 KHONG BOM: bridge/config.py mo file o che do nhi phan roi dua cho
         # tomllib, va BOM se lam tomllib nem loi parse voi mot thong bao khong he nhac toi BOM.
         [System.IO.File]::WriteAllText($cfg, $noi, (New-Object System.Text.UTF8Encoding($false)))
@@ -465,25 +470,38 @@ function in_buoc_tiep() {
     Write-Host " BUOC TIEP THEO" -ForegroundColor Cyan
     tach
     Write-Host @"
+ CHAY MOT LENH NAY, no hoi xac nhan tung buoc roi tu lam theo dung thu tu:
+
+      .\scripts\tro-ly.ps1 -ThuMuc "$ThuMuc"
+
+ No tao agent, ghi token clicker thang vao config.toml, tao dong client, bien
+ dich EA, cho EA len ONLINE, khai bao anh xa symbol, dang ky dich vu, roi chay
+ kiem tra. Chay lai bao nhieu lan cung duoc.
+
+ ---------------------------------------------------------------------------
+ Hoac lam tay, DUNG THU TU NAY:
+
  1. Tao agent va cap token (database moi LUON RONG -- data/ nam trong .gitignore):
       cd "$ThuMuc"
       $venvPy -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login <so-tk-master>
       $venvPy -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login <so-tk-client>
       $venvPy -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login <so-tk-client>
-      $venvPy -m bridge.admin cap-token AG-MASTER
     Token tho HIEN DUNG MOT LAN. Token cua AG-CLICKER dat vao muc [clicker] trong config.toml,
     dung dat tren dong lenh -- dong lenh cua tien trinh thi may nao cung doc duoc.
 
- 2. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
+ 2. Tao dong client -- THIEU BUOC NAY LA anh-xa-symbol BAO 'Khong co client':
+      $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI
 
- 3. Khai bao anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang:
+ 3. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
+
+ 4. Khai bao anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang:
       $venvPy -m bridge.admin anh-xa-symbol --help
     (can EA Client dang chay va symbol da keo vao Market Watch)
 
- 4. Dang ky dich vu va tac vu:
+ 5. Dang ky dich vu va tac vu:
       .\scripts\tao-dich-vu.ps1 -ThuMuc "$ThuMuc"
 
- 5. Moi lan dang nhap:
+ 6. Moi lan dang nhap:
       .\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
 
  Chi tiet tung buoc: docs\CAI-DAT-VPS.md

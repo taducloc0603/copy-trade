@@ -212,6 +212,24 @@ C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
 token của agent (chỉ hiện đúng một lần).</p>
 
 <!-- =================================================================== -->
+<h3>Trợ lý: một lệnh thay cho cả các mục 3-6</h3>
+<pre><code>C:\CopyBridge\scripts	ro-ly.ps1 -ThuMuc C:\CopyBridge</code></pre>
+<p>Script dẫn qua đúng thứ tự của bốn mục tiếp theo: tạo agent, <strong>ghi token clicker thẳng
+vào</strong> <code>config.toml</code> (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client,
+biên dịch EA, chờ EA lên <code>ONLINE</code>, khai báo ánh xạ symbol, đăng ký dịch vụ, rồi chạy
+<code>kiem-tra.ps1</code>. Mỗi bước hỏi trước khi làm; bước nào xong rồi thì in <code>BO QUA</code>,
+nên <strong>chạy lại bao nhiêu lần cũng được</strong>.</p>
+
+<div class="hop cam">
+  <span class="nhan">Trợ lý dừng lại đúng hai chỗ</span>
+  <p><strong>Gắn EA lên chart</strong> trong giao diện MT5, và <strong>bấm <code>RUNNING</code></strong>.
+  Hai việc này không tự động hoá được, và cả hai đều là chỗ mất tiền nếu bỏ qua.</p>
+</div>
+
+<p>Các mục dưới đây là chính những việc đó làm bằng tay — đọc nếu bạn muốn hiểu trợ lý đang làm
+gì, hoặc khi cần sửa lại một bước riêng lẻ.</p>
+
+<!-- =================================================================== -->
 <h2 id="agent">3. Tạo agent và cấp token</h2>
 
 <div class="hop cam">
@@ -264,6 +282,21 @@ khoản. Xem đúng chuỗi đang hiện bằng:</p>
   lúc tạo.</p>
   <p>Vẫn còn hai đường khác nếu cần: tham số <code>--token</code> (ưu tiên cao nhất, dùng khi gỡ lỗi
   tại chỗ) và biến môi trường <code>COPYBRIDGE_CLICKER_TOKEN</code>.</p>
+</div>
+
+<!-- =================================================================== -->
+<h3>Tạo dòng client</h3>
+<p>Agent <code>AG-CLIENT</code> mới chỉ là một kết nối. Cấu hình <strong>nghiệp vụ</strong> của
+Client — copy ngược hay cùng chiều, hệ số volume, và quan trọng nhất là <code>open_route</code> —
+nằm ở một dòng riêng trong bảng <code>client_account</code>:</p>
+<pre><code>&amp; $py -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI</code></pre>
+
+<div class="hop do">
+  <span class="nhan">Thiếu dòng này thì không có lệnh nào copy được</span>
+  <p><code>anh-xa-symbol</code> sẽ báo <code>Khong co client CL-01</code> và bạn không đi tiếp được.
+  <code>--open-route UI</code> là mặc định và là điều bạn muốn: đường <strong>mở</strong> lệnh đi qua
+  giao diện MT5 để deal ra <code>DEAL_REASON_CLIENT</code> (D-21), nên nó bắt buộc phải có một agent
+  CLICKER. Sửa về sau dùng <code>cau-hinh-client</code> — lệnh đó chỉ <strong>sửa</strong> chứ không tạo.</p>
 </div>
 
 <!-- =================================================================== -->
@@ -666,6 +699,10 @@ Start-Service CopyBridge</code></pre>
       <td>Đóng PowerShell, mở lại, chạy lại script</td></tr>
   <tr><td><code>git clone that bai</code></td><td>Kho private hoặc mạng chặn</td>
       <td>Chép thư mục qua RDP rồi chạy với <code>-BoQuaGit</code></td></tr>
+  <tr><td><code>Khong co client CL-01</code></td><td>Chưa tạo dòng <code>client_account</code></td>
+      <td><code>them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER</code>, xem <a href="#agent">mục 3</a></td></tr>
+  <tr><td><code>open_route = UI can clicker_agent_id</code></td><td>Tạo client mà thiếu <code>--clicker-agent</code></td>
+      <td>Tạo lại với <code>--clicker-agent AG-CLICKER</code></td></tr>
   <tr><td><code>.venv san co khong dung duoc</code></td><td>Đã chép cả <code>.venv</code> từ máy khác sang</td>
       <td>Chạy lại với <code>-LamMoiVenv</code></td></tr>
   <tr><td>Bridge từ chối khởi động, báo lỗi đọc cấu hình</td><td><code>config.toml</code> lưu sai định dạng</td>

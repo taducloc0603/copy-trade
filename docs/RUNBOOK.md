@@ -108,6 +108,7 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
 .\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
+.\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
 .\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
@@ -121,6 +122,8 @@ món nợ đó đã một lần làm mất token của clicker.
 lại. `thu-hoi` không xoá dòng agent (sẽ mất lịch sử); nó đặt hash thành giá trị không token nào
 sinh ra được và tắt `enabled`. `cap-token` **bật lại** agent đã thu hồi — cấp token là hành động
 có chủ đích để nó nối lại được.
+
+`CL-01` không tự sinh ra: `them-client` tạo nó, `cau-hinh-client` chỉ **sửa** một dòng đã có.
 
 Đổi cấu hình giao dịch bằng `cau-hinh-client`, đừng `UPDATE` tay. Cặp **đang chạy** giữ nguyên tỷ
 lệ cũ; giá trị mới chỉ áp cho lệnh mới (D-19).

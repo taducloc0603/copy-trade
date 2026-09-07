@@ -292,6 +292,58 @@ def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_them_client(db: Database, args: argparse.Namespace) -> int:
+    """Tạo dòng ``client_account`` cho một agent CLIENT.
+
+    Đối xứng với `lenh_them_agent`, và tồn tại vì cùng một lý do. Trước lệnh này không có
+    đường nào tạo được dòng `client_account`: `cau-hinh-client` từ chối khi dòng chưa tồn
+    tại, còn Bridge không tự tạo lúc EA Client đăng ký. Nghĩa là một bản cài mới đi tới
+    `anh-xa-symbol` là chết với "Khong co client", và cách duy nhất để qua được là `INSERT`
+    tay vào SQLite — đúng thứ mà `cau-hinh-client` được viết ra để khỏi phải làm.
+
+    `clicker_agent_id` cũng chỉ đặt được ở đây. `cau-hinh-client --open-route UI` đòi nó
+    nhưng không có cờ nào để điền, nên trước đây bật `UI` bằng lệnh là chuyện bất khả.
+    """
+    if db.query_one("SELECT 1 FROM client_account WHERE client_id = ?",
+                    (args.client_id,)) is not None:
+        print(f"Client {args.client_id} da ton tai. Dung `cau-hinh-client` de sua.",
+              file=sys.stderr)
+        return 1
+
+    agent = db.get_agent(args.agent_id)
+    if agent is None:
+        print(f"Khong co agent {args.agent_id}. Tao bang `them-agent` truoc.", file=sys.stderr)
+        return 1
+    if agent["role"] != "CLIENT":
+        print(f"Agent {args.agent_id} co role {agent['role']}, can CLIENT.", file=sys.stderr)
+        return 1
+
+    # Giu nguyen rang buoc cua `cau-hinh-client`: open_route = UI ma khong co clicker thi
+    # duong mo lenh khong co ai bam, va no hong trong im lang chu khong bao gi.
+    if args.open_route == "UI" and not args.clicker_agent:
+        print("open_route = UI can --clicker-agent", file=sys.stderr)
+        return 1
+    if args.clicker_agent:
+        clicker = db.get_agent(args.clicker_agent)
+        if clicker is None:
+            print(f"Khong co agent {args.clicker_agent}", file=sys.stderr)
+            return 1
+        if clicker["role"] != "CLICKER":
+            print(f"Agent {args.clicker_agent} co role {clicker['role']}, can CLICKER.",
+                  file=sys.stderr)
+            return 1
+
+    db.upsert_client_account(args.client_id, agent_id=args.agent_id,
+                             display_name=args.ten or args.client_id,
+                             open_route=args.open_route,
+                             clicker_agent_id=args.clicker_agent)
+    print(f"Da tao client {args.client_id} -> agent {args.agent_id} "
+          f"(open_route={args.open_route}"
+          f"{', clicker ' + args.clicker_agent if args.clicker_agent else ''})")
+    print("Buoc tiep: `anh-xa-symbol` -- THIEU ANH XA LA MOI LENH MASTER BI BO QUA.")
+    return 0
+
+
 def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
     """Xem và sửa cấu hình một Client (B-11).
 
@@ -376,6 +428,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("tinh-hinh", help="Co gi can lam khong (thoat khac 0 neu co)")
 
+    tc = sub.add_parser("them-client", help="Tao client_account cho mot agent CLIENT")
+    tc.add_argument("client_id")
+    tc.add_argument("--agent", dest="agent_id", required=True, help="agent_id vai tro CLIENT")
+    tc.add_argument("--clicker-agent", dest="clicker_agent",
+                    help="agent_id vai tro CLICKER; bat buoc khi --open-route UI")
+    tc.add_argument("--open-route", dest="open_route", default="UI", choices=("EA", "UI"))
+    tc.add_argument("--ten", help="Ten hien thi, mac dinh lay client_id")
+
     cf = sub.add_parser("cau-hinh-client", help="Xem hoac sua cau hinh mot Client")
     cf.add_argument("client_id")
     cf.add_argument("--copy-mode", dest="copy_mode", choices=("SAME", "OPPOSITE"))
@@ -417,6 +477,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_tinh_hinh(db, args, db_path)
         if args.lenh == "anh-xa-symbol":
             return lenh_anh_xa_symbol(db, args)
+        if args.lenh == "them-client":
+            return lenh_them_client(db, args)
         if args.lenh == "cau-hinh-client":
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "run-mode":

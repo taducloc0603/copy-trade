@@ -294,6 +294,72 @@ def test_admin_them_agent_roi_cap_lai_token(db: Database, monkeypatch, capsys) -
     assert not db.get_agent("AG-THU")["enabled"]
 
 
+def test_admin_them_client_tao_duoc_dong_client_account(db: Database, monkeypatch) -> None:
+    """Truoc lenh nay khong co duong nao tao `client_account` ngoai INSERT tay vao SQLite.
+
+    `cau-hinh-client` tu choi khi dong chua ton tai va Bridge khong tu tao luc EA dang ky,
+    nen mot ban cai moi di toi `anh-xa-symbol` la chet voi "Khong co client".
+    """
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, Path("bridge.db")))
+    monkeypatch.setattr(db, "close", lambda: None)
+    db.upsert_agent("AG-C", role="CLIENT", token_hash="h1", magic_number=1)
+    db.upsert_agent("AG-K", role="CLICKER", token_hash="h2", magic_number=1)
+
+    assert admin.main(["them-client", "CL-X", "--agent", "AG-C",
+                       "--clicker-agent", "AG-K"]) == 0
+    dong = db.query_one("SELECT * FROM client_account WHERE client_id = ?", ("CL-X",))
+    assert dong["agent_id"] == "AG-C"
+    # Mac dinh phai la UI: ca thiet ke clicker (D-21) dua tren no, con mac dinh cua bang
+    # la EA. De nguoi cai tu nho doi la cho hong trong im lang.
+    assert dong["open_route"] == "UI"
+    assert dong["clicker_agent_id"] == "AG-K"
+
+    # Tao trung thi tu choi chu khong ghi de mot cau hinh giao dich dang chay.
+    assert admin.main(["them-client", "CL-X", "--agent", "AG-C",
+                       "--clicker-agent", "AG-K"]) == 1
+
+
+def test_admin_them_client_tu_choi_cau_hinh_khong_chay_duoc(db: Database, monkeypatch) -> None:
+    """Bon cach gay ra mot client khong bao gio mo duoc lenh, phai chan tu luc tao."""
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, Path("bridge.db")))
+    monkeypatch.setattr(db, "close", lambda: None)
+    db.upsert_agent("AG-C", role="CLIENT", token_hash="h1", magic_number=1)
+    db.upsert_agent("AG-M", role="MASTER", token_hash="h2", magic_number=1)
+    db.upsert_agent("AG-K", role="CLICKER", token_hash="h3", magic_number=1)
+
+    # UI ma khong co clicker: duong mo lenh khong co ai bam.
+    assert admin.main(["them-client", "CL-A", "--agent", "AG-C"]) == 1
+    # Agent khong ton tai.
+    assert admin.main(["them-client", "CL-A", "--agent", "AG-KHONG-CO",
+                       "--clicker-agent", "AG-K"]) == 1
+    # Dung agent that nhung sai vai tro.
+    assert admin.main(["them-client", "CL-A", "--agent", "AG-M",
+                       "--clicker-agent", "AG-K"]) == 1
+    # --clicker-agent tro vao mot agent khong phai CLICKER.
+    assert admin.main(["them-client", "CL-A", "--agent", "AG-C",
+                       "--clicker-agent", "AG-M"]) == 1
+
+    assert db.query_one("SELECT 1 FROM client_account WHERE client_id = ?", ("CL-A",)) is None
+
+
+def test_admin_them_client_route_ea_khong_can_clicker(db: Database, monkeypatch) -> None:
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, Path("bridge.db")))
+    monkeypatch.setattr(db, "close", lambda: None)
+    db.upsert_agent("AG-C", role="CLIENT", token_hash="h1", magic_number=1)
+
+    assert admin.main(["them-client", "CL-E", "--agent", "AG-C",
+                       "--open-route", "EA"]) == 0
+    dong = db.query_one("SELECT * FROM client_account WHERE client_id = ?", ("CL-E",))
+    assert dong["open_route"] == "EA"
+    assert dong["clicker_agent_id"] is None
+
+
 def _doc_token(capsys) -> str:
     dong = [d.strip() for d in capsys.readouterr().out.splitlines() if d.strip()]
     return dong[-2]

@@ -81,7 +81,26 @@ với token của agent).
 
 ---
 
-## 2. Tạo agent và cấp token
+## 2. Trợ lý: một lệnh, hỏi xác nhận từng bước
+
+```powershell
+C:\CopyBridge\scripts	ro-ly.ps1 -ThuMuc C:\CopyBridge
+```
+
+Script dẫn qua đúng thứ tự của các mục 3-7 bên dưới: tạo agent, **ghi token clicker thẳng vào**
+`config.toml` (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client, biên dịch EA, chờ EA
+lên `ONLINE`, khai báo ánh xạ symbol, đăng ký dịch vụ, rồi chạy `kiem-tra.ps1`. Mỗi bước hỏi
+trước khi làm, và bước nào xong rồi thì in `BO QUA` — **chạy lại bao nhiêu lần cũng được**.
+
+Nó dừng lại đúng hai chỗ, vì hai việc đó không tự động hoá được: **gắn EA lên chart** trong giao
+diện MT5, và **bấm `RUNNING`**.
+
+Các mục dưới đây là chính những việc đó làm bằng tay — đọc nếu bạn muốn hiểu trợ lý đang làm gì,
+hoặc khi cần sửa một bước riêng lẻ.
+
+---
+
+## 3. Tạo agent và cấp token
 
 Database mới **luôn rỗng**: `data/` nằm trong `.gitignore`, nên bản clone trên VPS không mang theo
 agent nào của máy cũ.
@@ -115,21 +134,28 @@ trên cùng máy** đọc được bằng `Get-CimInstance Win32_Process`, và c
 
 ---
 
-## 3. Khai báo ánh xạ symbol
 
-**Đừng bỏ bước này.** Thiếu ánh xạ thì `find_symbol_map` trả `None` và **mọi lệnh Master bị bỏ qua
-trong im lặng** — người cài lần đầu dựng xong toàn hệ thống rồi ngồi nhìn không có gì xảy ra.
+## 4. Tạo dòng client
+
+Agent `AG-CLIENT` mới chỉ là một kết nối. Cấu hình **nghiệp vụ** của Client — copy ngược hay
+cùng chiều, hệ số volume, và quan trọng nhất là `open_route` — nằm ở một dòng riêng trong bảng
+`client_account`. Không có dòng này thì `anh-xa-symbol` báo `Khong co client CL-01` và không có
+lệnh nào copy được.
 
 ```powershell
-& $py -m bridge.admin anh-xa-symbol --help
+& $py -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI
 ```
 
-Lệnh này cần **EA Client đang chạy** và symbol đã kéo vào Market Watch, vì nó kiểm `symbol_spec`
-trước khi lưu. Nên làm sau bước 4.
+`--open-route UI` là mặc định và là điều bạn muốn: đường **mở** lệnh đi qua giao diện MT5 để deal
+ra `DEAL_REASON_CLIENT` (D-21), nên nó bắt buộc phải có một agent CLICKER. Đổi về `EA` thì lệnh mở
+đi bằng `OrderSend` và ra `DEAL_REASON_EXPERT`.
+
+Sửa về sau dùng `cau-hinh-client` (xem [RUNBOOK.md](RUNBOOK.md) mục 4), lệnh đó chỉ **sửa** chứ
+không tạo.
 
 ---
 
-## 4. MT5 và EA
+## 5. MT5 và EA
 
 Script không làm hộ phần này.
 
@@ -153,7 +179,23 @@ chart đang mở. Mở đúng chart đó và giữ nguyên.
 
 ---
 
-## 5. Đăng ký dịch vụ và tác vụ
+## 6. Khai báo ánh xạ symbol
+
+**Đừng bỏ bước này.** Thiếu ánh xạ thì `find_symbol_map` trả `None` và **mọi lệnh Master bị bỏ qua
+trong im lặng** — người cài lần đầu dựng xong toàn hệ thống rồi ngồi nhìn không có gì xảy ra.
+
+```powershell
+& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
+& $py -m bridge.admin anh-xa-symbol CL-01          # xem những gì đã khai
+```
+
+Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
+tường minh chứ không đoán. Lệnh kiểm `symbol_spec` trước khi lưu, nên nó **cần EA Client đang
+chạy** và symbol đã kéo vào Market Watch — đó là lý do bước này nằm sau mục 5 chứ không trước.
+
+---
+
+## 7. Đăng ký dịch vụ và tác vụ
 
 ```powershell
 C:\CopyBridge\scripts\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"
@@ -184,7 +226,7 @@ Gỡ hết: `C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo`
 
 ---
 
-## 6. Việc mỗi lần đăng nhập vào VPS
+## 8. Việc mỗi lần đăng nhập vào VPS
 
 ```powershell
 C:\CopyBridge\scripts\kiem-tra.ps1
@@ -211,7 +253,7 @@ hệ thống đang copy lệnh.
 
 ---
 
-## 7. Cập nhật
+## 9. Cập nhật
 
 ```powershell
 C:\CopyBridge\scripts\cai-dat.ps1 -CapNhat
@@ -228,9 +270,9 @@ và in `git status` cho bạn xử lý.
 
 ---
 
-## 8. Những gì script KHÔNG làm được
+## 10. Những gì script KHÔNG làm được
 
-Sáu việc dưới đây in ra ở cuối mỗi lần chạy `cai-dat.ps1` và `kiem-tra.ps1`. Không làm = mất tiền.
+Sáu việc dưới đây in ra ở cuối mỗi lần chạy `cai-dat.ps1`, `tro-ly.ps1` và `kiem-tra.ps1`. Không làm = mất tiền.
 
 1. **Phiên RDP ngắt (B-08) — chưa ai chứng minh.** Toàn bộ đường mở lệnh dựa vào clicker điều
    khiển giao diện MT5 bằng `PostMessage`. Lập luận "chạy được khi phiên RDP đã ngắt" chưa bao giờ
@@ -253,7 +295,7 @@ tài khoản bị xử lý. Đọc điều khoản của cả hai broker.
 
 ---
 
-## 9. Sự cố khi cài
+## 11. Sự cố khi cài
 
 | Hiện tượng | Nguyên nhân | Xử lý |
 |---|---|---|
@@ -261,6 +303,8 @@ tài khoản bị xử lý. Đọc điều khoản của cả hai broker.
 | `Bo cai Python ket thuc voi ma <n>` | Bộ cài silent bị chặn | Chạy tay file `.exe` trong `%TEMP%` để xem nó báo gì; nhớ tích **"Add python.exe to PATH"** |
 | Cài Python xong vẫn báo không gọi được | PATH trong tiến trình PowerShell hiện tại đã cũ | Đóng PowerShell, mở lại, chạy lại script |
 | `git clone that bai` | Repo private | `gh auth login` rồi `gh repo clone`, hoặc `-Repo "https://<PAT>@github.com/..."`, hoặc chép thư mục qua RDP rồi `-BoQuaGit` |
+| `Khong co client CL-01` | Chưa tạo dòng `client_account` | `them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER` (mục 4) |
+| `open_route = UI can clicker_agent_id` | Tạo client mà thiếu `--clicker-agent` | Tạo lại với `--clicker-agent AG-CLICKER` |
 | `.venv san co khong dung duoc` | Chép cả `.venv` qua RDP; đường dẫn tuyệt đối bên trong vẫn trỏ về máy cũ | Chạy lại với `-LamMoiVenv` |
 | `import bridge, clicker` thất bại | Gói cài không ở chế độ editable | `pyproject.toml` chỉ khai báo `packages = ["bridge"]`; phải `pip install -e .` |
 | Bridge từ chối khởi động, lỗi parse TOML | `config.toml` có BOM | Ghi lại bằng UTF-8 **không BOM** |
@@ -272,7 +316,7 @@ tài khoản bị xử lý. Đọc điều khoản của cả hai broker.
 
 ---
 
-## 10. Trước khi chuyển sang tài khoản thật
+## 12. Trước khi chuyển sang tài khoản thật
 
 Xem [RUNBOOK.md](RUNBOOK.md) mục 8 và [KE-HOACH-CHAY-THAT.md](KE-HOACH-CHAY-THAT.md). Tóm tắt:
 chạy ổn định trên demo ít nhất một tuần, xong bài B-08 và B-09, đọc điều khoản của cả hai broker,
