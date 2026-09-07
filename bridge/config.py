@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import tomllib
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -74,6 +74,10 @@ class Config:
     security: SecretSection
     source_path: Path
     project_root: Path
+    #: Mục ``[clicker]`` — tham số của tiến trình clicker, kể cả token bắt tay. Dùng
+    #: ``SecretSection`` chứ không phải dict thường vì token nằm trong đó: mục đích của mục này
+    #: là để token **không** phải đi qua dòng lệnh, nên nó cũng không được rơi vào log.
+    clicker: SecretSection = field(default_factory=SecretSection)
 
     @property
     def db_path(self) -> Path:
@@ -143,11 +147,16 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
             "127.0.0.1"
         )
 
+    clicker_raw = raw.get("clicker", {})
+    if not isinstance(clicker_raw, Mapping):
+        raise ConfigError("Mục [clicker] phải là một bảng TOML")
+
     return Config(
         bridge=BridgeSection(host=host, port=port, web_port=web_port, db_path=db_path),
         security=SecretSection(security_raw),
         source_path=source_path,
         project_root=project_root,
+        clicker=SecretSection(clicker_raw),
     )
 
 

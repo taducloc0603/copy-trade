@@ -17,3 +17,13 @@ dashboard_password = ""
 # Chi alert muc ERROR va CRITICAL moi duoc gui ra; INFO/WARNING o lai trong dashboard.
 telegram_token = ""
 telegram_chat_id = ""
+
+# Tham so cua tien trinh clicker (`python -m clicker`). Dat o day thay vi tren dong lenh:
+# dong lenh cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang
+# `Get-CimInstance Win32_Process`, va clicker chay 24/7 nen token se phoi ra suot ngay.
+# Thu tu uu tien: --token > bien moi truong COPYBRIDGE_CLICKER_TOKEN > muc nay.
+[clicker]
+token = ""
+account_login = 0
+# Mau tieu de cua so terminal Client, thuong chua so tai khoan. Che do that bat buoc phai co.
+terminal_title = ""

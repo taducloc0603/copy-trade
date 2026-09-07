@@ -30,6 +30,10 @@ copy config.example.toml config.toml   # rồi điền giá trị thật
 
 `config.toml` chứa bí mật và nằm trong `.gitignore`.
 
+Triển khai lên VPS Windows bằng script: xem
+[docs/HUONG-DAN-CUNG-VPS-SCRIPT.html](docs/HUONG-DAN-CUNG-VPS-SCRIPT.html) (chi tiết, kèm quy
+trình cập nhật) hoặc [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) (bản ngắn).
+
 ## Chạy test
 
 ```powershell
@@ -47,6 +51,9 @@ Khi chạy được, Bridge luôn khởi động ở `PAUSED` và chỉ sang `RU
 
 ## Tài liệu
 
+- [docs/HUONG-DAN-CUNG-VPS-SCRIPT.html](docs/HUONG-DAN-CUNG-VPS-SCRIPT.html) — cài, vận hành
+  và **cập nhật** trên một VPS bằng bộ script `scripts/`. Chi tiết nhất.
+- [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) — bản rút gọn của tài liệu trên
 - [docs/DECISIONS.md](docs/DECISIONS.md) — 20 quyết định thiết kế và lý do. **Đọc trước tiên.**
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — kiến trúc, ranh giới ba vai trò, luồng dữ liệu
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — quy ước code

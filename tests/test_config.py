@@ -135,3 +135,21 @@ def test_mat_khau_toan_khoang_trang_khong_tinh_la_co(tmp_path: Path) -> None:
     with pytest.raises(ConfigError):
         _parse({"bridge": {"host": "0.0.0.0"}, "security": {"dashboard_password": "   "}},
                tmp_path)
+
+
+def test_muc_clicker_doc_duoc_va_khong_lot_ra_repr(tmp_path: Path) -> None:
+    """Mục ``[clicker]`` chứa token, nên nó phải được che giống hệt ``[security]``."""
+    cfg = _parse({"clicker": {"token": "bi-mat", "account_login": 538217}}, tmp_path)
+    assert cfg.clicker["token"] == "bi-mat"
+    assert cfg.clicker["account_login"] == 538217
+    assert "bi-mat" not in repr(cfg.clicker)
+    assert "bi-mat" not in repr(cfg)
+
+
+def test_thieu_muc_clicker_thi_rong(tmp_path: Path) -> None:
+    assert dict(_parse({"bridge": {}}, tmp_path).clicker) == {}
+
+
+def test_muc_clicker_khong_phai_bang_thi_loi(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match=r"\[clicker\]"):
+        _parse({"clicker": "khong-phai-bang"}, tmp_path)

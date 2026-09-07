@@ -16,11 +16,18 @@ from pathlib import Path
 import pytest
 
 from bridge.clock import to_iso, utc_now
+from bridge.config import ConfigError
 from bridge.db.repo import Database
 from bridge.protocol.auth import hash_token
 from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
-from clicker.__main__ import build_parser, main
+from clicker.__main__ import (
+    ENV_TOKEN,
+    bo_sung_tham_so,
+    build_parser,
+    doc_muc_clicker,
+    main,
+)
 from clicker.journal import CommandJournal
 from clicker.link import ClickerLink, LinkConfig
 from clicker.ui.driver import DryRunDriver, OpenDriver, OpenOutcome, OpenRequest
@@ -261,10 +268,18 @@ def test_khong_co_dry_run_thi_tu_choi_khoi_dong() -> None:
     assert code == 2
 
 
-def test_tham_so_bat_buoc() -> None:
+def test_tham_so_bat_buoc(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Từ phase 11 argparse **không** còn là chỗ chặn: token có thể tới từ ba đường.
+
+    Nhưng hợp đồng thì không đổi — thiếu token là dừng, không chạy tiếp và không rơi về
+    `--dry-run`. Chỗ chặn chuyển vào `main()`, nên test đi theo.
+    """
     parser = build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--dry-run"])
+    parser.parse_args(["--dry-run"])          # khong con nem SystemExit
+
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    assert main(["--dry-run"]) == 2
 
 
 def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:
@@ -285,3 +300,62 @@ def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:
     assert DEFAULT_HEARTBEAT_SEC * 3 <= han_bridge_sec, (
         f"Nhip {DEFAULT_HEARTBEAT_SEC}s so voi han {han_bridge_sec}s khong du bien"
     )
+
+
+# --------------------------------------------------------------------------------------------
+# Nguồn của token (phase 11): --token → biến môi trường → mục [clicker] trong config.toml.
+#
+# Lý do mục này tồn tại: dòng lệnh của một tiến trình là thứ mọi tài khoản trên cùng máy đọc
+# được. Clicker chạy 24/7 dưới một Scheduled Task, nên `--token` ở đó là token phơi ra suốt ngày.
+# --------------------------------------------------------------------------------------------
+
+def _args(argv: list[str]) -> object:
+    return build_parser().parse_args(argv)
+
+
+def test_token_dong_lenh_thang_bien_moi_truong(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ENV_TOKEN, "tu-moi-truong")
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "tu-config"})
+    args = _args(["--token", "tu-dong-lenh", "--account-login", "1", "--terminal-title", "T"])
+    bo_sung_tham_so(args)
+    assert args.token == "tu-dong-lenh"
+
+
+def test_token_lay_tu_bien_moi_truong_khi_thieu_dong_lenh(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(ENV_TOKEN, "tu-moi-truong")
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "tu-config"})
+    args = _args(["--account-login", "1", "--terminal-title", "T"])
+    bo_sung_tham_so(args)
+    assert args.token == "tu-moi-truong"
+
+
+def test_lay_du_ba_gia_tri_tu_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker",
+                        lambda: {"token": "tu-config", "account_login": 538217,
+                                 "terminal_title": "MetaTrader 5 - 538217"})
+    args = _args([])
+    bo_sung_tham_so(args)
+    assert (args.token, args.account_login, args.terminal_title) == (
+        "tu-config", 538217, "MetaTrader 5 - 538217")
+
+
+def test_thieu_token_o_ca_ba_duong_thi_thoat_khac_khong(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Không token thì **không** được chạy tiếp và cũng không được rơi về `--dry-run`."""
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    assert main(["--account-login", "1", "--terminal-title", "T"]) == 2
+
+
+def test_thieu_so_tai_khoan_thi_thoat_khac_khong(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "co-token"})
+    assert main(["--terminal-title", "T"]) == 2
+
+
+def test_config_thieu_thi_khong_nem(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`config.toml` vắng mặt là chuyện thường trên máy chỉ chạy clicker — không được ném."""
+    def _nem(*_a: object, **_k: object) -> None:
+        raise ConfigError("khong tim thay config.toml")
+
+    monkeypatch.setattr("clicker.__main__.load_config", _nem)
+    assert doc_muc_clicker() == {}

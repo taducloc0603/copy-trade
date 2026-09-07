@@ -125,7 +125,7 @@ có chủ đích để nó nối lại được.
 Đổi cấu hình giao dịch bằng `cau-hinh-client`, đừng `UPDATE` tay. Cặp **đang chạy** giữ nguyên tỷ
 lệ cũ; giá trị mới chỉ áp cho lệnh mới (D-19).
 
-Đặt `bao-tri` chạy hằng ngày bằng Scheduled Task. Nó chạy retention (D-17), `VACUUM INTO` một
+Đặt `bao-tri` chạy hằng ngày bằng Scheduled Task — `scripts/tao-dich-vu.ps1` đăng ký sẵn. Nó chạy retention (D-17), `VACUUM INTO` một
 bản sao lưu, giữ 14 bản gần nhất, rồi **tự mở lại bản vừa tạo để kiểm chứng** — vì một bản sao
 lưu chưa từng khôi phục thử thì không phải bản sao lưu.
 
@@ -152,6 +152,10 @@ Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba th�
 ---
 
 ## 5b. Triển khai tất cả trên MỘT VPS
+
+> **Cài đặt bằng script:** [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html) —
+> đầy đủ, kèm quy trình **cập nhật** khi có mã nguồn mới. Bản rút gọn:
+> [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này giải thích **vì sao**, hai tài liệu kia nói **gõ gì**.
 
 Đây là kiến trúc đơn giản nhất và cũng là kiến trúc **khác** với mục 6 bên dưới: Bridge, cả hai
 terminal MT5 và clicker cùng nằm trên một máy. Mục 6 viết cho kiến trúc nhiều máy — khi chạy
@@ -218,8 +222,11 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 - [ ] Firewall Windows: chặn 8787 và 8080 trên **mọi** interface trừ interface Tailscale và
       loopback. Không bao giờ mở ra Internet công cộng.
 - [ ] Kiểm bằng **máy thứ ba**: cả hai port không truy cập được từ ngoài Tailscale.
-- [ ] Đăng ký Bridge làm Windows Service (NSSM hoặc `pywin32`), tự khởi động khi máy bật.
-- [ ] Đăng ký clicker làm **Scheduled Task theo phiên đăng nhập** + autologon + tắt sleep.
+- [x] Đăng ký Bridge làm Windows Service (NSSM hoặc `pywin32`), tự khởi động khi máy bật.
+      — **đã có script** (`scripts/tao-dich-vu.ps1`, dùng NSSM), **chưa kiểm chứng trên VPS thật**.
+- [x] Đăng ký clicker làm **Scheduled Task theo phiên đăng nhập** + autologon + tắt sleep.
+      — **đã có script**, **chưa kiểm chứng trên VPS thật**. Có script không đồng nghĩa đã kiểm
+      chứng, và mục này là danh sách kiểm chứng.
 - [ ] Kiểm: giết tiến trình Bridge → dịch vụ tự bật lại, và bật lại ở `PAUSED`.
 - [ ] Kiểm: Telegram nhận alert CRITICAL trong vài giây; chặn mạng tới Telegram → luồng giao
       dịch không chậm hay lỗi (đã có test tự động cho vế sau, chưa gửi tin thật lần nào).

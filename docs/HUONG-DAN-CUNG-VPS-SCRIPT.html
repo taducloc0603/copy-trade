@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MT5 Copy Bridge — Cài trên một VPS bằng script</title>
+<style>
+:root{--nen:#12161c;--the:#1b212a;--the2:#222a35;--chu:#e6edf3;--mo:#8b98a8;
+ --vien:#2b3542;--do:#e5484d;--cam:#f5a524;--xanh:#3fb950;--lam:#388bfd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--nen);color:var(--chu);
+ font:16px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.bao{max-width:900px;margin:0 auto;padding:0 20px 80px}
+header{background:var(--the);border-bottom:1px solid var(--vien);padding:26px 20px;margin-bottom:26px}
+header .bao{padding-bottom:0}
+h1{margin:0 0 6px;font-size:27px}
+h2{margin:44px 0 14px;font-size:23px;padding-bottom:8px;border-bottom:1px solid var(--vien)}
+h3{margin:28px 0 10px;font-size:18px}
+h4{margin:20px 0 8px;font-size:15px;color:var(--mo);text-transform:uppercase;letter-spacing:.04em}
+p,li{margin:10px 0}
+code{background:var(--the2);padding:2px 6px;border-radius:4px;font-size:14px;
+ font-family:ui-monospace,Consolas,"Courier New",monospace}
+pre{background:#0d1117;border:1px solid var(--vien);border-radius:8px;padding:14px 16px;
+ overflow-x:auto;font-size:13.5px;line-height:1.5;
+ font-family:ui-monospace,Consolas,"Courier New",monospace}
+pre code{background:none;padding:0;font-size:inherit}
+a{color:var(--lam)}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:15px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--vien);padding:9px 11px;text-align:left;vertical-align:top}
+th{background:var(--the);font-weight:600}
+img{max-width:100%;border:1px solid var(--vien);border-radius:8px;display:block;margin:14px 0 6px}
+figure{margin:20px 0} figcaption{color:var(--mo);font-size:14px;margin-top:2px}
+.hop{border:1px solid var(--vien);border-left-width:4px;border-radius:8px;
+ padding:14px 18px;margin:20px 0;background:var(--the)}
+.hop p:first-child{margin-top:0}.hop p:last-child{margin-bottom:0}
+.hop.do{border-left-color:var(--do)}.hop.cam{border-left-color:var(--cam)}
+.hop.xanh{border-left-color:var(--xanh)}.hop.lam{border-left-color:var(--lam)}
+.hop .nhan{font-weight:700;display:block;margin-bottom:6px}
+.hop.do .nhan{color:var(--do)}.hop.cam .nhan{color:var(--cam)}
+.hop.xanh .nhan{color:var(--xanh)}.hop.lam .nhan{color:var(--lam)}
+ol,ul{padding-left:26px} .buoc>li{margin:26px 0}
+.muc-luc{background:var(--the);border:1px solid var(--vien);border-radius:10px;padding:12px 20px}
+kbd{background:var(--the2);border:1px solid var(--vien);border-bottom-width:2px;
+ border-radius:4px;padding:1px 6px;font-size:13px}
+svg{max-width:100%;height:auto;display:block;margin:16px 0}
+.ghi-chu{color:var(--mo);font-size:14.5px}
+.vd{border:1px solid var(--vien);border-radius:10px;margin:22px 0;overflow:hidden}
+.vd>.dau{background:var(--the);padding:11px 18px;font-weight:600;
+ border-bottom:1px solid var(--vien)}
+.vd>.than{padding:4px 18px 16px}
+.vd table{margin:12px 0 4px;table-layout:fixed;width:100%;display:table}
+.vd th{width:34%;background:var(--the2);font-weight:600}
+.doi{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.doi{grid-template-columns:1fr}}
+.khac{background:#241a10;border:1px solid #6b4a15;border-radius:8px;padding:3px 14px;margin:16px 0}
+.khac .nhan{color:var(--cam);font-weight:700;font-size:14px}
+</style>
+
+</head>
+<body>
+<header><div class="bao">
+  <h1>MT5 Copy Bridge — Cài trên MỘT VPS bằng script</h1>
+  <p class="ghi-chu">Cài đặt, vận hành và cập nhật · Cả hệ thống chạy trên cùng một máy · Bản 07-09-2026</p>
+</div></header>
+<div class="bao">
+
+<div class="hop do">
+  <span class="nhan">Đọc trước tiên: bản này dùng cho tài khoản DEMO</span>
+  <p>Phần mềm đã chạy ổn định trên tài khoản demo, nhưng <strong>chưa đủ điều kiện dùng cho tiền
+  thật</strong>. Ba giới hạn quan trọng nhất:</p>
+  <ul>
+    <li><strong>Mỗi terminal Client chỉ copy được một symbol.</strong> Giới hạn kỹ thuật, không
+      phải lựa chọn.</li>
+    <li><strong>Chưa ai đo được trường hợp ngắt phiên Remote Desktop.</strong> Bạn chạy trên VPS
+      rồi thoát ra — chưa ai chứng minh phần mềm còn mở lệnh được hay không.</li>
+    <li><strong>Không có cảnh báo gửi ra ngoài.</strong> Có sự cố thì bạn chỉ biết khi tự mở ra
+      xem.</li>
+  </ul>
+  <p>Danh sách đầy đủ ở <a href="#gioi-han">mục 10</a>.</p>
+</div>
+
+<div class="hop lam">
+  <span class="nhan">Bản này khác gì bản “Cài đặt trên một VPS” cũ</span>
+  <p>Bản cũ (<code>HUONG-DAN-CUNG-VPS.html</code>) hướng dẫn làm <strong>bằng tay từng bước</strong>
+  và vẫn đúng — giữ lại để bạn hiểu chuyện gì đang xảy ra. Bản này dùng <strong>bộ script trong thư
+  mục <code>scripts/</code></strong>: cài nhanh hơn, ít gõ sai hơn, và có thêm phần
+  <strong>tự khởi động sau khi máy bật lại</strong> cùng <strong>quy trình cập nhật</strong> mà bản
+  cũ không có.</p>
+  <p>Kiến trúc vẫn y hệt: Bridge, clicker và <strong>cả hai terminal MT5 cùng một máy</strong>.
+  Agent nối tới Bridge qua <code>127.0.0.1</code>, nên không cần Tailscale, không cần luật firewall,
+  không cần máy thứ ba để kiểm.</p>
+</div>
+
+<div class="muc-luc">
+  <strong>Nội dung</strong>
+  <ol>
+    <li><a href="#chuan-bi">Chuẩn bị VPS</a></li>
+    <li><a href="#cai-dat">Cài đặt bằng một lệnh</a></li>
+    <li><a href="#agent">Tạo agent và cấp token</a></li>
+    <li><a href="#mt5">Cài MT5 và gắn EA</a></li>
+    <li><a href="#symbol">Khai báo ánh xạ symbol</a></li>
+    <li><a href="#dich-vu">Đăng ký dịch vụ và tác vụ</a></li>
+    <li><a href="#lan-dau">Lần chạy đầu tiên</a></li>
+    <li><a href="#van-hanh">Vận hành hằng ngày</a></li>
+    <li><a href="#cap-nhat"><strong>Cập nhật khi có mã nguồn mới</strong></a></li>
+    <li><a href="#gioi-han">Sự cố và giới hạn đã biết</a></li>
+  </ol>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="chuan-bi">1. Chuẩn bị VPS</h2>
+
+<h3>Cấu hình máy</h3>
+<p>Số đo thực tế lúc chạy không tải: mỗi terminal MT5 ~157 MB, Bridge ~49 MB, clicker ~4 MB. Cộng
+Windows Server thì:</p>
+<table>
+  <tr><th>Hạng mục</th><th>Mức nên có</th><th>Ghi chú</th></tr>
+  <tr><td>RAM</td><td><strong>4 GB</strong></td><td>2 GB sẽ chật</td></tr>
+  <tr><td>CPU</td><td>2 nhân</td><td>Đường mở lệnh bị chặn ở tốc độ giao diện MT5 (~600 ms/lệnh), không phải ở CPU</td></tr>
+  <tr><td>Ổ đĩa</td><td>còn trống ≥ 5 GB</td><td>14 bản sao lưu + log giữ 30 ngày</td></tr>
+  <tr><td>Hệ điều hành</td><td>Windows Server 2019 / 2022</td><td>Windows 10/11 cũng chạy được</td></tr>
+</table>
+
+<h3>Ba thứ bắt buộc phải bật trước</h3>
+<div class="hop cam">
+  <span class="nhan">Không phải tuỳ chọn</span>
+  <p>clicker mở lệnh bằng cách điều khiển cửa sổ MT5. Nó <strong>phải sống trong một phiên người
+  dùng đang tồn tại</strong>. Máy ngủ, màn hình khoá, hoặc chưa ai đăng nhập — cả ba đều làm đường
+  mở lệnh chết trong im lặng.</p>
+</div>
+
+<ol class="buoc">
+  <li><strong>Bật autologon.</strong> Chạy <code>netplwiz</code>, chọn tài khoản, bỏ tick
+    <em>“Users must enter a user name and password to use this computer”</em>, bấm OK rồi nhập mật
+    khẩu hai lần.</li>
+  <li><strong>Tắt sleep và hibernate.</strong> Mở PowerShell bằng <em>Run as administrator</em>:
+<pre><code>powercfg /change standby-timeout-ac 0
+powercfg /change monitor-timeout-ac 0
+powercfg /hibernate off</code></pre></li>
+  <li><strong>Tắt khoá màn hình tự động.</strong> Chuột phải Desktop → Personalize → Lock screen →
+    Screen saver settings → bỏ tick <em>“On resume, display logon screen”</em>.</li>
+</ol>
+
+<p class="ghi-chu">Bạn cũng cần quyền Administrator để cài Python và đăng ký dịch vụ.</p>
+
+<!-- =================================================================== -->
+<h2 id="cai-dat">2. Cài đặt bằng một lệnh</h2>
+
+<p>Mở PowerShell bằng <strong>Run as administrator</strong>, rồi cho phép chạy script trong phiên
+này:</p>
+<pre><code>Set-ExecutionPolicy -Scope Process Bypass -Force</code></pre>
+
+<h3>Đường A — có git (khuyến nghị)</h3>
+<pre><code>git clone https://github.com/taducloc0603/copy-trade.git C:\CopyBridge
+C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
+<p>Chưa có git trên máy cũng không sao — script tự cài git rồi tự clone:</p>
+<pre><code>.\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
+
+<h3>Đường B — chép thư mục qua Remote Desktop</h3>
+<p>Ở máy của bạn, nén thư mục dự án — <strong>không kèm <code>.venv</code>, <code>data</code>,
+<code>logs</code></strong>. Kéo thả file nén qua cửa sổ Remote Desktop, giải nén vào
+<code>C:\CopyBridge</code>, rồi:</p>
+<pre><code>C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -BoQuaGit</code></pre>
+
+<div class="hop cam">
+  <span class="nhan">Đừng chép theo thư mục .venv</span>
+  <p>Bên trong <code>.venv</code> là các đường dẫn <strong>tuyệt đối</strong> trỏ về máy cũ, nên nó
+  không chạy được ở máy mới. Lỡ chép rồi thì chạy lại với <code>-LamMoiVenv</code>.</p>
+</div>
+
+<h3>Script làm gì</h3>
+<table>
+  <tr><th>Bước</th><th>Việc</th></tr>
+  <tr><td>1</td><td>Tìm Python ≥ 3.11; thiếu thì cài Python 3.12 bằng winget, hoặc tải thẳng bộ cài từ python.org nếu máy không có winget</td></tr>
+  <tr><td>2</td><td>Tìm git; thiếu thì cài bằng winget, hoặc tải thẳng bộ cài từ git-scm.com</td></tr>
+  <tr><td>3</td><td><em>(chỉ khi <code>-CapNhat</code>)</em> sao lưu database và dừng dịch vụ</td></tr>
+  <tr><td>4</td><td>Clone hoặc <code>git pull --ff-only</code>, hoặc dùng thư mục sẵn có</td></tr>
+  <tr><td>5</td><td>Tạo <code>.venv</code></td></tr>
+  <tr><td>6</td><td><code>pip install -e ".[dev]"</code></td></tr>
+  <tr><td>7</td><td>Tạo <code>data/</code>, <code>logs/</code>, <code>data/backup/</code></td></tr>
+  <tr><td>8</td><td>Tạo <code>config.toml</code> với mật khẩu dashboard ngẫu nhiên, siết quyền đọc file</td></tr>
+  <tr><td>9</td><td>Khởi tạo database, chạy migration, kiểm import, chạy bộ test</td></tr>
+  <tr><td>10</td><td><em>(chỉ khi <code>-CapNhat</code>)</em> báo EA đã đổi, bật lại dịch vụ</td></tr>
+  <tr><td>11</td><td>In các bước tiếp theo và khối cảnh báo</td></tr>
+</table>
+
+<div class="hop xanh">
+  <span class="nhan">Chạy lại bao nhiêu lần cũng được</span>
+  <p>Mọi bước đã xong sẽ in <code>BO QUA</code> thay vì làm lại. Nhờ vậy chính script này cũng là
+  bộ cập nhật — xem <a href="#cap-nhat">mục 9</a>.</p>
+  <p>Script <strong>không bao giờ</strong> sửa <code>config.toml</code> đã tồn tại, không tự
+  <code>git stash</code>, không tự <code>git reset --hard</code>.</p>
+</div>
+
+<h3>Mật khẩu dashboard</h3>
+<p>Lần cài đầu, script sinh một mật khẩu ngẫu nhiên và in ra màn hình. Nó nằm trong
+<code>C:\CopyBridge\config.toml</code> nên <strong>đọc lại được bất cứ lúc nào</strong> — khác với
+token của agent (chỉ hiện đúng một lần).</p>
+
+<!-- =================================================================== -->
+<h2 id="agent">3. Tạo agent và cấp token</h2>
+
+<div class="hop cam">
+  <span class="nhan">Database trên VPS luôn bắt đầu từ rỗng</span>
+  <p><code>data/</code> nằm trong <code>.gitignore</code>, nên bản clone trên VPS <strong>không mang
+  theo agent nào của máy cũ</strong>. Phải tạo lại và cấp token lại.</p>
+</div>
+
+<pre><code>cd C:\CopyBridge
+$py = ".venv\Scripts\python.exe"
+
+&amp; $py -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login &lt;so-tk-master&gt;
+&amp; $py -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login &lt;so-tk-client&gt;
+&amp; $py -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login &lt;so-tk-client&gt;
+
+&amp; $py -m bridge.admin cap-token AG-MASTER
+&amp; $py -m bridge.admin cap-token AG-CLIENT
+&amp; $py -m bridge.admin cap-token AG-CLICKER</code></pre>
+
+<div class="hop do">
+  <span class="nhan">Token thô hiện đúng một lần</span>
+  <p>Nó không đi vào log và không có đường đọc lại. Chép ngay khi nó hiện ra. Mất thì
+  <code>cap-token</code> lại — token cũ hết hiệu lực.</p>
+</div>
+
+<table>
+  <tr><th>Token của</th><th>Điền vào đâu</th></tr>
+  <tr><td><code>AG-MASTER</code></td><td>Tham số <code>AgentToken</code> của EA trên terminal Master</td></tr>
+  <tr><td><code>AG-CLIENT</code></td><td>Tham số <code>AgentToken</code> của EA trên terminal Client</td></tr>
+  <tr><td><code>AG-CLICKER</code></td><td>Mục <code>[clicker]</code> trong <code>config.toml</code></td></tr>
+</table>
+
+<h3>Điền mục [clicker] trong config.toml</h3>
+<p>Mở <code>C:\CopyBridge\config.toml</code> bằng Notepad, tìm mục <code>[clicker]</code> ở cuối
+file và điền:</p>
+<pre><code>[clicker]
+token = "&lt;token-vua-cap-cho-AG-CLICKER&gt;"
+account_login = 538217
+terminal_title = "538217"</code></pre>
+
+<p><code>terminal_title</code> là một mẩu tiêu đề cửa sổ của terminal Client, thường chứa số tài
+khoản. Xem đúng chuỗi đang hiện bằng:</p>
+<pre><code>Get-Process terminal64 | Select-Object Id, MainWindowTitle</code></pre>
+
+<div class="hop lam">
+  <span class="nhan">Vì sao không đặt token trên dòng lệnh</span>
+  <p>Dòng lệnh của một tiến trình là thứ <strong>mọi tài khoản trên cùng máy</strong> đọc được bằng
+  <code>Get-CimInstance Win32_Process</code>. clicker chạy 24/7, nên token trên dòng lệnh là token
+  phơi ra suốt ngày. <code>config.toml</code> thì siết được bằng quyền file — và script đã siết sẵn
+  lúc tạo.</p>
+  <p>Vẫn còn hai đường khác nếu cần: tham số <code>--token</code> (ưu tiên cao nhất, dùng khi gỡ lỗi
+  tại chỗ) và biến môi trường <code>COPYBRIDGE_CLICKER_TOKEN</code>.</p>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="mt5">4. Cài MT5 và gắn EA</h2>
+
+<p>Script không làm hộ phần này.</p>
+
+<ol class="buoc">
+  <li><strong>Cài hai terminal MT5</strong>, một cho Master và một cho Client. Cài vào <em>hai thư
+    mục khác nhau</em> để chúng không dùng chung dữ liệu. Đăng nhập cả hai; tài khoản phải ở chế độ
+    <strong>Hedging</strong>.</li>
+
+  <li><strong>Biên dịch EA</strong> — không cần mở giao diện MetaEditor:
+<pre><code>&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+    /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
+&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+    /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"</code></pre>
+    <p class="ghi-chu">Đường dẫn cài MT5 khác nhau tuỳ máy. Terminal thứ hai thường nằm ở
+    <code>C:\Program Files\MetaTrader 5 1\</code> hoặc một tên bạn tự đặt.</p></li>
+
+  <li><strong>Chép <code>.ex5</code> vào từng terminal.</strong> Trong MT5: File → Open Data Folder
+    → <code>MQL5\Experts\</code>. Chép <code>CopyBridgeMaster.ex5</code> vào terminal Master,
+    <code>CopyBridgeClient.ex5</code> vào terminal Client.</li>
+
+  <li><strong>Gắn EA lên chart</strong> và điền tham số:
+    <table>
+      <tr><th>Tham số</th><th>Giá trị</th></tr>
+      <tr><td><code>BridgeHost</code></td><td><code>127.0.0.1</code></td></tr>
+      <tr><td><code>BridgePort</code></td><td><code>8787</code></td></tr>
+      <tr><td><code>AgentToken</code></td><td>token của agent tương ứng</td></tr>
+      <tr><td><code>MagicNumber</code></td><td><code>770001</code></td></tr>
+    </table>
+    Nhớ tick <strong>Allow Algo Trading</strong> trong hộp thoại thuộc tính EA.</li>
+
+  <li><strong>Bật nút Algo Trading trên cả hai terminal</strong> (nút trên thanh công cụ phải sáng
+    xanh).</li>
+</ol>
+
+<div class="hop do">
+  <span class="nhan">Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI</span>
+  <p>Đổi khung thời gian chỉ gọi lại <code>OnInit</code> trên bản đã nạp trong bộ nhớ — MT5
+  <strong>không</strong> đọc lại <code>.ex5</code> từ đĩa. Dấu hiệu đã nạp đúng bản mới: tab
+  <em>Experts</em> hiện <code>CopyBridgeMaster khoi dong [co kha nang DONG lenh]</code>.</p>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="symbol">5. Khai báo ánh xạ symbol</h2>
+
+<div class="hop do">
+  <span class="nhan">Bỏ bước này là hệ thống im lặng không làm gì</span>
+  <p>Thiếu ánh xạ thì Bridge không tra được symbol tương ứng bên Client và <strong>mọi lệnh Master
+  bị bỏ qua</strong>. Không có lỗi, không có cảnh báo nào đập vào mắt — bạn dựng xong cả hệ thống
+  rồi ngồi nhìn không có gì xảy ra.</p>
+</div>
+
+<p>Hai sàn hiếm khi đặt tên symbol giống nhau: <code>XAUUSD</code> bên này có thể là
+<code>XAUUSDm</code> hoặc <code>GOLD</code> bên kia. Khai báo cặp tên đó:</p>
+<pre><code>&amp; $py -m bridge.admin anh-xa-symbol --help</code></pre>
+
+<p>Lệnh này cần <strong>EA Client đang chạy</strong> và symbol đã được kéo vào Market Watch, vì nó
+kiểm thông số symbol (bước volume, volume tối thiểu) trước khi lưu. Nên làm sau khi xong
+<a href="#mt5">mục 4</a>.</p>
+
+<h3>Đối chiếu tay giữa hai sàn</h3>
+<p>Trước khi copy thật, so bằng tay các mục sau ở hai sàn — chúng khác nhau nhiều hơn bạn tưởng:
+tên symbol, contract size, volume tối thiểu và bước volume, spread và giá báo, giờ giao dịch từng
+symbol.</p>
+
+<!-- =================================================================== -->
+<h2 id="dich-vu">6. Đăng ký dịch vụ và tác vụ</h2>
+
+<pre><code>C:\CopyBridge\scripts\tao-dich-vu.ps1 `
+    -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"</code></pre>
+
+<p>Script sẽ hỏi mật khẩu của tài khoản autologon. <strong>Nhập vào</strong> thì dịch vụ chạy bằng
+chính tài khoản đó — khuyến nghị, vì khi đó dịch vụ, clicker, tác vụ bảo trì và lệnh bạn gõ tay đều
+cùng một danh tính trên cùng file database, hết chuyện quyền truy cập. Bỏ trống thì dịch vụ chạy
+bằng LocalSystem và script tự cấp quyền cho bạn trên thư mục dự án.</p>
+
+<p>Nó tạo bốn thứ:</p>
+<table>
+  <tr><th>Tên</th><th>Loại</th><th>Việc</th></tr>
+  <tr><td><code>CopyBridge</code></td><td>Windows Service</td>
+      <td>Bridge + dashboard. <strong>Tự bật khi máy khởi động</strong>, tự bật lại nếu tiến trình chết</td></tr>
+  <tr><td><code>\CopyBridge\Clicker</code></td><td>Scheduled Task khi đăng nhập</td>
+      <td>clicker, trễ 90 giây cho MT5 kịp nạp chart</td></tr>
+  <tr><td><code>\CopyBridge\BaoTri</code></td><td>Scheduled Task hằng ngày 03:00</td>
+      <td>Dọn dữ liệu cũ, sao lưu, rồi <em>mở lại bản vừa tạo để kiểm chứng</em></td></tr>
+  <tr><td><code>\CopyBridge\TinhHinh</code></td><td>Scheduled Task mỗi giờ</td>
+      <td>Chạy <code>tinh-hinh</code>; cột <em>Last Run Result</em> khác 0 nghĩa là có việc cần làm</td></tr>
+</table>
+
+<p>Sau khi đăng ký xong, script <strong>tự chạy một bài kiểm</strong>: giết tiến trình Bridge, chờ,
+rồi xác nhận dịch vụ đã tự bật lại và <code>run_mode</code> trở về <code>PAUSED</code>.</p>
+
+<h4>Lệnh vận hành</h4>
+<pre><code>Get-Service CopyBridge | Format-List Name,Status,StartType
+Start-Service CopyBridge
+Stop-Service  CopyBridge
+Get-ScheduledTask -TaskPath "\CopyBridge\" | Get-ScheduledTaskInfo
+
+C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo    # go het dich vu va tac vu</code></pre>
+
+<div class="hop cam">
+  <span class="nhan">Mức toàn vẹn của clicker phải ≥ của MT5</span>
+  <p>Nếu MT5 chạy bằng <em>“Run as administrator”</em> mà clicker chạy quyền thường, Windows sẽ chặn
+  mọi thông điệp clicker gửi sang: lệnh gửi đi <strong>báo thành công nhưng không có gì xảy
+  ra</strong>. Đây là kiểu hỏng tệ nhất vì nó không để lại dấu vết. Hoặc cả hai đều chạy quyền
+  thường, hoặc cả hai đều nâng quyền.</p>
+</div>
+
+<div class="hop lam">
+  <span class="nhan">Vì sao Bridge chạy bằng NSSM, còn clicker thì không làm dịch vụ được</span>
+  <p>Dịch vụ Windows nằm ở một phiên riêng và <strong>không nhìn thấy cửa sổ nào</strong> của phiên
+  người dùng. clicker mở lệnh bằng cách điều khiển cửa sổ MT5, nên nó buộc phải là Scheduled Task
+  chạy trong phiên đăng nhập.</p>
+  <p>Còn Bridge chạy bằng NSSM vì trên Windows nó chỉ dừng sạch được khi nhận đúng tín hiệu Ctrl+C —
+  chỉ khi đó nó mới kịp đánh dấu các agent về <code>OFFLINE</code> và đóng database an toàn. Giết
+  tiến trình thẳng tay thì mất hết phần dọn dẹp đó. NSSM gửi được đúng tín hiệu ấy.</p>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="lan-dau">7. Lần chạy đầu tiên</h2>
+
+<div class="hop do">
+  <span class="nhan">Thứ tự ba bước này quan trọng</span>
+  <p>Bật <code>RUNNING</code> quá sớm thì các sự kiện cũ còn tồn trong hàng đợi của EA sẽ bị từ chối
+  kèm cảnh báo nhiễu, thay vì được dọn êm.</p>
+</div>
+
+<ol class="buoc">
+  <li><strong>Bridge đã chạy sẵn ở <code>PAUSED</code>.</strong> Backlog trong hàng đợi của EA chảy
+    vào và được ghi nhận là “bỏ qua”. Đây là cách sạch nhất để dọn hàng đợi mà không sinh lệnh nào.
+    Kiểm bằng:
+<pre><code>C:\CopyBridge\scripts\kiem-tra.ps1</code></pre></li>
+
+  <li><strong>Mở dashboard và kiểm canary của clicker xanh.</strong> Địa chỉ:
+    <code>http://127.0.0.1:8080</code>, đăng nhập bằng mật khẩu trong <code>config.toml</code>.
+    <p class="ghi-chu">Dashboard chỉ mở được <strong>từ trong VPS</strong> — đó là chủ đích của
+    <code>host = "127.0.0.1"</code>: nó đóng hẳn cả hai cổng với thế giới bên ngoài. Muốn xem từ máy
+    khác thì RDP vào rồi mở trình duyệt trên đó.</p></li>
+
+  <li><strong>Chờ số event đang chờ về 0, rồi mới đặt <code>RUNNING</code></strong> trên dashboard.</li>
+</ol>
+
+<p>Ba thứ nhìn trước tiên trên dashboard, mỗi lần: <code>run_mode</code>, canary của clicker, và số
+sai lệch đang chờ xử lý.</p>
+
+<div class="hop cam">
+  <span class="nhan">Biết chỗ nút dừng khẩn cấp TRƯỚC KHI cần dùng tới nó</span>
+  <p>Nút nằm trên dashboard và phải gõ đúng cụm <code>DONG TAT CA</code> để xác nhận. Thử một lần
+  trên demo ngay bây giờ.</p>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="van-hanh">8. Vận hành hằng ngày</h2>
+
+<h3>Việc đầu tiên mỗi lần đăng nhập vào VPS</h3>
+<pre><code>C:\CopyBridge\scripts\kiem-tra.ps1</code></pre>
+
+<p>Chín mục kiểm, mã thoát bằng số mục hỏng:</p>
+<table>
+  <tr><th>#</th><th>Kiểm gì</th></tr>
+  <tr><td>1</td><td>Dịch vụ <code>CopyBridge</code> đang chạy và đặt ở chế độ tự khởi động</td></tr>
+  <tr><td>2</td><td>Hai cổng 8787 và 8080 đang nghe</td></tr>
+  <tr><td>3</td><td>Dashboard trả lời</td></tr>
+  <tr><td>4</td><td>clicker còn sống <em>(chỉ in PID, không bao giờ in dòng lệnh)</em></td></tr>
+  <tr><td>5</td><td>Có đúng 2 terminal MT5</td></tr>
+  <tr><td>6</td><td>Ba Scheduled Task và kết quả chạy gần nhất</td></tr>
+  <tr><td>7</td><td><code>logs\bridge.log</code> còn được ghi trong 15 phút qua</td></tr>
+  <tr><td>8</td><td>Đĩa còn ≥ 2 GB</td></tr>
+  <tr><td>9</td><td><strong><code>bridge.admin tinh-hinh</code></strong> — có gì cần làm không</td></tr>
+</table>
+
+<div class="hop cam">
+  <span class="nhan">Mục 9 là mục quan trọng nhất</span>
+  <p>Kênh cảnh báo ra ngoài đang <strong>tắt có chủ đích</strong>, nên đây là cách duy nhất bạn biết
+  chuyện đã xảy ra. Kênh Telegram có sẵn nhưng để trống: điền <code>telegram_token</code> và
+  <code>telegram_chat_id</code> ở mục <code>[security]</code> trong <code>config.toml</code> thì alert
+  mức ERROR/CRITICAL sẽ được gửi ra — nhưng nó <strong>chưa từng được kiểm chứng bằng tin
+  thật</strong>. Tám mục trên đều xanh mà hệ thống vẫn đang không copy lệnh là chuyện bình
+  thường.</p>
+</div>
+
+<h3>Sau mỗi lần máy khởi động lại</h3>
+<div class="hop do">
+  <span class="nhan">Phải bấm RUNNING bằng tay. Không có ngoại lệ.</span>
+  <p>Bridge <strong>luôn</strong> khởi động ở <code>PAUSED</code>, kể cả khi máy tự bật lại lúc 3 giờ
+  sáng sau khi mất điện. Đây là chủ đích: thứ tệ nhất sau một sự cố là hệ thống tự hồi sinh và bắt
+  đầu vào lệnh khi chưa ai kịp nhìn màn hình.</p>
+  <p><strong>Dịch vụ tự bật lại KHÔNG có nghĩa hệ thống đang copy lệnh.</strong></p>
+</div>
+
+<p>Kèm theo, sau mỗi lần khởi động lại hoặc sau khi MT5 tự cập nhật, kiểm lại
+<strong>nút Algo Trading sáng xanh trên cả hai terminal</strong>. Đường mở lệnh phía Client đi qua
+giao diện nên <em>không cần</em> Algo Trading; đường đóng đi qua EA nên <em>cần</em>. Terminal tắt
+Algo Trading vẫn mở lệnh bình thường rồi mới hỏng lúc đóng — hỏng muộn nhất có thể.</p>
+
+<h3>Sao lưu</h3>
+<p>Tác vụ <code>BaoTri</code> chạy 03:00 hằng ngày, giữ 14 bản gần nhất trong
+<code>data\backup\</code>. Sao lưu tay bất cứ lúc nào:</p>
+<pre><code>cd C:\CopyBridge
+&amp; .venv\Scripts\python.exe -m bridge.admin sao-luu</code></pre>
+<p class="ghi-chu">Chạy được cả khi dịch vụ đang chạy — không cần dừng gì cả.</p>
+
+<!-- =================================================================== -->
+<h2 id="cap-nhat">9. Cập nhật khi có mã nguồn mới</h2>
+
+<h3>9.1 Trước khi cập nhật</h3>
+<div class="hop cam">
+  <span class="nhan">Đừng cập nhật khi đang có cặp lệnh mở</span>
+  <p>Cập nhật sẽ dừng Bridge vài phút. Trong lúc đó Master vào hoặc ra lệnh thì sự kiện nằm lại
+  trong hàng đợi của EA — không mất, nhưng Client sẽ <strong>đóng chậm</strong>, và với hedge thì
+  chậm là lỗ.</p>
+  <p>Thời điểm an toàn: cuối tuần, hoặc lúc <code>tinh-hinh</code> báo <em>0 cặp đang hedge</em>.</p>
+</div>
+
+<pre><code>cd C:\CopyBridge
+&amp; .venv\Scripts\python.exe -m bridge.admin tinh-hinh</code></pre>
+
+<p>Nếu đang có cặp mở mà vẫn buộc phải cập nhật: đặt <code>run_mode</code> về <code>PAUSED</code>
+trên dashboard trước, chờ các cặp đang mở đóng hết, rồi mới chạy.</p>
+
+<h3>9.2 Đường cập nhật thường</h3>
+<pre><code>C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -CapNhat</code></pre>
+
+<p>Script làm đúng thứ tự này:</p>
+<table>
+  <tr><th>#</th><th>Việc</th><th>Nếu hỏng</th></tr>
+  <tr><td>1</td><td><strong>Sao lưu database</strong> — trước cả khi dừng dịch vụ, để lỡ bước dừng có
+      trục trặc thì vẫn còn bản sao</td><td><strong>Dừng hẳn</strong>, không cập nhật</td></tr>
+  <tr><td>2</td><td>Ghi lại commit hiện tại và in ra màn hình</td><td>—</td></tr>
+  <tr><td>3</td><td>Dừng dịch vụ <code>CopyBridge</code></td><td>—</td></tr>
+  <tr><td>4</td><td><code>git fetch</code> + <code>git pull --ff-only</code></td><td>Dừng, in <code>git status</code></td></tr>
+  <tr><td>5</td><td>Cài lại gói phụ thuộc</td><td>Dừng</td></tr>
+  <tr><td>6</td><td>Kiểm <code>config.toml</code>, báo khoá còn thiếu so với bản mẫu</td><td>Cảnh báo</td></tr>
+  <tr><td>7</td><td><strong>Chạy migration database</strong> (tự động)</td><td>Dừng</td></tr>
+  <tr><td>8</td><td>Chạy bộ test</td><td>Dừng — <strong>đừng triển khai bản test đỏ</strong></td></tr>
+  <tr><td>9</td><td>Báo nếu thư mục <code>ea/</code> có thay đổi</td><td>—</td></tr>
+  <tr><td>10</td><td>Bật lại dịch vụ, in đường lùi</td><td>—</td></tr>
+</table>
+
+<p>Sau đó kiểm và bật lại copy:</p>
+<pre><code>C:\CopyBridge\scripts\kiem-tra.ps1</code></pre>
+<p>rồi bấm <code>RUNNING</code> trên dashboard — <strong>Bridge khởi động lại ở <code>PAUSED</code>,
+như mọi lần</strong>.</p>
+
+<h3>9.3 Khi bản mới có sửa EA</h3>
+<p>Script in một khối đỏ liệt kê các file trong <code>ea/</code> đã đổi. Khi đó phải làm thêm ba
+việc, và <strong>không việc nào script làm hộ được</strong>:</p>
+<ol class="buoc">
+  <li>Biên dịch lại cả hai file <code>.mq5</code> (lệnh ở <a href="#mt5">mục 4</a>).</li>
+  <li>Chép <code>.ex5</code> mới vào <code>MQL5\Experts\</code> của từng terminal.</li>
+  <li><strong>Gỡ EA khỏi chart rồi gắn lại</strong> trên cả hai terminal.</li>
+</ol>
+<div class="hop do">
+  <span class="nhan">Đổi khung thời gian KHÔNG nạp lại EA từ đĩa</span>
+  <p>Đây là cái bẫy hay gặp nhất khi cập nhật: bạn biên dịch xong, đổi khung thời gian để “nạp lại”,
+  và MT5 vẫn chạy bản cũ trong bộ nhớ. Hệ thống trông như đã cập nhật nhưng thật ra chưa.</p>
+  <p>Cách xác nhận: xem tab <em>Experts</em> có dòng khởi động mới xuất hiện đúng lúc bạn vừa gắn
+  lại không.</p>
+</div>
+
+<h3>9.4 Khi bản mới đổi cấu trúc database</h3>
+<p>Migration <strong>chạy tự động</strong> ngay khi Bridge mở database, và mỗi migration nằm trong
+một giao dịch riêng: hoặc chạy trọn, hoặc không đổi gì. Bạn không phải làm gì cả.</p>
+
+<div class="hop cam">
+  <span class="nhan">Nhưng migration chỉ đi một chiều</span>
+  <p>Không có đường hạ cấp. Nghĩa là: <strong>sau khi migration đã chạy, quay về mã nguồn cũ không
+  đủ để quay về trạng thái cũ</strong> — muốn lùi hẳn thì phải khôi phục bản sao lưu. Xem
+  <a href="#lui">mục 9.8</a>.</p>
+</div>
+
+<p>Xem phiên bản schema hiện tại:</p>
+<pre><code>cd C:\CopyBridge
+&amp; .venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('data/bridge.db'); print(c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0])"</code></pre>
+
+<h3>9.5 Khi bản mới thêm khoá cấu hình</h3>
+<p>Script <strong>không bao giờ</strong> sửa <code>config.toml</code> đang có — đó là file chứa bí
+mật của bạn. Cái giá phải trả: bản mới thêm khoá vào <code>config.example.toml</code> thì
+<code>config.toml</code> cũ sẽ thiếu khoá đó, và Bridge chạy bằng giá trị mặc định trong im lặng.</p>
+
+<p>Vì vậy bước 6 in cảnh báo dạng:</p>
+<pre><code>CANH BAO: config.toml thieu khoa so voi config.example.toml: clicker.token, clicker.account_login</code></pre>
+
+<p>Xử lý: mở cả hai file cạnh nhau, chép khoá còn thiếu sang <code>config.toml</code>, điền giá trị,
+rồi chạy lại script. So thủ công bất cứ lúc nào:</p>
+<pre><code>code --diff C:\CopyBridge\config.example.toml C:\CopyBridge\config.toml
+# hoac, neu khong co VS Code:
+notepad C:\CopyBridge\config.example.toml</code></pre>
+
+<h3>9.6 Khi git pull xung đột</h3>
+<p>Script dùng <code>--ff-only</code> và <strong>không tự <code>stash</code>, không tự
+<code>reset --hard</code></strong>. Đoán ý người vận hành ở đây là cách làm mất một bản vá sửa tay
+lúc 2 giờ sáng.</p>
+
+<p>Pull hỏng thì script dừng và in <code>git status</code>. Ba tình huống:</p>
+<table>
+  <tr><th>Tình huống</th><th>Xử lý</th></tr>
+  <tr><td>Bạn có sửa tay và <strong>muốn giữ</strong></td>
+      <td><code>git -C C:\CopyBridge stash</code> → chạy lại script → <code>git -C C:\CopyBridge stash pop</code></td></tr>
+  <tr><td>Bạn có sửa tay và <strong>không cần giữ</strong></td>
+      <td><code>git -C C:\CopyBridge checkout -- .</code> → chạy lại script</td></tr>
+  <tr><td>Nhánh đã rẽ khỏi bản trên GitHub</td>
+      <td><code>git -C C:\CopyBridge log --oneline --graph -20</code> để xem rõ đã, đừng vội <code>reset</code></td></tr>
+</table>
+
+<p class="ghi-chu">Nhắc: <code>config.toml</code>, <code>data/</code> và <code>logs/</code> đều nằm
+trong <code>.gitignore</code>, nên git không bao giờ đụng vào chúng. Xung đột nếu có là ở mã nguồn.</p>
+
+<h3>9.7 Khi VPS không có git</h3>
+<p>Nếu bạn cài bằng <a href="#cai-dat">đường B</a>, cập nhật cũng đi theo đường đó:</p>
+<ol class="buoc">
+  <li><strong>Sao lưu trước</strong>, bằng tay:
+<pre><code>cd C:\CopyBridge
+&amp; .venv\Scripts\python.exe -m bridge.admin sao-luu
+Stop-Service CopyBridge</code></pre></li>
+  <li><strong>Chép đè mã nguồn mới</strong> vào <code>C:\CopyBridge</code>. Chỉ đè các thư mục
+    <code>bridge\</code>, <code>clicker\</code>, <code>ea\</code>, <code>tests\</code>,
+    <code>scripts\</code>, <code>docs\</code> và các file ở gốc.
+    <div class="hop do">
+      <span class="nhan">Tuyệt đối không đè ba thứ này</span>
+      <p><code>config.toml</code> (mật khẩu và token của bạn), <code>data\</code> (toàn bộ sổ sách),
+      <code>logs\</code>. Bản nén mang từ máy khác sang không nên chứa chúng ngay từ đầu.</p>
+    </div></li>
+  <li><strong>Chạy lại script</strong> để cài lại gói và chạy migration:
+<pre><code>C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -BoQuaGit
+Start-Service CopyBridge
+C:\CopyBridge\scripts\kiem-tra.ps1</code></pre></li>
+</ol>
+<p class="ghi-chu">Ở đường này script không biết commit cũ là gì nên <strong>không tự phát hiện được
+EA đã đổi</strong>. Bạn phải tự kiểm — nếu nghi ngờ thì cứ biên dịch lại và gắn lại EA, việc đó
+không hại gì.</p>
+
+<h3 id="lui">9.8 Lùi về bản cũ</h3>
+<p>Hai trường hợp, khác nhau hẳn:</p>
+
+<h4>Trường hợp A — bản mới KHÔNG chạy migration nào</h4>
+<p>Chỉ cần quay mã nguồn về. Commit cũ đã được script in ra lúc cập nhật:</p>
+<pre><code>Stop-Service CopyBridge
+git -C C:\CopyBridge checkout &lt;commit-cu&gt;
+C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -BoQuaGit
+Start-Service CopyBridge</code></pre>
+
+<h4>Trường hợp B — bản mới ĐÃ chạy migration</h4>
+<p>Database đã ở phiên bản mới và không hạ cấp được. Phải khôi phục bản sao lưu chụp <em>trước</em>
+lúc cập nhật:</p>
+<pre><code>Stop-Service CopyBridge
+
+# Chon ban sao luu moi nhat truoc luc cap nhat
+Get-ChildItem C:\CopyBridge\data\backup\*.db | Sort-Object LastWriteTime -Descending | Select-Object -First 5
+
+# Doi ten ban hien tai de con duong quay lai, roi khoi phuc
+Move-Item C:\CopyBridge\data\bridge.db C:\CopyBridge\data\bridge.db.truoc-khi-lui
+Remove-Item C:\CopyBridge\data\bridge.db-wal, C:\CopyBridge\data\bridge.db-shm -ErrorAction SilentlyContinue
+Copy-Item C:\CopyBridge\data\backup\bridge-&lt;dau-thoi-gian&gt;.db C:\CopyBridge\data\bridge.db
+
+git -C C:\CopyBridge checkout &lt;commit-cu&gt;
+C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -BoQuaGit
+Start-Service CopyBridge</code></pre>
+
+<div class="hop do">
+  <span class="nhan">Xoá cả hai file -wal và -shm</span>
+  <p>Chúng là phần ghi dở của database <em>cũ</em>. Để lại cạnh một file database vừa khôi phục là
+  trộn hai thời điểm khác nhau vào nhau.</p>
+</div>
+
+<div class="hop cam">
+  <span class="nhan">Khôi phục sao lưu là quay ngược thời gian trên sổ sách</span>
+  <p>Mọi cặp lệnh mở hoặc đóng <strong>sau</strong> thời điểm sao lưu sẽ biến mất khỏi sổ sách, trong
+  khi vị thế thật trên hai sàn vẫn còn nguyên. Bộ đối chiếu sẽ báo một loạt sai lệch — đó là đúng.
+  Đọc từng bằng chứng rồi mới xử lý, đừng chấp nhận hàng loạt.</p>
+</div>
+
+<h3>9.9 Bảng kiểm sau mỗi lần cập nhật</h3>
+<table>
+  <tr><th>✓</th><th>Việc</th></tr>
+  <tr><td>☐</td><td><code>kiem-tra.ps1</code> không còn mục nào hỏng</td></tr>
+  <tr><td>☐</td><td>Không có cảnh báo thiếu khoá <code>config.toml</code></td></tr>
+  <tr><td>☐</td><td>Nếu <code>ea/</code> đổi: đã biên dịch lại <strong>và gắn lại EA</strong> trên cả hai terminal</td></tr>
+  <tr><td>☐</td><td>Nút <strong>Algo Trading</strong> sáng xanh trên cả hai terminal</td></tr>
+  <tr><td>☐</td><td>Dashboard mở được, canary của clicker xanh</td></tr>
+  <tr><td>☐</td><td>Số event đang chờ đã về 0</td></tr>
+  <tr><td>☐</td><td>Đã bấm <code>RUNNING</code></td></tr>
+  <tr><td>☐</td><td>Quan sát một lệnh Master đầu tiên copy đúng, rồi mới yên tâm</td></tr>
+</table>
+
+<!-- =================================================================== -->
+<h2 id="gioi-han">10. Sự cố và giới hạn đã biết</h2>
+
+<h3>Sự cố khi cài hoặc cập nhật</h3>
+<table>
+  <tr><th>Hiện tượng</th><th>Nguyên nhân thường gặp</th><th>Xử lý</th></tr>
+  <tr><td><code>Tai bo cai Python that bai</code></td><td>VPS chặn mạng ra ngoài, hoặc đi qua proxy nội bộ</td>
+      <td>Tải bộ cài tay rồi chạy lại script, hoặc trỏ <code>-UrlPython &lt;link&gt;</code> tới bản nội bộ</td></tr>
+  <tr><td><code>Bo cai Python ket thuc voi ma &lt;n&gt;</code></td><td>Bộ cài silent bị chặn</td>
+      <td>Chạy tay file <code>.exe</code> trong <code>%TEMP%</code> để xem nó báo gì, <strong>nhớ tích “Add python.exe to PATH”</strong></td></tr>
+  <tr><td>Cài Python xong vẫn báo không gọi được</td><td>PATH của cửa sổ PowerShell hiện tại đã cũ</td>
+      <td>Đóng PowerShell, mở lại, chạy lại script</td></tr>
+  <tr><td><code>git clone that bai</code></td><td>Kho private hoặc mạng chặn</td>
+      <td>Chép thư mục qua RDP rồi chạy với <code>-BoQuaGit</code></td></tr>
+  <tr><td><code>.venv san co khong dung duoc</code></td><td>Đã chép cả <code>.venv</code> từ máy khác sang</td>
+      <td>Chạy lại với <code>-LamMoiVenv</code></td></tr>
+  <tr><td>Bridge từ chối khởi động, báo lỗi đọc cấu hình</td><td><code>config.toml</code> lưu sai định dạng</td>
+      <td>Lưu lại bằng UTF-8 <strong>không BOM</strong> (Notepad: Save as → Encoding: UTF-8)</td></tr>
+  <tr><td>Dịch vụ không lên</td><td>Thường là <code>config.toml</code> sai</td>
+      <td>Đọc <code>logs\service-err.log</code></td></tr>
+  <tr><td>Task Clicker chạy mà không bấm được gì</td><td>Quyền cửa sổ (UIPI)</td>
+      <td>Mức toàn vẹn clicker phải ≥ MT5 — xem <a href="#dich-vu">mục 6</a></td></tr>
+  <tr><td>clicker thoát ngay, mã 2</td><td>Thiếu token hoặc số tài khoản</td>
+      <td>Điền mục <code>[clicker]</code> trong <code>config.toml</code></td></tr>
+  <tr><td>clicker thoát mã 3</td><td>Đã có một clicker khác lái terminal đó</td>
+      <td>Đúng thiết kế. Tìm và tắt tiến trình kia</td></tr>
+  <tr><td>Master vào lệnh mà Client không copy</td><td><code>run_mode = PAUSED</code>, clicker chưa chạy, hoặc thiếu ánh xạ symbol</td>
+      <td>Xem dashboard rồi <a href="#symbol">mục 5</a></td></tr>
+</table>
+
+<h3>Sáu việc script không làm được</h3>
+<p>Khối này in ra cuối mỗi lần chạy <code>cai-dat.ps1</code> và <code>kiem-tra.ps1</code>.</p>
+<ol class="buoc">
+  <li><strong>Phiên RDP ngắt — chưa ai chứng minh.</strong> Toàn bộ đường mở lệnh dựa vào clicker
+    điều khiển giao diện MT5. Lập luận “vẫn chạy được khi phiên RDP đã ngắt” <strong>chưa bao giờ
+    được đo trên VPS thật</strong>. Phải tự đo trước khi tin: ngắt phiên RDP (đóng cửa sổ,
+    <strong>không</strong> Sign out), mở lệnh trên Master, RDP lại và kiểm <em>qua database</em> xem
+    cặp có được tạo không.</li>
+  <li><strong>Algo Trading.</strong> Kiểm lại sau mỗi lần khởi động lại hoặc MT5 tự cập nhật.</li>
+  <li><strong>Phải bấm <code>RUNNING</code> bằng tay sau mỗi lần khởi động lại.</strong></li>
+  <li><strong>Mỗi terminal Client chỉ copy được một symbol.</strong> Hộp thoại lệnh lấy symbol theo
+    chart đang mở. Mở đúng chart đó và giữ nguyên.</li>
+  <li><strong>MT5 và EA phải làm tay.</strong></li>
+  <li><strong>Mức toàn vẹn của clicker phải ≥ của MT5.</strong></li>
+</ol>
+
+<div class="hop do">
+  <span class="nhan">Một rủi ro không nằm ở kỹ thuật</span>
+  <p>Hai tài khoản mở vị thế ngược chiều, cùng symbol, cách nhau dưới một giây, <strong>từ cùng một
+  địa chỉ IP</strong> là một dấu vết rất dễ nhận. Nhiều broker cấm hoặc huỷ lợi nhuận từ mô hình
+  này. Đây là rủi ro <strong>điều khoản</strong>, và nó không hiện ra trong bất kỳ log nào cho tới
+  lúc tài khoản bị xử lý.</p>
+  <p>Đọc điều khoản của <strong>cả hai</strong> broker về hedging, bonus, giao dịch nhiều tài khoản
+  và copy trading, trước khi chạy tiền thật.</p>
+</div>
+
+<h3>Trước khi chuyển sang tài khoản thật</h3>
+<ol>
+  <li>Chạy ổn định trên demo <strong>ít nhất một tuần liên tục</strong>.</li>
+  <li>Xong bài đo “phiên RDP đã ngắt”.</li>
+  <li>Đối chiếu tay khác biệt giữa hai sàn (xem <a href="#symbol">mục 5</a>).</li>
+  <li>Bắt đầu bằng <strong>khối lượng nhỏ nhất</strong> và <strong>một symbol</strong>; mở rộng dần
+    sau khi quan sát ít nhất vài chục lệnh.</li>
+  <li>Biết cách bấm nút dừng khẩn cấp <strong>trước khi</strong> cần dùng tới nó.</li>
+</ol>
+
+<p class="ghi-chu" style="margin-top:40px;border-top:1px solid var(--vien);padding-top:16px">
+MT5 Copy Bridge · Hướng dẫn dành cho tài khoản demo · Các số đo trong tài liệu là số đo thực tế,
+không phải ước lượng. Bản kỹ thuật ngắn gọn hơn: <code>docs/CAI-DAT-VPS.md</code>.</p>
+
+</div>
+</body>
+</html>

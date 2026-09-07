@@ -10,9 +10,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ctypes
+import os
 import sys
 from pathlib import Path
 
+from bridge.config import ConfigError, load_config
 from bridge.logging_setup import get_logger, setup_logging
 from clicker.journal import CommandJournal
 from clicker.link import DEFAULT_HEARTBEAT_SEC, ClickerLink, LinkConfig
@@ -21,6 +23,10 @@ from clicker.ui.driver import DryRunDriver, Mt5UiDriver
 log = get_logger(__name__)
 
 DEFAULT_JOURNAL = "data/clicker_commands.ndjson"
+
+#: Biến môi trường thay cho ``--token``. Có mặt để Scheduled Task đặt được token mà không phải
+#: ghi nó vào XML của task; mục ``[clicker]`` trong ``config.toml`` vẫn là đường chính.
+ENV_TOKEN = "COPYBRIDGE_CLICKER_TOKEN"
 
 #: Mã lỗi Win32 khi mutex cùng tên đã tồn tại.
 ERROR_ALREADY_EXISTS = 183
@@ -64,17 +70,57 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--host", default="127.0.0.1", help="Dia chi Bridge")
     parser.add_argument("--port", type=int, default=8787, help="Cong Bridge")
-    parser.add_argument("--token", required=True, help="Token bat tay, khop voi agent trong DB")
-    parser.add_argument("--account-login", type=int, required=True,
-                        help="So tai khoan cua terminal Client")
+    parser.add_argument("--token", default="",
+                        help=f"Token bat tay. Thieu thi lay tu bien {ENV_TOKEN}, roi tu muc "
+                             "[clicker] trong config.toml")
+    parser.add_argument("--account-login", type=int, default=0,
+                        help="So tai khoan cua terminal Client (hoac muc [clicker] config.toml)")
     parser.add_argument("--terminal-title", default="",
-                        help="Mau tieu de cua so terminal, thuong chua so tai khoan")
+                        help="Mau tieu de cua so terminal, thuong chua so tai khoan "
+                             "(hoac muc [clicker] config.toml)")
     parser.add_argument("--journal", default=DEFAULT_JOURNAL,
                         help=f"Duong dan nhat ky append-only (mac dinh {DEFAULT_JOURNAL})")
     parser.add_argument("--heartbeat-sec", type=float, default=DEFAULT_HEARTBEAT_SEC)
     parser.add_argument("--dry-run", action="store_true",
                         help="Khong cham vao giao dien; moi OPEN_UI deu tra rejected DRY_RUN")
     return parser
+
+
+def doc_muc_clicker() -> dict[str, object]:
+    """Trả về mục ``[clicker]`` của ``config.toml``, hoặc rỗng nếu không đọc được.
+
+    Không ném: clicker chạy được hoàn toàn bằng tham số dòng lệnh, và một máy chỉ chạy clicker
+    thì không nhất thiết có ``config.toml``. Thiếu giá trị thật sự cần thì `bo_sung_tham_so`
+    mới là chỗ báo lỗi, và ở đó thông báo nói rõ cả ba đường.
+    """
+    try:
+        return dict(load_config().clicker)
+    except ConfigError as exc:
+        log.info("Khong doc duoc config.toml (%s). Chi dung tham so dong lenh va bien moi truong.",
+                 exc)
+        return {}
+
+
+def bo_sung_tham_so(args: argparse.Namespace) -> None:
+    """Điền `token`, `account_login`, `terminal_title` còn thiếu từ môi trường và ``config.toml``.
+
+    Thứ tự: tham số dòng lệnh → biến môi trường (chỉ token) → mục ``[clicker]``.
+
+    Dòng lệnh vẫn thắng vì gỡ lỗi tại chỗ cần nó, **nhưng đường chạy thường phải là
+    ``config.toml``**: dòng lệnh của một tiến trình là thứ mọi tài khoản trên cùng máy đọc được
+    (``Get-CimInstance Win32_Process``), nên `--token` trong một Scheduled Task chạy 24/7 là token
+    phơi ra suốt ngày. `config.toml` thì siết được bằng ACL.
+    """
+    thieu = not (args.token and args.account_login and args.terminal_title)
+    muc = doc_muc_clicker() if thieu else {}
+
+    if not args.token:
+        args.token = str(os.environ.get(ENV_TOKEN) or "") or str(muc.get("token") or "")
+    if not args.account_login:
+        tu_muc = muc.get("account_login")
+        args.account_login = int(tu_muc) if isinstance(tu_muc, int) else 0
+    if not args.terminal_title:
+        args.terminal_title = str(muc.get("terminal_title") or "")
 
 
 def build_link(args: argparse.Namespace) -> ClickerLink:
@@ -95,6 +141,17 @@ def build_link(args: argparse.Namespace) -> ClickerLink:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging()
+    bo_sung_tham_so(args)
+
+    if not args.token:
+        log.critical("Thieu token. Dat mot trong ba: --token, bien %s, hoac muc [clicker] trong "
+                     "config.toml. Cap token bang: python -m bridge.admin cap-token <AGENT_ID>",
+                     ENV_TOKEN)
+        return 2
+    if not args.account_login:
+        log.critical("Thieu so tai khoan. Dat --account-login hoac clicker.account_login trong "
+                     "config.toml.")
+        return 2
 
     if not args.dry_run and not args.terminal_title:
         # Không đoán terminal. Lái nhầm terminal là mất tiền ở một tài khoản mà sổ sách không

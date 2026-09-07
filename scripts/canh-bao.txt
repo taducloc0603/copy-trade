@@ -1,0 +1,38 @@
+=====================================================================
+ SCRIPT KHONG LAM DUOC 6 VIEC SAU. KHONG LAM = MAT TIEN.
+=====================================================================
+ 1. PHIEN RDP NGAT (B-08) -- CHUA AI CHUNG MINH.
+    Toan bo duong mo lenh dua vao clicker dieu khien giao dien MT5
+    bang PostMessage. Lap luan "khong can desktop tuong tac nen chay
+    duoc khi phien RDP da ngat" chua bao gio duoc do tren VPS that.
+    PHAI DO TRUOC KHI TIN: ngat phien RDP (dong cua so, KHONG Sign
+    out), mo lenh tren Master, roi kiem QUA DATABASE xem cap co duoc
+    tao khong.
+
+ 2. ALGO TRADING (B-09).
+    Duong MO phia Client di qua giao dien nen KHONG can Algo Trading;
+    duong DONG di qua EA nen CAN. Terminal tat Algo Trading van mo
+    lenh binh thuong roi moi hong luc dong -- hong muon nhat co the.
+    Sau MOI lan VPS khoi dong lai hoac MT5 tu cap nhat: kiem nut Algo
+    Trading sang xanh tren CA HAI terminal.
+
+ 3. PHAI BAM RUNNING BANG TAY SAU MOI LAN KHOI DONG LAI (D-15).
+    Bridge LUON khoi dong o PAUSED, khong co ngoai le, ke ca luc may
+    tu bat lai 3 gio sang. Day la chu dich. Dich vu tu bat lai KHONG
+    co nghia la he thong dang copy lenh.
+
+ 4. MOI TERMINAL CLIENT CHI COPY DUOC MOT SYMBOL (B-01).
+    Hop thoai New Order lay symbol theo chart dang mo. Phai mo dung
+    chart do va giu nguyen.
+
+ 5. MT5 VA EA PHAI LAM TAY.
+    Cai terminal, bien dich EA, gan EA len chart, dien token. Bien
+    dich lai roi thi PHAI GO EA KHOI CHART ROI GAN LAI -- doi khung
+    thoi gian KHONG nap lai .ex5 tu dia.
+
+ 6. MUC TOAN VEN CUA CLICKER PHAI >= CUA MT5.
+    MT5 chay "Run as administrator" ma clicker chay thuong thi UIPI
+    chan het window message: PostMessage tra ve thanh cong nhung
+    KHONG CO GI XAY RA. Hoac ca hai deu thuong, hoac ca hai deu nang
+    quyen.
+=====================================================================
