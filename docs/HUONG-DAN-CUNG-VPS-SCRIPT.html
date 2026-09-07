@@ -150,13 +150,27 @@ powercfg /hibernate off</code></pre></li>
 này:</p>
 <pre><code>Set-ExecutionPolicy -Scope Process Bypass -Force</code></pre>
 
-<h3>Đường A — có git (khuyến nghị)</h3>
+<h3>Đường A — VPS trắng, chưa cài gì (khuyến nghị)</h3>
+<p>Kho là public nên tải thẳng được — không cần git, không cần token, không cần kéo file qua
+Remote Desktop. Script tự cài Python, tự cài git, rồi tự clone vào <code>C:\CopyBridge</code>.</p>
+<pre><code>[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/main/scripts/cai-dat.ps1" `
+  -OutFile "$env:USERPROFILE\Desktop\cai-dat.ps1" -UseBasicParsing
+&amp; "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge</code></pre>
+
+<div class="hop cam">
+  <span class="nhan">Đọc dòng banner đầu tiên</span>
+  <p>Nó phải in <code>MT5 Copy Bridge -- cai dat (ban &lt;ngày&gt;)</code>. Không thấy
+  <code>(ban ...)</code> nghĩa là bạn đang chạy một bản <code>cai-dat.ps1</code> cũ còn sót trên
+  máy — chạy lại lệnh tải ở trên để đè nó. Bản cũ sẽ báo những lỗi đã được sửa từ lâu, chẳng hạn
+  <code>khong co winget</code>.</p>
+</div>
+
+<h3>Đường B — máy đã có sẵn git</h3>
 <pre><code>git clone https://github.com/taducloc0603/copy-trade.git C:\CopyBridge
 C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
-<p>Chưa có git trên máy cũng không sao — script tự cài git rồi tự clone:</p>
-<pre><code>.\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
 
-<h3>Đường B — chép thư mục qua Remote Desktop</h3>
+<h3>Đường C — chép thư mục qua Remote Desktop</h3>
 <p>Ở máy của bạn, nén thư mục dự án — <strong>không kèm <code>.venv</code>, <code>data</code>,
 <code>logs</code></strong>. Kéo thả file nén qua cửa sổ Remote Desktop, giải nén vào
 <code>C:\CopyBridge</code>, rồi:</p>

@@ -37,21 +37,31 @@ Mở PowerShell bằng **Run as administrator**:
 Set-ExecutionPolicy -Scope Process Bypass -Force
 ```
 
-### Đường A — có git (khuyến nghị)
+### Đường A — VPS trắng, chưa cài gì (khuyến nghị)
+
+Kho là public nên tải thẳng được — không cần git, không cần token, không cần kéo file qua RDP.
+Script tự cài Python, tự cài git, rồi tự clone vào `C:\CopyBridge`.
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/main/scripts/cai-dat.ps1" `
+  -OutFile "$env:USERPROFILE\Desktop\cai-dat.ps1" -UseBasicParsing
+& "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge
+```
+
+> **Đọc dòng banner đầu tiên.** Nó phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không
+> thấy `(ban ...)` nghĩa là bạn đang chạy một bản `cai-dat.ps1` cũ còn sót trên máy — chạy lại
+> lệnh tải ở trên để đè nó. Bản cũ sẽ báo những lỗi đã được sửa từ lâu, chẳng hạn
+> `khong co winget`.
+
+### Đường B — máy đã có sẵn git
 
 ```powershell
 git clone https://github.com/taducloc0603/copy-trade.git C:\CopyBridge
-C:\CopyBridge\scripts\cai-dat.ps1
+C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge
 ```
 
-Hoặc để script tự clone:
-
-```powershell
-# tải riêng script rồi chạy — nó tự clone vào C:\CopyBridge
-.\cai-dat.ps1 -ThuMuc C:\CopyBridge
-```
-
-### Đường B — chép thư mục qua RDP
+### Đường C — chép thư mục qua RDP
 
 Nén thư mục dự án ở máy của bạn (**không** kèm `.venv`, `data`, `logs`), kéo thả qua Remote
 Desktop vào `C:\CopyBridge`, rồi:
