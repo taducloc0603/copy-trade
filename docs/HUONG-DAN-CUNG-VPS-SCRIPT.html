@@ -97,9 +97,9 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
     <li><a href="#chuan-bi">Chuẩn bị VPS</a></li>
     <li><a href="#cai-dat">Cài đặt bằng một lệnh</a></li>
     <li><a href="#agent">Tạo agent và cấp token</a></li>
+    <li><a href="#dich-vu">Đăng ký dịch vụ và tác vụ</a></li>
     <li><a href="#mt5">Cài MT5 và gắn EA</a></li>
     <li><a href="#symbol">Khai báo ánh xạ symbol</a></li>
-    <li><a href="#dich-vu">Đăng ký dịch vụ và tác vụ</a></li>
     <li><a href="#lan-dau">Lần chạy đầu tiên</a></li>
     <li><a href="#van-hanh">Vận hành hằng ngày</a></li>
     <li><a href="#cap-nhat"><strong>Cập nhật khi có mã nguồn mới</strong></a></li>
@@ -300,73 +300,7 @@ nằm ở một dòng riêng trong bảng <code>client_account</code>:</p>
 </div>
 
 <!-- =================================================================== -->
-<h2 id="mt5">4. Cài MT5 và gắn EA</h2>
-
-<p>Script không làm hộ phần này.</p>
-
-<ol class="buoc">
-  <li><strong>Cài hai terminal MT5</strong>, một cho Master và một cho Client. Cài vào <em>hai thư
-    mục khác nhau</em> để chúng không dùng chung dữ liệu. Đăng nhập cả hai; tài khoản phải ở chế độ
-    <strong>Hedging</strong>.</li>
-
-  <li><strong>Biên dịch EA</strong> — không cần mở giao diện MetaEditor:
-<pre><code>&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
-    /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
-&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
-    /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"</code></pre>
-    <p class="ghi-chu">Đường dẫn cài MT5 khác nhau tuỳ máy. Terminal thứ hai thường nằm ở
-    <code>C:\Program Files\MetaTrader 5 1\</code> hoặc một tên bạn tự đặt.</p></li>
-
-  <li><strong>Chép <code>.ex5</code> vào từng terminal.</strong> Trong MT5: File → Open Data Folder
-    → <code>MQL5\Experts\</code>. Chép <code>CopyBridgeMaster.ex5</code> vào terminal Master,
-    <code>CopyBridgeClient.ex5</code> vào terminal Client.</li>
-
-  <li><strong>Gắn EA lên chart</strong> và điền tham số:
-    <table>
-      <tr><th>Tham số</th><th>Giá trị</th></tr>
-      <tr><td><code>BridgeHost</code></td><td><code>127.0.0.1</code></td></tr>
-      <tr><td><code>BridgePort</code></td><td><code>8787</code></td></tr>
-      <tr><td><code>AgentToken</code></td><td>token của agent tương ứng</td></tr>
-      <tr><td><code>MagicNumber</code></td><td><code>770001</code></td></tr>
-    </table>
-    Nhớ tick <strong>Allow Algo Trading</strong> trong hộp thoại thuộc tính EA.</li>
-
-  <li><strong>Bật nút Algo Trading trên cả hai terminal</strong> (nút trên thanh công cụ phải sáng
-    xanh).</li>
-</ol>
-
-<div class="hop do">
-  <span class="nhan">Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI</span>
-  <p>Đổi khung thời gian chỉ gọi lại <code>OnInit</code> trên bản đã nạp trong bộ nhớ — MT5
-  <strong>không</strong> đọc lại <code>.ex5</code> từ đĩa. Dấu hiệu đã nạp đúng bản mới: tab
-  <em>Experts</em> hiện <code>CopyBridgeMaster khoi dong [co kha nang DONG lenh]</code>.</p>
-</div>
-
-<!-- =================================================================== -->
-<h2 id="symbol">5. Khai báo ánh xạ symbol</h2>
-
-<div class="hop do">
-  <span class="nhan">Bỏ bước này là hệ thống im lặng không làm gì</span>
-  <p>Thiếu ánh xạ thì Bridge không tra được symbol tương ứng bên Client và <strong>mọi lệnh Master
-  bị bỏ qua</strong>. Không có lỗi, không có cảnh báo nào đập vào mắt — bạn dựng xong cả hệ thống
-  rồi ngồi nhìn không có gì xảy ra.</p>
-</div>
-
-<p>Hai sàn hiếm khi đặt tên symbol giống nhau: <code>XAUUSD</code> bên này có thể là
-<code>XAUUSDm</code> hoặc <code>GOLD</code> bên kia. Khai báo cặp tên đó:</p>
-<pre><code>&amp; $py -m bridge.admin anh-xa-symbol --help</code></pre>
-
-<p>Lệnh này cần <strong>EA Client đang chạy</strong> và symbol đã được kéo vào Market Watch, vì nó
-kiểm thông số symbol (bước volume, volume tối thiểu) trước khi lưu. Nên làm sau khi xong
-<a href="#mt5">mục 4</a>.</p>
-
-<h3>Đối chiếu tay giữa hai sàn</h3>
-<p>Trước khi copy thật, so bằng tay các mục sau ở hai sàn — chúng khác nhau nhiều hơn bạn tưởng:
-tên symbol, contract size, volume tối thiểu và bước volume, spread và giá báo, giờ giao dịch từng
-symbol.</p>
-
-<!-- =================================================================== -->
-<h2 id="dich-vu">6. Đăng ký dịch vụ và tác vụ</h2>
+<h2 id="dich-vu">4. Đăng ký dịch vụ và tác vụ</h2>
 
 <pre><code>C:\CopyBridge\scripts\tao-dich-vu.ps1 `
     -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"</code></pre>
@@ -417,6 +351,79 @@ C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo    # go het dich vu va tac vu</code>
   chỉ khi đó nó mới kịp đánh dấu các agent về <code>OFFLINE</code> và đóng database an toàn. Giết
   tiến trình thẳng tay thì mất hết phần dọn dẹp đó. NSSM gửi được đúng tín hiệu ấy.</p>
 </div>
+
+<!-- =================================================================== -->
+<h2 id="mt5">5. Cài MT5 và gắn EA</h2>
+
+<div class="hop do">
+  <span class="nhan">Bridge phải đang chạy trước khi bạn gắn EA</span>
+  <p><a href="#dich-vu">Mục 4</a> ở trên là thứ khởi động nó. EA gắn lên chart khi chưa có ai nghe
+  cổng <code>8787</code> sẽ chỉ ngồi thử kết nối, và không có gì lên <code>ONLINE</code>. Chạy tay
+  ở một cửa sổ khác cũng được: <code>.venv\Scripts\python.exe -m bridge</code>.</p>
+</div>
+
+<p>Script không làm hộ phần này.</p>
+
+<ol class="buoc">
+  <li><strong>Cài hai terminal MT5</strong>, một cho Master và một cho Client. Cài vào <em>hai thư
+    mục khác nhau</em> để chúng không dùng chung dữ liệu. Đăng nhập cả hai; tài khoản phải ở chế độ
+    <strong>Hedging</strong>.</li>
+
+  <li><strong>Biên dịch EA</strong> — không cần mở giao diện MetaEditor:
+<pre><code>&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+    /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
+&amp; "C:\Program Files\MetaTrader 5\MetaEditor64.exe" `
+    /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"</code></pre>
+    <p class="ghi-chu">Đường dẫn cài MT5 khác nhau tuỳ máy. Terminal thứ hai thường nằm ở
+    <code>C:\Program Files\MetaTrader 5 1\</code> hoặc một tên bạn tự đặt.</p></li>
+
+  <li><strong>Chép <code>.ex5</code> vào từng terminal.</strong> Trong MT5: File → Open Data Folder
+    → <code>MQL5\Experts\</code>. Chép <code>CopyBridgeMaster.ex5</code> vào terminal Master,
+    <code>CopyBridgeClient.ex5</code> vào terminal Client.</li>
+
+  <li><strong>Gắn EA lên chart</strong> và điền tham số:
+    <table>
+      <tr><th>Tham số</th><th>Giá trị</th></tr>
+      <tr><td><code>BridgeHost</code></td><td><code>127.0.0.1</code></td></tr>
+      <tr><td><code>BridgePort</code></td><td><code>8787</code></td></tr>
+      <tr><td><code>AgentToken</code></td><td>token của agent tương ứng</td></tr>
+      <tr><td><code>MagicNumber</code></td><td><code>770001</code></td></tr>
+    </table>
+    Nhớ tick <strong>Allow Algo Trading</strong> trong hộp thoại thuộc tính EA.</li>
+
+  <li><strong>Bật nút Algo Trading trên cả hai terminal</strong> (nút trên thanh công cụ phải sáng
+    xanh).</li>
+</ol>
+
+<div class="hop do">
+  <span class="nhan">Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI</span>
+  <p>Đổi khung thời gian chỉ gọi lại <code>OnInit</code> trên bản đã nạp trong bộ nhớ — MT5
+  <strong>không</strong> đọc lại <code>.ex5</code> từ đĩa. Dấu hiệu đã nạp đúng bản mới: tab
+  <em>Experts</em> hiện <code>CopyBridgeMaster khoi dong [co kha nang DONG lenh]</code>.</p>
+</div>
+
+<!-- =================================================================== -->
+<h2 id="symbol">6. Khai báo ánh xạ symbol</h2>
+
+<div class="hop do">
+  <span class="nhan">Bỏ bước này là hệ thống im lặng không làm gì</span>
+  <p>Thiếu ánh xạ thì Bridge không tra được symbol tương ứng bên Client và <strong>mọi lệnh Master
+  bị bỏ qua</strong>. Không có lỗi, không có cảnh báo nào đập vào mắt — bạn dựng xong cả hệ thống
+  rồi ngồi nhìn không có gì xảy ra.</p>
+</div>
+
+<p>Hai sàn hiếm khi đặt tên symbol giống nhau: <code>XAUUSD</code> bên này có thể là
+<code>XAUUSDm</code> hoặc <code>GOLD</code> bên kia. Khai báo cặp tên đó:</p>
+<pre><code>&amp; $py -m bridge.admin anh-xa-symbol --help</code></pre>
+
+<p>Lệnh này cần <strong>EA Client đang chạy</strong> và symbol đã được kéo vào Market Watch, vì nó
+kiểm thông số symbol (bước volume, volume tối thiểu) trước khi lưu. Nên làm sau khi xong
+<a href="#mt5">mục 5</a>.</p>
+
+<h3>Đối chiếu tay giữa hai sàn</h3>
+<p>Trước khi copy thật, so bằng tay các mục sau ở hai sàn — chúng khác nhau nhiều hơn bạn tưởng:
+tên symbol, contract size, volume tối thiểu và bước volume, spread và giá báo, giờ giao dịch từng
+symbol.</p>
 
 <!-- =================================================================== -->
 <h2 id="lan-dau">7. Lần chạy đầu tiên</h2>
@@ -548,7 +555,7 @@ như mọi lần</strong>.</p>
 <p>Script in một khối đỏ liệt kê các file trong <code>ea/</code> đã đổi. Khi đó phải làm thêm ba
 việc, và <strong>không việc nào script làm hộ được</strong>:</p>
 <ol class="buoc">
-  <li>Biên dịch lại cả hai file <code>.mq5</code> (lệnh ở <a href="#mt5">mục 4</a>).</li>
+  <li>Biên dịch lại cả hai file <code>.mq5</code> (lệnh ở <a href="#mt5">mục 5</a>).</li>
   <li>Chép <code>.ex5</code> mới vào <code>MQL5\Experts\</code> của từng terminal.</li>
   <li><strong>Gỡ EA khỏi chart rồi gắn lại</strong> trên cả hai terminal.</li>
 </ol>
@@ -710,13 +717,13 @@ Start-Service CopyBridge</code></pre>
   <tr><td>Dịch vụ không lên</td><td>Thường là <code>config.toml</code> sai</td>
       <td>Đọc <code>logs\service-err.log</code></td></tr>
   <tr><td>Task Clicker chạy mà không bấm được gì</td><td>Quyền cửa sổ (UIPI)</td>
-      <td>Mức toàn vẹn clicker phải ≥ MT5 — xem <a href="#dich-vu">mục 6</a></td></tr>
+      <td>Mức toàn vẹn clicker phải ≥ MT5 — xem <a href="#dich-vu">mục 4</a></td></tr>
   <tr><td>clicker thoát ngay, mã 2</td><td>Thiếu token hoặc số tài khoản</td>
       <td>Điền mục <code>[clicker]</code> trong <code>config.toml</code></td></tr>
   <tr><td>clicker thoát mã 3</td><td>Đã có một clicker khác lái terminal đó</td>
       <td>Đúng thiết kế. Tìm và tắt tiến trình kia</td></tr>
   <tr><td>Master vào lệnh mà Client không copy</td><td><code>run_mode = PAUSED</code>, clicker chưa chạy, hoặc thiếu ánh xạ symbol</td>
-      <td>Xem dashboard rồi <a href="#symbol">mục 5</a></td></tr>
+      <td>Xem dashboard rồi <a href="#symbol">mục 6</a></td></tr>
 </table>
 
 <h3>Sáu việc script không làm được</h3>
@@ -749,7 +756,7 @@ Start-Service CopyBridge</code></pre>
 <ol>
   <li>Chạy ổn định trên demo <strong>ít nhất một tuần liên tục</strong>.</li>
   <li>Xong bài đo “phiên RDP đã ngắt”.</li>
-  <li>Đối chiếu tay khác biệt giữa hai sàn (xem <a href="#symbol">mục 5</a>).</li>
+  <li>Đối chiếu tay khác biệt giữa hai sàn (xem <a href="#symbol">mục 6</a>).</li>
   <li>Bắt đầu bằng <strong>khối lượng nhỏ nhất</strong> và <strong>một symbol</strong>; mở rộng dần
     sau khi quan sát ít nhất vài chục lệnh.</li>
   <li>Biết cách bấm nút dừng khẩn cấp <strong>trước khi</strong> cần dùng tới nó.</li>

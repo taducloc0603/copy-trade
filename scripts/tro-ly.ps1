@@ -38,7 +38,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
-$script:PhienBan = "2026-09-07"
+$script:PhienBan = "2026-09-07b"
 $script:TongBuoc = 12
 $script:BuocHienTai = 0
 
@@ -385,18 +385,51 @@ function agent_online([string] $id) {
     return $false
 }
 
+# Hoi chinh Bridge xem no dang nghe cong nao, khong tu parse TOML trong PowerShell -- giong het
+# cach `doc_cau_hinh` cua kiem-tra.ps1 lam.
+function cong_bridge() {
+    Push-Location $ThuMuc
+    try {
+        $ra = & $script:VenvPy -c "from bridge.config import load_config; print(load_config().bridge.port)" 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        $p = 0
+        if ([int]::TryParse("$ra".Trim(), [ref] $p)) { return $p }
+        return $null
+    } finally { Pop-Location }
+}
+
+function bridge_dang_nghe() {
+    $cong = cong_bridge
+    if ($null -eq $cong) { return $false }
+    return $null -ne (Get-NetTCPConnection -State Listen -LocalPort $cong -ErrorAction SilentlyContinue)
+}
+
 function buoc_cho_ea() {
     buoc_moi "Cho EA ket noi"
     if ((agent_online $script:IdMaster) -and (agent_online $script:IdClient)) {
         bo_qua "ca hai EA da ONLINE"; return $true
     }
+
+    # Phan biet dut khoat hai the that bai. Khong co phep kiem nay thi ca hai deu hien ra giong
+    # nhau -- "khong thay EA" -- va nguoi dung di soi token voi Algo Trading trong khi that ra
+    # chua co ai nghe cong.
+    if (-not (bridge_dang_nghe)) {
+        $cong = cong_bridge
+        canh "BRIDGE CHUA CHAY: khong ai nghe cong $cong. EA co gan dung den may cung khong len duoc."
+        canh "Sua bang mot trong hai duong:"
+        canh "  1. Dang ky dich vu: .\scripts\tao-dich-vu.ps1 -ThuMuc `"$ThuMuc`""
+        canh "  2. Chay tay o mot cua so khac: .venv\Scripts\python.exe -m bridge"
+        return (hoi_co_khong "Di tiep du Bridge chua chay? (anh xa symbol se that bai)" $false)
+    }
+    ok "Bridge dang nghe cong $(cong_bridge)"
+
     $len = cho_den_khi "$($script:IdMaster) va $($script:IdClient) len ONLINE" {
         (agent_online $script:IdMaster) -and (agent_online $script:IdClient)
     } $GiayChoEA
     if ($len) { ok "ca hai EA da ONLINE"; return $true }
 
-    canh "het gio ma chua thay ca hai EA. Thuong la: dich vu Bridge chua chay, sai token, hoac"
-    canh "chua bat Algo Trading. Xem logs\bridge.log."
+    canh "Bridge dang chay nhung EA chua len. Loi nam o phia EA: chua gan EA len chart, sai"
+    canh "AgentToken, sai BridgeHost/BridgePort, hoac chua bat Algo Trading. Xem logs\bridge.log."
     [void] (admin_in @('liet-ke'))
     return (hoi_co_khong "Di tiep du chua thay EA? (anh xa symbol se that bai)" $false)
 }
@@ -509,6 +542,11 @@ try {
     buoc_agent
     buoc_token
     buoc_client
+    # Dang ky dich vu PHAI di truoc phan EA. `tao-dich-vu.ps1` la thu duy nhat khoi dong Bridge
+    # (`cai-dat.ps1` chi Start-Service khi -CapNhat), nen neu de buoc nay xuong duoi thi EA gan
+    # xong se goi vao mot cong khong ai nghe, buoc cho ONLINE luon het gio, va anh xa symbol luon
+    # bi bo qua -- dung cai hố khien moi lenh Master bi bo qua trong im lang.
+    buoc_dich_vu
     buoc_bien_dich
     buoc_gan_ea
     # Chua co EA thi anh xa symbol chac chan that bai (`anh-xa-symbol` kiem `symbol_spec` truoc
@@ -521,7 +559,6 @@ try {
         canh "bo qua vi chua co EA. CHAY LAI SCRIPT NAY sau khi gan EA xong --"
         canh "THIEU ANH XA LA MOI LENH MASTER BI BO QUA trong im lang."
     }
-    buoc_dich_vu
     buoc_kiem_tra
     buoc_ket
     exit 0

@@ -155,47 +155,7 @@ không tạo.
 
 ---
 
-## 5. MT5 và EA
-
-Script không làm hộ phần này.
-
-1. Cài hai terminal MT5 (một cho Master, một cho Client). Đăng nhập cả hai, tài khoản phải ở chế
-   độ **Hedging**.
-2. Biên dịch EA, không cần mở giao diện MetaEditor:
-   ```powershell
-   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
-   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"
-   ```
-3. Chép `.ex5` vào `MQL5\Experts` của từng terminal, gắn EA lên chart, điền `AgentToken`
-   (`BridgeHost` để `127.0.0.1`, `BridgePort` để `8787`).
-4. **Bật nút Algo Trading trên cả hai terminal.**
-
-> **Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI.** Đổi khung thời gian chỉ gọi lại
-> `OnInit` trên bản đã nạp trong bộ nhớ — MT5 **không** đọc lại `.ex5` từ đĩa. Dấu hiệu nạp đúng
-> bản mới: tab Experts hiện `CopyBridgeMaster khoi dong [co kha nang DONG lenh]`.
-
-Client chỉ copy được **một symbol** cho mỗi terminal (B-01): hộp thoại New Order lấy symbol theo
-chart đang mở. Mở đúng chart đó và giữ nguyên.
-
----
-
-## 6. Khai báo ánh xạ symbol
-
-**Đừng bỏ bước này.** Thiếu ánh xạ thì `find_symbol_map` trả `None` và **mọi lệnh Master bị bỏ qua
-trong im lặng** — người cài lần đầu dựng xong toàn hệ thống rồi ngồi nhìn không có gì xảy ra.
-
-```powershell
-& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
-& $py -m bridge.admin anh-xa-symbol CL-01          # xem những gì đã khai
-```
-
-Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
-tường minh chứ không đoán. Lệnh kiểm `symbol_spec` trước khi lưu, nên nó **cần EA Client đang
-chạy** và symbol đã kéo vào Market Watch — đó là lý do bước này nằm sau mục 5 chứ không trước.
-
----
-
-## 7. Đăng ký dịch vụ và tác vụ
+## 5. Đăng ký dịch vụ và tác vụ
 
 ```powershell
 C:\CopyBridge\scripts\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"
@@ -223,6 +183,50 @@ Gỡ hết: `C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo`
 > **Mức toàn vẹn của clicker phải ≥ của MT5.** MT5 chạy "Run as administrator" mà clicker chạy
 > thường thì UIPI chặn hết window message: `PostMessage` trả về thành công nhưng **không có gì xảy
 > ra**. Hoặc cả hai đều thường, hoặc cả hai đều nâng quyền.
+
+---
+
+## 6. MT5 và EA
+
+> **Bridge phải đang chạy trước khi bạn gắn EA.** Mục 5 ở trên là thứ khởi động nó. EA gắn lên
+> chart khi chưa có ai nghe cổng `8787` sẽ chỉ ngồi thử kết nối, và không có gì lên `ONLINE`.
+> Chạy tay ở một cửa sổ khác cũng được: `.venv\Scripts\python.exe -m bridge`.
+
+Script không làm hộ phần này.
+
+1. Cài hai terminal MT5 (một cho Master, một cho Client). Đăng nhập cả hai, tài khoản phải ở chế
+   độ **Hedging**.
+2. Biên dịch EA, không cần mở giao diện MetaEditor:
+   ```powershell
+   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
+   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"
+   ```
+3. Chép `.ex5` vào `MQL5\Experts` của từng terminal, gắn EA lên chart, điền `AgentToken`
+   (`BridgeHost` để `127.0.0.1`, `BridgePort` để `8787`).
+4. **Bật nút Algo Trading trên cả hai terminal.**
+
+> **Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI.** Đổi khung thời gian chỉ gọi lại
+> `OnInit` trên bản đã nạp trong bộ nhớ — MT5 **không** đọc lại `.ex5` từ đĩa. Dấu hiệu nạp đúng
+> bản mới: tab Experts hiện `CopyBridgeMaster khoi dong [co kha nang DONG lenh]`.
+
+Client chỉ copy được **một symbol** cho mỗi terminal (B-01): hộp thoại New Order lấy symbol theo
+chart đang mở. Mở đúng chart đó và giữ nguyên.
+
+---
+
+## 7. Khai báo ánh xạ symbol
+
+**Đừng bỏ bước này.** Thiếu ánh xạ thì `find_symbol_map` trả `None` và **mọi lệnh Master bị bỏ qua
+trong im lặng** — người cài lần đầu dựng xong toàn hệ thống rồi ngồi nhìn không có gì xảy ra.
+
+```powershell
+& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
+& $py -m bridge.admin anh-xa-symbol CL-01          # xem những gì đã khai
+```
+
+Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
+tường minh chứ không đoán. Lệnh kiểm `symbol_spec` trước khi lưu, nên nó **cần EA Client đang
+chạy** và symbol đã kéo vào Market Watch — đó là lý do bước này nằm cuối, sau cả mục 5 và mục 6.
 
 ---
 
