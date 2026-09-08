@@ -58,8 +58,8 @@ telegram_chat_id = ""
 
 [clicker]                # token clicker dat o DAY, khong phai tren dong lenh
 token = "..."
-account_login = 538217   # so tai khoan Client
-terminal_title = "538217"  # mau tieu de cua so terminal Client
+account_login = <so-tai-khoan-Client>   # so tai khoan Client
+terminal_title = "<so-tai-khoan-Client>"  # mau tieu de cua so terminal Client
 ```
 
 > **Đừng truyền token clicker bằng `--token`.** Dòng lệnh của một tiến trình là thứ mọi tài
@@ -87,7 +87,7 @@ Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA
 
 ```powershell
 .\.venv\Scripts\python.exe -m bridge                      # Bridge + dashboard
-.\.venv\Scripts\python.exe -m clicker --token <TOKEN> --account-login 538217
+.\.venv\Scripts\python.exe -m clicker --token <TOKEN> --account-login <so-tai-khoan-Client>
 ```
 
 Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
@@ -112,7 +112,7 @@ món nợ đó đã một lần làm mất token của clicker.
 ```powershell
 .\.venv\Scripts\python.exe -m bridge.admin tinh-hinh                            # co gi can lam khong
 .\.venv\Scripts\python.exe -m bridge.admin liet-ke
-.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217
+.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login <so-tai-khoan-Client>
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
 .\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
 .\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER

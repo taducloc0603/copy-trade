@@ -20,6 +20,10 @@
 #define COPYBRIDGE_CMD_MEMORY_SEC   86400    // giu 24 gio command_id da xu ly
 #define COPYBRIDGE_SPEC_INTERVAL_SEC 21600   // 6 gio, day lai symbol specs
 #define COPYBRIDGE_CAUSE_WINDOW_SEC 10       // cua so gan caused_by_command_id
+// Bat tay lau hon nguong nay thi coi nhu socket da chet: Bridge dong ket noi ma EA
+// khong he biet (SocketIsReadable tra 0 mai mai), va chi co ghi hong moi phat hien duoc.
+#define COPYBRIDGE_HANDSHAKE_TIMEOUT_SEC 15
+#define COPYBRIDGE_CONNECT_LOG_SEC  60       // chong ngap log khi noi hong lien tuc
 
 //+------------------------------------------------------------------+
 //| 1. Chuoi UTF-8                                                   |
@@ -685,6 +689,9 @@ private:
    datetime          m_next_retry;
    int               m_backoff_index;
    int               m_backoff[5];
+   datetime          m_connected_at;   // luc mo socket, de do han bat tay
+   int               m_last_conn_error;// ma loi noi ket lan truoc, chi log khi doi
+   datetime          m_last_conn_log;  // luc log loi noi ket gan nhat
 
    // -- bo dem nhan --
    uchar             m_recv[];
@@ -929,6 +936,7 @@ private:
          m_agent_id = reader.GetStr("agent_id");
          m_bridge_last_seq = reader.GetInt("last_seq", 0);
          m_handshaked = true;
+         m_backoff_index = 0;   // bat tay xong moi la thanh cong that su, xem EnsureConnected
          CbLog("INFO", "Bat tay xong, agent_id = " + m_agent_id +
                ", Bridge co last_seq = " + IntegerToString(m_bridge_last_seq));
 
@@ -971,6 +979,11 @@ private:
         {
          CbLog("ERROR", "Bridge tu choi: " + reader.GetStr("code") + " - " +
                reader.GetStr("message"));
+         // Bridge dong ket noi ngay sau moi error (server.py: _send_error luon di kem
+         // return None). Khong don trang thai o day thi m_connected ket o true vinh vien:
+         // khong doc duoc gi, khong ghi gi nen khong bao gio phat hien socket da chet.
+         Disconnect();
+         ScheduleRetry();
          return;
         }
 
@@ -1390,6 +1403,9 @@ public:
       m_cause_count = 0;
       m_backoff_index = 0;
       m_next_retry = 0;
+      m_connected_at = 0;
+      m_last_conn_error = 0;
+      m_last_conn_log = 0;
       m_last_heartbeat = 0;
       m_last_specs = 0;
       m_heartbeat_interval_ms = 1000;
@@ -1452,6 +1468,7 @@ public:
       m_connected = false;
       m_handshaked = false;
       m_recv_len = 0;
+      m_connected_at = 0;
      }
 
    //+---------------------------------------------------------------+
@@ -1464,14 +1481,23 @@ public:
       if(TimeLocal() < m_next_retry)
          return;
 
+      ResetLastError();
       m_socket = SocketCreate();
       if(m_socket == INVALID_HANDLE)
         {
+         LogConnectError("Khong tao duoc socket cho", GetLastError(),
+                         "Terminal het handle hoac socket bi tat trong cai dat.");
          ScheduleRetry();
          return;
         }
+      ResetLastError();
       if(!SocketConnect(m_socket, m_host, m_port, 1000))
         {
+         // Nguyen nhan so mot la dia chi chua nam trong danh sach cho phep cua terminal.
+         // Khong noi ra thi ca hai dau deu im lang va khong co manh moi nao ca.
+         LogConnectError("Khong noi duoc toi Bridge", GetLastError(),
+                         "Kiem Tools > Options > Expert Advisors > \"Allow WebRequest for" +
+                         " listed URL\" da co dia chi nay chua, va Bridge da chay chua.");
          SocketClose(m_socket);
          m_socket = INVALID_HANDLE;
          ScheduleRetry();
@@ -1481,9 +1507,28 @@ public:
       m_connected = true;
       m_handshaked = false;
       m_recv_len = 0;
-      m_backoff_index = 0;
+      m_connected_at = TimeLocal();
+      m_last_conn_error = 0;
+      // CO Y khong dat lai m_backoff_index o day. Noi duoc socket chua phai la thanh cong:
+      // bat tay van co the bi tu choi (token, role, account_login). Reset o day thi moi lan
+      // bi tu choi deu quay lai backoff 1 giay, dap Bridge va ngap log. Reset o hello_ack.
       CbLog("INFO", "Da ket noi toi Bridge " + m_host + ":" + IntegerToString(m_port));
       SendHello();
+     }
+
+   //+---------------------------------------------------------------+
+   //| Log loi noi ket, co giam tan suat: noi hong lien tuc thi Poll   |
+   //| goi 10 lan moi giay, in het thi nhat ky khong con doc duoc.     |
+   //+---------------------------------------------------------------+
+   void              LogConnectError(const string what, const int code, const string hint)
+     {
+      datetime now = TimeLocal();
+      if(code == m_last_conn_error && now - m_last_conn_log < COPYBRIDGE_CONNECT_LOG_SEC)
+         return;
+      m_last_conn_error = code;
+      m_last_conn_log = now;
+      CbLog("ERROR", what + " " + m_host + ":" + IntegerToString(m_port) +
+            ", loi " + IntegerToString(code) + ". " + hint);
      }
 
    void              ScheduleRetry()
@@ -1676,7 +1721,21 @@ public:
       EnsureConnected();
       PumpSocket();
       if(!m_handshaked)
+        {
+         // Luoi an toan cho moi kieu dong socket im lang (Bridge bi kill, mang dut nua
+         // chung, firewall drop): khong co error nao toi, PumpSocket khong doc duoc gi,
+         // va heartbeat -- duong duy nhat phat hien socket chet -- lai bi chinh cho nay chan.
+         if(m_connected && m_connected_at > 0 &&
+            TimeLocal() - m_connected_at >= COPYBRIDGE_HANDSHAKE_TIMEOUT_SEC)
+           {
+            CbLog("WARNING", "Bat tay khong xong sau " +
+                  IntegerToString(COPYBRIDGE_HANDSHAKE_TIMEOUT_SEC) +
+                  " giay, dong ket noi de thu lai");
+            Disconnect();
+            ScheduleRetry();
+           }
          return;
+        }
 
       if((TimeGMT() - m_last_heartbeat) * 1000 >= m_heartbeat_interval_ms)
          SendHeartbeat();

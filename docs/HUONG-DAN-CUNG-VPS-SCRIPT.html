@@ -230,7 +230,7 @@ token của agent (chỉ hiện đúng một lần).</p>
 <p>Trước khi chạy, mở <strong>một cửa sổ PowerShell khác</strong> và lấy sẵn hai tiêu đề cửa sổ
 MT5 — trợ lý sẽ hỏi số tài khoản và chuỗi tiêu đề, cả hai đều nằm trong đó:</p>
 <pre><code>Get-Process terminal64 | Select-Object Id, MainWindowTitle</code></pre>
-<p>Tiêu đề có dạng <code>538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]</code> —
+<p>Tiêu đề có dạng <code>&lt;so-tai-khoan-Client&gt; - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]</code> —
 <strong>số tài khoản nằm ngay đầu</strong>. Có sẵn hai dòng đó bên cạnh thì điền một mạch,
 không phải dừng giữa chừng.</p>
 <pre><code>C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge</code></pre>
@@ -288,8 +288,8 @@ $py = ".venv\Scripts\python.exe"
 file và điền:</p>
 <pre><code>[clicker]
 token = "&lt;token-vua-cap-cho-AG-CLICKER&gt;"
-account_login = 538217
-terminal_title = "538217"</code></pre>
+account_login = &lt;so-tai-khoan-Client&gt;
+terminal_title = "&lt;so-tai-khoan-Client&gt;"</code></pre>
 
 <p><code>terminal_title</code> là một mẩu tiêu đề cửa sổ của terminal Client, thường chứa số tài
 khoản. Xem đúng chuỗi đang hiện bằng:</p>
@@ -324,7 +324,7 @@ nằm ở một dòng riêng trong bảng <code>client_account</code>:</p>
 <h2 id="dich-vu">4. Đăng ký dịch vụ và tác vụ</h2>
 
 <pre><code>C:\CopyBridge\scripts\tao-dich-vu.ps1 `
-    -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"</code></pre>
+    -ThuMuc C:\CopyBridge -AccountLogin &lt;so-tai-khoan-Client&gt; -TerminalTitle "&lt;so-tai-khoan-Client&gt;"</code></pre>
 
 <p>Script sẽ hỏi mật khẩu của tài khoản autologon. <strong>Nhập vào</strong> thì dịch vụ chạy bằng
 chính tài khoản đó — khuyến nghị, vì khi đó dịch vụ, clicker, tác vụ bảo trì và lệnh bạn gõ tay đều

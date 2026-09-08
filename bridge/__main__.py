@@ -13,6 +13,7 @@ import asyncio
 import contextlib
 import logging
 import signal
+import socket
 
 import uvicorn
 
@@ -48,6 +49,29 @@ def ep_ve_paused(db: Database) -> str | None:
     return truoc
 
 
+def cong_dang_ban(host: str, port: int) -> OSError | None:
+    """Thử chiếm cổng trước để báo lỗi tử tế thay vì để traceback nổi lên.
+
+    Không đặt ``SO_REUSEADDR``: trên Windows cờ đó cho phép chiếm chồng lên cổng người khác
+    đang giữ, nên bật nó vào đây là biến phép thử này thành luôn luôn "rảnh".
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as thu:
+        try:
+            thu.bind((host, port))
+        except OSError as exc:
+            return exc
+    return None
+
+
+def bao_cong_ban(host: str, port: int, ten: str, exc: OSError) -> None:
+    """Một dòng nói đúng việc cần làm. Traceback 20 dòng ở đây không thêm thông tin gì."""
+    log.critical(
+        "Cong %s %s:%d dang bi tien trinh khac giu, Bridge khong khoi dong duoc (%s). "
+        "Neu dich vu CopyBridge dang chay thi dung no truoc: Stop-Service CopyBridge. "
+        "Hoac tim tien trinh dang giu cong: Get-NetTCPConnection -LocalPort %d | Select-Object OwningProcess",
+        ten, host, port, exc, port)
+
+
 async def run() -> int:
     try:
         config = load_config()
@@ -59,10 +83,24 @@ async def run() -> int:
     truoc = ep_ve_paused(db)
     log.info("Bridge khoi dong, database %s, run_mode truoc do = %s", config.db_path, truoc)
 
+    # Kiểm cả hai cổng trước khi dựng bất cứ thứ gì: hỏng ở đây thì chưa có gì phải dọn.
+    for cong, ten in ((config.bridge.port, "agent"), (config.bridge.web_port, "dashboard")):
+        ban = cong_dang_ban(config.bridge.host, cong)
+        if ban is not None:
+            bao_cong_ban(config.bridge.host, cong, ten, ban)
+            db.close()
+            return 2
+
     server = BridgeServer(db, ServerConfig(host=config.bridge.host, port=config.bridge.port))
     dispatcher = CommandDispatcher(db, server)
     processor = EventProcessor(db, server, dispatcher)
-    await server.start()
+    try:
+        await server.start()
+    except OSError as exc:
+        # Có khe hở giữa lúc kiểm và lúc chiếm thật, nên vẫn phải bắt ở đây.
+        bao_cong_ban(config.bridge.host, config.bridge.port, "agent", exc)
+        db.close()
+        return 2
     await processor.start()
 
     # Dashboard chạy trong cùng tiến trình: nó đọc thẳng SQLite cục bộ và gọi API của tầng

@@ -226,8 +226,8 @@ function buoc_thong_so() {
         "nhung gia tri sap phai dien:",
         "  Get-Process terminal64 | Select-Object Id, MainWindowTitle",
         "",
-        "Tieu de MT5 co dang:  538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
-        "                      ^^^^^^ so tai khoan nam ngay dau tieu de"
+        "Tieu de MT5 co dang:  <so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
+        "                      ^^^^^^^^^^^^^^^^^^^^^ so tai khoan nam ngay dau tieu de"
     )
 
     Write-Host ""
@@ -252,7 +252,8 @@ function buoc_thong_so() {
         "TU CHOI ket noi (ERR_ACCOUNT_MISMATCH). Dien nham thi EA khong bao gio len ONLINE du",
         "token dung -- va trieu chung nhin y het 'sai token'.",
         "",
-        "Vi du   : 538217",
+        "Vi du   : KHONG dat vi du o day. Mot so 6 chu so trong nhu that qua de bi go theo,",
+        "          va go theo thi EA khong bao gio len ONLINE -- dung cai bay noi tren.",
         "Cach lay: so nam ngay DAU tieu de cua so MT5 (xem lenh o tren).",
           "          Hoac trong MT5: Navigator (Ctrl+N) > muc Accounts, dong dang in dam."
     )
@@ -266,8 +267,8 @@ function buoc_thong_so() {
         "thi clicker bam lenh vao dung cai terminal khong nen bam, va khong co gi bao ban biet.",
         "So tai khoan la chuoi phan biet an toan nhat.",
         "",
-        "Vi du   : tieu de la  538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
-        "          thi dien    538217",
+        "Vi du   : tieu de la  <so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
+        "          thi dien    <so-tai-khoan-Client>",
         "Cach lay: Enter de lay so tai khoan Client vua dien o tren -- gan nhu luon dung,",
         "          vi tieu de MT5 bat dau bang so tai khoan.",
         "Luu y   : chuoi khop NHIEU HON MOT cua so thi clicker tu choi chay chu khong doan.",

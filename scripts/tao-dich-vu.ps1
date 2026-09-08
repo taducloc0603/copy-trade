@@ -14,7 +14,7 @@
     cua phien nguoi dung, ma toan bo duong mo lenh la PostMessage vao hop thoai New Order.
 
 .EXAMPLE
-    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"
+    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin <so-tai-khoan-Client> -TerminalTitle "<so-tai-khoan-Client>"
 
 .EXAMPLE
     .\tao-dich-vu.ps1 -GoBo

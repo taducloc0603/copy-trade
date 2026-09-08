@@ -188,8 +188,10 @@ có ô <strong>Comment</strong> — phần mềm cần ô đó để nhận ra l
 <ul>
   <li>Cả hai phải là tài khoản <strong>Hedging</strong>. Tài khoản Netting không dùng được — EA
     sẽ từ chối khởi động.</li>
-  <li>Ghi lại số tài khoản từng cái. Tài liệu này lấy ví dụ <code>538216</code> (Master) và
-    <code>538217</code> (Client).</li>
+  <li>Ghi lại số tài khoản từng cái. Bên dưới, <code>&lt;so-tai-khoan-Master&gt;</code> và
+    <code>&lt;so-tai-khoan-Client&gt;</code> là chỗ bạn thay bằng hai số đó. Ở đây cố ý không đặt số thật
+    làm ví dụ: điền nhầm số tài khoản thì EA không bao giờ lên ONLINE, mà triệu chứng
+    nhìn y hệt “sai token”.</li>
   <li>Symbol phải có trên cả hai sàn. Tên khác nhau cũng được — bạn sẽ khai ánh xạ ở bước sau.</li>
 </ul>
 
@@ -242,8 +244,8 @@ dashboard_password = "dat-mot-mat-khau-manh-o-day"
 
 [clicker]
 token = ""
-account_login = 538217
-terminal_title = "538217"</code></pre>
+account_login = &lt;so-tai-khoan-Client&gt;
+terminal_title = "&lt;so-tai-khoan-Client&gt;"</code></pre>
 <div class="hop cam">
   <span class="nhan">Mục <code>[clicker]</code> điền sau</span>
   <p>Để <code>token</code> trống lúc này — bạn chưa cấp mã. Bước
@@ -277,9 +279,9 @@ Phải báo <strong>0 errors</strong>.</p>
 <li>
 <h3>Tạo tài khoản kết nối và lấy mã</h3>
 <p>Mỗi thành phần cần một mã bí mật để nối vào Bridge. Thay số tài khoản của bạn vào:</p>
-<pre><code>.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login 538216
-.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login 538217
-.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login 538217</code></pre>
+<pre><code>.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login &lt;so-tai-khoan-Master&gt;
+.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login &lt;so-tai-khoan-Client&gt;
+.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login &lt;so-tai-khoan-Client&gt;</code></pre>
 <div class="hop do">
   <span class="nhan">Mã chỉ hiện một lần</span>
   <p>Mỗi lệnh in ra một chuỗi dài. <strong>Chép ngay và cất lại</strong> — không có cách đọc lại.

@@ -98,7 +98,7 @@ trợ lý sẽ hỏi số tài khoản và chuỗi tiêu đề, cả hai đều 
 Get-Process terminal64 | Select-Object Id, MainWindowTitle
 ```
 
-Tiêu đề có dạng `538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — **số tài khoản
+Tiêu đề có dạng `<so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — **số tài khoản
 nằm ngay đầu**. Có sẵn hai dòng đó bên cạnh thì điền một mạch, không phải dừng giữa chừng.
 
 ```powershell
@@ -144,8 +144,8 @@ $py = ".venv\Scripts\python.exe"
 ```toml
 [clicker]
 token = "<token-vua-cap>"
-account_login = 538217
-terminal_title = "538217"
+account_login = <so-tai-khoan-Client>
+terminal_title = "<so-tai-khoan-Client>"
 ```
 
 Đừng truyền token của clicker trên dòng lệnh. Dòng lệnh của một tiến trình là thứ **mọi tài khoản
@@ -177,7 +177,7 @@ không tạo.
 ## 5. Đăng ký dịch vụ và tác vụ
 
 ```powershell
-C:\CopyBridge\scripts\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin 538217 -TerminalTitle "538217"
+C:\CopyBridge\scripts\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin <so-tai-khoan-Client> -TerminalTitle "<so-tai-khoan-Client>"
 ```
 
 Script sẽ hỏi mật khẩu của tài khoản autologon. Nhập vào thì dịch vụ chạy bằng chính tài khoản đó

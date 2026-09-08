@@ -173,7 +173,17 @@ def load_config(path: Path | str | None = None) -> Config:
             f"Không tìm thấy {config_path}. Hãy sao chép {EXAMPLE_CONFIG_FILENAME} "
             f"thành {DEFAULT_CONFIG_FILENAME} rồi điền giá trị thật."
         )
-    with config_path.open("rb") as fh:
-        raw = tomllib.load(fh)
+    try:
+        with config_path.open("rb") as fh:
+            raw = tomllib.load(fh)
+    except tomllib.TOMLDecodeError as exc:
+        # Chỗ hay gặp nhất: chỗ giữ chỗ dạng `<so-tai-khoan-Client>` trong tài liệu chưa được
+        # thay bằng giá trị thật. Để lỗi này nổi lên thì người dùng nhận một traceback tomllib.
+        raise ConfigError(
+            f"{config_path} không phải TOML hợp lệ: {exc}. "
+            "Chỗ nào còn để nguyên dạng <...> là chỗ đó chưa điền giá trị thật."
+        ) from exc
+    except OSError as exc:
+        raise ConfigError(f"Không đọc được {config_path}: {exc}") from exc
     root = config_path.parent if path is not None else project_root
     return parse_config(raw, source_path=config_path, project_root=root)
