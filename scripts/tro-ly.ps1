@@ -38,7 +38,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
-$script:PhienBan = "2026-09-07b"
+$script:PhienBan = "2026-09-08"
 $script:TongBuoc = 12
 $script:BuocHienTai = 0
 
@@ -51,6 +51,12 @@ function ok([string] $tin)     { Write-Host "        OK: $tin" -ForegroundColor 
 function bo_qua([string] $tin) { Write-Host "        BO QUA: $tin" -ForegroundColor DarkGray }
 function canh([string] $tin)   { Write-Host "        CANH BAO: $tin" -ForegroundColor Yellow }
 function tach()                { Write-Host ("-" * 69) -ForegroundColor DarkGray }
+
+# Moi buoc va moi cau hoi deu phai tu noi no dung de lam gi. Nguoi van hanh khong doc ma nguon,
+# nen mot cau hoi khong kem hau qua cua viec tra loi sai la mot cai bay.
+function giai_thich([string[]] $dong) {
+    foreach ($d in $dong) { Write-Host "        $d" -ForegroundColor DarkGray }
+}
 
 # ---------------------------------------------------------------------------------------------
 # Hoi dap
@@ -183,6 +189,10 @@ function nhay([string] $s) {
 # ---------------------------------------------------------------------------------------------
 function buoc_nen() {
     buoc_moi "Nen: Python, venv, goi, database"
+    giai_thich @(
+        "Cai Python, tao .venv, cai goi, tao config.toml va khoi tao database.",
+        "Uy quyen cho cai-dat.ps1. Da lam roi thi bo qua."
+    )
     $script:VenvPy = Join-Path $ThuMuc ".venv\Scripts\python.exe"
     $caiDat = Join-Path $PSScriptRoot "cai-dat.ps1"
     if (-not (Test-Path $caiDat)) { $caiDat = Join-Path $ThuMuc "scripts\cai-dat.ps1" }
@@ -206,16 +216,58 @@ function buoc_nen() {
 # ---------------------------------------------------------------------------------------------
 function buoc_thong_so() {
     buoc_moi "Thong so cua he thong"
-    Write-Host "        Magic number la con so EA dong dau len moi lenh no mo. Hai ben dung chung." -ForegroundColor DarkGray
-    $script:Magic       = hoi_so    "Magic number" 770001
-    $script:LoginMaster = hoi_so    "So tai khoan Master"
-    $script:LoginClient = hoi_so    "So tai khoan Client"
-    Write-Host "        Tieu de cua so terminal Client -- clicker tim cua so bang chuoi nay." -ForegroundColor DarkGray
-    $script:TieuDe      = hoi_chuoi "Mau tieu de cua so terminal Client" ([string] $script:LoginClient)
-    $script:IdMaster    = hoi_chuoi "Ten agent Master"  "AG-MASTER"
-    $script:IdClient    = hoi_chuoi "Ten agent Client"  "AG-CLIENT"
-    $script:IdClicker   = hoi_chuoi "Ten agent Clicker" "AG-CLICKER"
-    $script:IdClientAcc = hoi_chuoi "Ma client"         "CL-01"
+    giai_thich @(
+        "Hoi mot luot tat ca gia tri ma cac buoc sau can. Enter la lay mac dinh."
+    )
+
+    Write-Host ""
+    giai_thich @(
+        "MAGIC NUMBER -- con so dinh danh he thong bot nay. Ba viec:",
+        "  1. Bridge gan no vao moi lenh gui xuong EA; EA tu choi lenh khong khop magic.",
+        "     Chay hai he thong bot tren cung mot may thi lenh khong the di nham sang nhau.",
+        "  2. EA dong dau len lenh no tu mo. Broker khong sua duoc truong nay, khac voi comment.",
+        "  3. Phan biet lenh bot voi lenh mo tay -- chi phia Master.",
+        "KHONG loc lenh nao duoc copy: lenh ban mo TAY tren Master van duoc copy sang Client.",
+        "De mac dinh, tru khi ban chay nhieu he thong bot song song tren cung may."
+    )
+    $script:Magic = hoi_so "Magic number" 770001
+
+    Write-Host ""
+    giai_thich @(
+        "SO TAI KHOAN -- so tai khoan MT5 cua tung terminal. Day la KHOA AN TOAN, khong",
+        "phai nhan: luc EA bat tay, Bridge so so no khai bao voi so ban dien o day, lech thi",
+        "TU CHOI ket noi (ERR_ACCOUNT_MISMATCH). Dien nham thi EA khong bao gio len ONLINE du",
+        "token dung -- va trieu chung nhin y het 'sai token'."
+    )
+    $script:LoginMaster = hoi_so "So tai khoan Master"
+    $script:LoginClient = hoi_so "So tai khoan Client"
+
+    Write-Host ""
+    giai_thich @(
+        "TIEU DE CUA SO CLIENT -- clicker tim cua so terminal Client bang chuoi con nay de bam",
+        "lenh vao do. Chuoi phai khop terminal CLIENT va KHONG khop terminal Master; khop nham",
+        "thi clicker bam lenh vao dung cai terminal khong nen bam, va khong co gi bao ban biet.",
+        "So tai khoan la chuoi phan biet an toan nhat. Xem tieu de dang hien bang:",
+        "  Get-Process terminal64 | Select-Object Id, MainWindowTitle"
+    )
+    $script:TieuDe = hoi_chuoi "Mau tieu de cua so terminal Client" ([string] $script:LoginClient)
+
+    Write-Host ""
+    giai_thich @(
+        "TEN AGENT -- nhan dinh danh cua ba tien trinh trong database va tren dashboard.",
+        "Chi la ten goi, dat gi cung chay. Cu Enter ca ba."
+    )
+    $script:IdMaster  = hoi_chuoi "Ten agent Master"  "AG-MASTER"
+    $script:IdClient  = hoi_chuoi "Ten agent Client"  "AG-CLIENT"
+    $script:IdClicker = hoi_chuoi "Ten agent Clicker" "AG-CLICKER"
+
+    Write-Host ""
+    giai_thich @(
+        "MA CLIENT -- ma cua dong cau hinh NGHIEP VU phia Client: copy nguoc hay cung chieu, he",
+        "so volume, duong mo lenh. Khac voi ten agent (la ket noi). Ban se go lai ma nay trong",
+        "cac lenh anh-xa-symbol va cau-hinh-client. Cu Enter."
+    )
+    $script:IdClientAcc = hoi_chuoi "Ma client" "CL-01"
     ok "da ghi nhan"
 }
 
@@ -246,6 +298,13 @@ function tao_agent([string] $id, [string] $vaiTro, [int] $login) {
 
 function buoc_agent() {
     buoc_moi "Tao ba agent"
+    giai_thich @(
+        "Moi tien trinh noi vao Bridge can mot danh tinh rieng va mot token rieng:",
+        "  MASTER  -- EA tren terminal Master, bao cao lenh ban mo",
+        "  CLIENT  -- EA tren terminal Client, dong lenh va bao cao trang thai",
+        "  CLICKER -- tien trinh bam giao dien MT5 de MO lenh phia Client",
+        "Agent da ton tai thi BO QUA, khong cap lai token -- cap lai la giet token dang nam trong EA."
+    )
     if (-not (hoi_co_khong "Tao $($script:IdMaster), $($script:IdClient), $($script:IdClicker)?")) {
         bo_qua "nguoi dung tu choi"; return
     }
@@ -256,6 +315,11 @@ function buoc_agent() {
 
 function buoc_token() {
     buoc_moi "Token"
+    giai_thich @(
+        "Token cua CLICKER duoc ghi THANG vao config.toml, khong hien ra man hinh.",
+        "Hai token con lai BUOC PHAI hien ra vi ban phai go chung vao tham so EA trong MT5.",
+        "Token tho chi hien DUNG MOT LAN va khong doc lai duoc. Mat thi phai cap lai."
+    )
 
     # Token clicker di thang vao config.toml. Khong in ra man hinh, khong qua dong lenh: dong
     # lenh cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang
@@ -301,6 +365,11 @@ function buoc_token() {
 # ---------------------------------------------------------------------------------------------
 function buoc_client() {
     buoc_moi "Cau hinh client"
+    giai_thich @(
+        "Tao dong cau hinh nghiep vu phia Client: copy nguoc hay cung chieu, he so volume,",
+        "va duong mo lenh (UI = qua giao dien MT5, can clicker).",
+        "THIEU DONG NAY thi buoc anh xa symbol se bao `"Khong co client`" va khong di tiep duoc."
+    )
     $kq = admin @('cau-hinh-client', $script:IdClientAcc)
     if ($kq.ma -eq 0) {
         bo_qua "$($script:IdClientAcc) da ton tai"
@@ -334,6 +403,10 @@ function tim_metaeditor() {
 
 function buoc_bien_dich() {
     buoc_moi "Bien dich EA"
+    giai_thich @(
+        "Bien dich ea\*.mq5 thanh .ex5 bang MetaEditor, khong can mo giao dien.",
+        "Chua cai MT5 thi bo qua buoc nay, cai xong chay lai script."
+    )
     $me = tim_metaeditor
     if (-not $me) {
         canh "khong thay MetaEditor64.exe -- cai MT5 truoc, roi chay lai script nay."
@@ -358,6 +431,10 @@ function buoc_bien_dich() {
 # ---------------------------------------------------------------------------------------------
 function buoc_gan_ea() {
     buoc_moi "Gan EA len chart -- VIEC NAY PHAI LAM BANG TAY"
+    giai_thich @(
+        "Gan EA la buoc duy nhat trong ca quy trinh khong tu dong hoa duoc: no nam trong",
+        "giao dien MT5. Lam theo dung nam viec duoi day roi Enter."
+    )
     Write-Host @"
 
         Script khong bam ho duoc phan nay. Trong tung terminal MT5:
@@ -406,6 +483,11 @@ function bridge_dang_nghe() {
 
 function buoc_cho_ea() {
     buoc_moi "Cho EA ket noi"
+    giai_thich @(
+        "Doi hai EA bat tay voi Bridge va len trang thai ONLINE.",
+        "Kiem cong truoc de phan biet `"Bridge chua chay`" voi `"loi phia EA`" -- hai the that bai",
+        "khac han nhau nhung nhin giong nhau neu khong kiem."
+    )
     if ((agent_online $script:IdMaster) -and (agent_online $script:IdClient)) {
         bo_qua "ca hai EA da ONLINE"; return $true
     }
@@ -417,8 +499,8 @@ function buoc_cho_ea() {
         $cong = cong_bridge
         canh "BRIDGE CHUA CHAY: khong ai nghe cong $cong. EA co gan dung den may cung khong len duoc."
         canh "Sua bang mot trong hai duong:"
-        canh "  1. Dang ky dich vu: .\scripts\tao-dich-vu.ps1 -ThuMuc `"$ThuMuc`""
-        canh "  2. Chay tay o mot cua so khac: .venv\Scripts\python.exe -m bridge"
+        canh "  1. Dang ky dich vu: $ThuMuc\scripts\tao-dich-vu.ps1 -ThuMuc `"$ThuMuc`""
+        canh "  2. Chay tay o cua so khac: $ThuMuc\.venv\Scripts\python.exe -m bridge"
         return (hoi_co_khong "Di tiep du Bridge chua chay? (anh xa symbol se that bai)" $false)
     }
     ok "Bridge dang nghe cong $(cong_bridge)"
@@ -439,6 +521,11 @@ function buoc_cho_ea() {
 # ---------------------------------------------------------------------------------------------
 function buoc_anh_xa() {
     buoc_moi "Anh xa symbol"
+    giai_thich @(
+        "Khai bao symbol ben Master ung voi symbol nao ben Client. Hai san KHONG mac dinh dung",
+        "cung ten (XAUUSD voi XAUUSDm), nen phai khai tuong minh chu khong doan.",
+        "Lenh kiem symbol co that tren san Client truoc khi luu, nen no vua khai bao vua nghiem thu."
+    )
     Write-Host "        THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang." -ForegroundColor Yellow
     $kq = admin @('anh-xa-symbol', $script:IdClientAcc)
     if ($kq.ma -eq 0) {
@@ -465,6 +552,12 @@ function buoc_anh_xa() {
 # ---------------------------------------------------------------------------------------------
 function buoc_dich_vu() {
     buoc_moi "Dang ky dich vu va tac vu"
+    giai_thich @(
+        "Dang ky Windows Service cho Bridge va ba Scheduled Task (clicker, bao tri, tinh hinh).",
+        "DAY LA THU KHOI DONG BRIDGE. Phai xong truoc khi gan EA, vi EA gan len chart khi chua",
+        "ai nghe cong 8787 se khong bao gio len ONLINE.",
+        "Se hoi mat khau tai khoan autologon. Bo trong thi dich vu chay bang LocalSystem."
+    )
     if ($BoQuaDichVu) { bo_qua "-BoQuaDichVu"; return }
     if (Get-Service $TenDichVu -ErrorAction SilentlyContinue) {
         bo_qua "dich vu $TenDichVu da dang ky"; return
@@ -483,6 +576,10 @@ function buoc_dich_vu() {
 
 function buoc_kiem_tra() {
     buoc_moi "Kiem tra tong the"
+    giai_thich @(
+        "Chay kiem-tra.ps1: chin muc, ma thoat bang so muc hong.",
+        "Day la lenh ban se chay moi lan dang nhap VPS ve sau."
+    )
     $kt = Join-Path $PSScriptRoot "kiem-tra.ps1"
     if (-not (Test-Path $kt)) { $kt = Join-Path $ThuMuc "scripts\kiem-tra.ps1" }
     if (-not (Test-Path $kt)) { canh "khong thay kiem-tra.ps1"; return }
