@@ -54,7 +54,7 @@ $script:TongBuoc = 11
 # Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
 # Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
 # nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
-$script:PhienBan = "2026-09-07b"
+$script:PhienBan = "2026-09-08"
 
 # So sanh khoa giua config.toml va config.example.toml. Viet bang Python chu khong phai
 # PowerShell vi PS 5.1 khong co bo doc TOML nao, va tomllib thi da nam san trong venv.
@@ -472,11 +472,11 @@ function in_buoc_tiep() {
     Write-Host @"
  CHAY MOT LENH NAY, no hoi xac nhan tung buoc roi tu lam theo dung thu tu:
 
-      .\scripts\tro-ly.ps1 -ThuMuc "$ThuMuc"
+      $ThuMuc\scripts\tro-ly.ps1 -ThuMuc "$ThuMuc"
 
- No tao agent, ghi token clicker thang vao config.toml, tao dong client, bien
- dich EA, cho EA len ONLINE, khai bao anh xa symbol, dang ky dich vu, roi chay
- kiem tra. Chay lai bao nhieu lan cung duoc.
+ No tao agent, ghi token clicker thang vao config.toml, tao dong client, dang ky
+ dich vu (Bridge bat dau chay o day), bien dich EA, cho EA len ONLINE, khai bao
+ anh xa symbol, roi chay kiem tra. Chay lai bao nhieu lan cung duoc.
 
  ---------------------------------------------------------------------------
  Hoac lam tay, DUNG THU TU NAY:
@@ -492,17 +492,18 @@ function in_buoc_tiep() {
  2. Tao dong client -- THIEU BUOC NAY LA anh-xa-symbol BAO 'Khong co client':
       $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI
 
- 3. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
+ 3. Dang ky dich vu va tac vu. PHAI LAM TRUOC BUOC 4: day la thu khoi dong Bridge,
+    va EA gan len chart khi chua ai nghe cong 8787 se khong bao gio len ONLINE.
+      $ThuMuc\scripts\tao-dich-vu.ps1 -ThuMuc "$ThuMuc"
 
- 4. Khai bao anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang:
+ 4. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
+
+ 5. Khai bao anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang:
       $venvPy -m bridge.admin anh-xa-symbol --help
     (can EA Client dang chay va symbol da keo vao Market Watch)
 
- 5. Dang ky dich vu va tac vu:
-      .\scripts\tao-dich-vu.ps1 -ThuMuc "$ThuMuc"
-
  6. Moi lan dang nhap:
-      .\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
+      $ThuMuc\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
 
  Chi tiet tung buoc: docs\CAI-DAT-VPS.md
 "@
