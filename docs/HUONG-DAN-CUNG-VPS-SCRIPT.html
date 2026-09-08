@@ -213,10 +213,17 @@ token của agent (chỉ hiện đúng một lần).</p>
 
 <!-- =================================================================== -->
 <h3>Trợ lý: một lệnh thay cho cả các mục 3-6</h3>
-<pre><code>C:\CopyBridge\scripts	ro-ly.ps1 -ThuMuc C:\CopyBridge</code></pre>
+<p>Trước khi chạy, mở <strong>một cửa sổ PowerShell khác</strong> và lấy sẵn hai tiêu đề cửa sổ
+MT5 — trợ lý sẽ hỏi số tài khoản và chuỗi tiêu đề, cả hai đều nằm trong đó:</p>
+<pre><code>Get-Process terminal64 | Select-Object Id, MainWindowTitle</code></pre>
+<p>Tiêu đề có dạng <code>538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]</code> —
+<strong>số tài khoản nằm ngay đầu</strong>. Có sẵn hai dòng đó bên cạnh thì điền một mạch,
+không phải dừng giữa chừng.</p>
+<pre><code>C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge</code></pre>
 <p>Script dẫn qua đúng thứ tự của bốn mục tiếp theo: tạo agent, <strong>ghi token clicker thẳng
 vào</strong> <code>config.toml</code> (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client,
-biên dịch EA, chờ EA lên <code>ONLINE</code>, khai báo ánh xạ symbol, đăng ký dịch vụ, rồi chạy
+<strong>đăng ký dịch vụ</strong> (Bridge bắt đầu chạy ở đây), biên dịch EA, chờ EA lên
+<code>ONLINE</code>, khai báo ánh xạ symbol, rồi chạy
 <code>kiem-tra.ps1</code>. Mỗi bước hỏi trước khi làm; bước nào xong rồi thì in <code>BO QUA</code>,
 nên <strong>chạy lại bao nhiêu lần cũng được</strong>.</p>
 

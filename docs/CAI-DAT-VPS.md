@@ -83,14 +83,25 @@ với token của agent).
 
 ## 2. Trợ lý: một lệnh, hỏi xác nhận từng bước
 
+Trước khi chạy, mở **một cửa sổ PowerShell khác** và lấy sẵn hai tiêu đề cửa sổ MT5 —
+trợ lý sẽ hỏi số tài khoản và chuỗi tiêu đề, cả hai đều nằm trong đó:
+
 ```powershell
-C:\CopyBridge\scripts	ro-ly.ps1 -ThuMuc C:\CopyBridge
+Get-Process terminal64 | Select-Object Id, MainWindowTitle
+```
+
+Tiêu đề có dạng `538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — **số tài khoản
+nằm ngay đầu**. Có sẵn hai dòng đó bên cạnh thì điền một mạch, không phải dừng giữa chừng.
+
+```powershell
+C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge
 ```
 
 Script dẫn qua đúng thứ tự của các mục 3-7 bên dưới: tạo agent, **ghi token clicker thẳng vào**
-`config.toml` (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client, biên dịch EA, chờ EA
-lên `ONLINE`, khai báo ánh xạ symbol, đăng ký dịch vụ, rồi chạy `kiem-tra.ps1`. Mỗi bước hỏi
-trước khi làm, và bước nào xong rồi thì in `BO QUA` — **chạy lại bao nhiêu lần cũng được**.
+`config.toml` (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client, **đăng ký dịch vụ**
+(Bridge bắt đầu chạy ở đây), biên dịch EA, chờ EA lên `ONLINE`, khai báo ánh xạ symbol, rồi chạy
+`kiem-tra.ps1`. Mỗi bước hỏi trước khi làm, và bước nào xong rồi thì in `BO QUA` —
+**chạy lại bao nhiêu lần cũng được**.
 
 Nó dừng lại đúng hai chỗ, vì hai việc đó không tự động hoá được: **gắn EA lên chart** trong giao
 diện MT5, và **bấm `RUNNING`**.
