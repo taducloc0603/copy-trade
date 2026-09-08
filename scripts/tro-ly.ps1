@@ -217,7 +217,14 @@ function buoc_nen() {
 function buoc_thong_so() {
     buoc_moi "Thong so cua he thong"
     giai_thich @(
-        "Hoi mot luot tat ca gia tri ma cac buoc sau can. Enter la lay mac dinh."
+        "Hoi mot luot tat ca gia tri ma cac buoc sau can. Enter la lay mac dinh.",
+        "",
+        "MO MOT CUA SO PowerShell KHAC va chay lenh nay truoc -- no cho ban gan het",
+        "nhung gia tri sap phai dien:",
+        "  Get-Process terminal64 | Select-Object Id, MainWindowTitle",
+        "",
+        "Tieu de MT5 co dang:  538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
+        "                      ^^^^^^ so tai khoan nam ngay dau tieu de"
     )
 
     Write-Host ""
@@ -228,7 +235,10 @@ function buoc_thong_so() {
         "  2. EA dong dau len lenh no tu mo. Broker khong sua duoc truong nay, khac voi comment.",
         "  3. Phan biet lenh bot voi lenh mo tay -- chi phia Master.",
         "KHONG loc lenh nao duoc copy: lenh ban mo TAY tren Master van duoc copy sang Client.",
-        "De mac dinh, tru khi ban chay nhieu he thong bot song song tren cung may."
+        "",
+        "Vi du   : 770001",
+        "Cach lay: khong phai tra o dau -- ban tu chon. Cu Enter lay mac dinh.",
+        "          Chay he thong bot thu hai tren cung may thi doi so khac, vi du 770002."
     )
     $script:Magic = hoi_so "Magic number" 770001
 
@@ -237,7 +247,11 @@ function buoc_thong_so() {
         "SO TAI KHOAN -- so tai khoan MT5 cua tung terminal. Day la KHOA AN TOAN, khong",
         "phai nhan: luc EA bat tay, Bridge so so no khai bao voi so ban dien o day, lech thi",
         "TU CHOI ket noi (ERR_ACCOUNT_MISMATCH). Dien nham thi EA khong bao gio len ONLINE du",
-        "token dung -- va trieu chung nhin y het 'sai token'."
+        "token dung -- va trieu chung nhin y het 'sai token'.",
+        "",
+        "Vi du   : 538217",
+        "Cach lay: so nam ngay DAU tieu de cua so MT5 (xem lenh o tren).",
+          "          Hoac trong MT5: Navigator (Ctrl+N) > muc Accounts, dong dang in dam."
     )
     $script:LoginMaster = hoi_so "So tai khoan Master"
     $script:LoginClient = hoi_so "So tai khoan Client"
@@ -247,15 +261,25 @@ function buoc_thong_so() {
         "TIEU DE CUA SO CLIENT -- clicker tim cua so terminal Client bang chuoi con nay de bam",
         "lenh vao do. Chuoi phai khop terminal CLIENT va KHONG khop terminal Master; khop nham",
         "thi clicker bam lenh vao dung cai terminal khong nen bam, va khong co gi bao ban biet.",
-        "So tai khoan la chuoi phan biet an toan nhat. Xem tieu de dang hien bang:",
-        "  Get-Process terminal64 | Select-Object Id, MainWindowTitle"
+        "So tai khoan la chuoi phan biet an toan nhat.",
+        "",
+        "Vi du   : tieu de la  538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
+        "          thi dien    538217",
+        "Cach lay: Enter de lay so tai khoan Client vua dien o tren -- gan nhu luon dung,",
+        "          vi tieu de MT5 bat dau bang so tai khoan.",
+        "Luu y   : chuoi khop NHIEU HON MOT cua so thi clicker tu choi chay chu khong doan.",
+        "          Nen dung so tai khoan, dung dung chuoi chung nhu MetaTrader hay Demo."
     )
     $script:TieuDe = hoi_chuoi "Mau tieu de cua so terminal Client" ([string] $script:LoginClient)
 
     Write-Host ""
     giai_thich @(
         "TEN AGENT -- nhan dinh danh cua ba tien trinh trong database va tren dashboard.",
-        "Chi la ten goi, dat gi cung chay. Cu Enter ca ba."
+        "Chi la ten goi, dat gi cung chay. Cu Enter ca ba.",
+        "",
+        "Vi du   : AG-MASTER / AG-CLIENT / AG-CLICKER",
+        "Cach lay: khong phai tra o dau. Chi doi khi ban chay nhieu cap tren cung mot",
+          "          Bridge, luc do dat AG-MASTER-2, AG-CLIENT-2..."
     )
     $script:IdMaster  = hoi_chuoi "Ten agent Master"  "AG-MASTER"
     $script:IdClient  = hoi_chuoi "Ten agent Client"  "AG-CLIENT"
@@ -265,7 +289,10 @@ function buoc_thong_so() {
     giai_thich @(
         "MA CLIENT -- ma cua dong cau hinh NGHIEP VU phia Client: copy nguoc hay cung chieu, he",
         "so volume, duong mo lenh. Khac voi ten agent (la ket noi). Ban se go lai ma nay trong",
-        "cac lenh anh-xa-symbol va cau-hinh-client. Cu Enter."
+        "cac lenh anh-xa-symbol va cau-hinh-client. Cu Enter.",
+        "",
+        "Vi du   : CL-01",
+        "Cach lay: khong phai tra o dau. Nhieu Client thi CL-02, CL-03..."
     )
     $script:IdClientAcc = hoi_chuoi "Ma client" "CL-01"
     ok "da ghi nhan"
