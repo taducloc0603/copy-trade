@@ -36,13 +36,11 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 
 ---
 
-## 2. Cài đặt
+## 2. Cấu hình
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-Copy-Item config.example.toml config.toml     # roi dien gia tri that
-```
+> Các bước **cài đặt** không nằm ở đây. Chọn tài liệu trong bảng ở đầu
+> [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này chỉ giải thích các khoá cấu hình và **vì sao**
+> chúng như vậy — thứ bạn cần khi đang vận hành, không phải khi đang cài.
 
 `config.toml` nằm trong `.gitignore`. Các khoá:
 
@@ -57,7 +55,16 @@ db_path = "data/bridge.db"
 dashboard_password = "..."
 telegram_token   = ""    # de trong thi kenh canh bao im lang, khong loi
 telegram_chat_id = ""
+
+[clicker]                # token clicker dat o DAY, khong phai tren dong lenh
+token = "..."
+account_login = 538217   # so tai khoan Client
+terminal_title = "538217"  # mau tieu de cua so terminal Client
 ```
+
+> **Đừng truyền token clicker bằng `--token`.** Dòng lệnh của một tiến trình là thứ mọi tài
+> khoản trên cùng máy đọc được bằng `Get-CimInstance Win32_Process`, mà clicker chạy 24/7.
+> Thứ tự ưu tiên: `--token` > biến môi trường `COPYBRIDGE_CLICKER_TOKEN` > mục này.
 
 > **Bridge sẽ TỪ CHỐI khởi động** nếu `host` không phải loopback mà `dashboard_password` để
 > trống. Không có mật khẩu thì dashboard không bắt đăng nhập, và khi đó bất kỳ ai chạm được tới
@@ -216,6 +223,12 @@ sống trong một phiên người dùng đang tồn tại.
 
 > Chạy tất cả trên một VPS thì đọc **mục 5b** thay cho mục này; phần lớn mục 6 không áp
 > dụng, và mục 5b nói rõ chỗ nào thay bằng gì.
+
+> **Hướng dẫn từng bước cho kiến trúc hai máy:**
+> [HUONG-DAN-KHAC-VPS.html](HUONG-DAN-KHAC-VPS.html) — bố trí máy A/máy B, Tailscale, luật
+> firewall, `host = "0.0.0.0"` kèm mật khẩu bắt buộc. Đó là nơi duy nhất mô tả cách bố trí
+> này. Danh sách dưới đây là **những gì chưa ai kiểm chứng**, và tài liệu kia cũng viết theo
+> thiết kế chứ không theo kinh nghiệm chạy thật.
 
 Những mục dưới đây **chưa được thực hiện hay kiểm chứng** ở lượt này vì cần môi trường thật
 (máy thứ ba, VPS, quyền quản trị mạng):

@@ -60,7 +60,7 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
 <body>
 <header><div class="bao">
   <h1>MT5 Copy Bridge — Cài trên MỘT VPS bằng script</h1>
-  <p class="ghi-chu">Cài đặt, vận hành và cập nhật · Cả hệ thống chạy trên cùng một máy · Bản 07-09-2026</p>
+  <p class="ghi-chu">Cài đặt, vận hành và cập nhật · Cả hệ thống chạy trên cùng một máy · Bản 08-09-2026</p>
 </div></header>
 <div class="bao">
 
@@ -73,8 +73,10 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
       phải lựa chọn.</li>
     <li><strong>Chưa ai đo được trường hợp ngắt phiên Remote Desktop.</strong> Bạn chạy trên VPS
       rồi thoát ra — chưa ai chứng minh phần mềm còn mở lệnh được hay không.</li>
-    <li><strong>Không có cảnh báo gửi ra ngoài.</strong> Có sự cố thì bạn chỉ biết khi tự mở ra
-      xem.</li>
+    <li><strong>Kênh cảnh báo Telegram chưa ai gửi thử tin thật.</strong> Có kênh, nhưng mặc
+      định <strong>tắt</strong> — phải tự khai <code>telegram_token</code> và
+      <code>telegram_chat_id</code> trong <code>config.toml</code>, và chỉ mức ERROR/CRITICAL
+      mới đi ra. Chưa khai thì có sự cố bạn chỉ biết khi tự mở ra xem.</li>
   </ul>
   <p>Danh sách đầy đủ ở <a href="#gioi-han">mục 10</a>.</p>
 </div>
@@ -89,6 +91,18 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
   <p>Kiến trúc vẫn y hệt: Bridge, clicker và <strong>cả hai terminal MT5 cùng một máy</strong>.
   Agent nối tới Bridge qua <code>127.0.0.1</code>, nên không cần Tailscale, không cần luật firewall,
   không cần máy thứ ba để kiểm.</p>
+</div>
+
+<div class="hop lam" id="chon-ban">
+  <span class="nhan">Bốn tài liệu cài đặt — bản nào dành cho bạn</span>
+  <table>
+    <tr><th>Bạn muốn</th><th>Đọc bản</th></tr>
+    <tr><td>Cài trên <strong>một</strong> VPS, để script làm hộ — <strong>khuyến nghị</strong></td><td><strong>Bạn đang đọc bản này.</strong></td></tr>
+    <tr><td>Bản tra cứu ngắn của đường trên, chỉ các lệnh cần gõ</td><td><a href="CAI-DAT-VPS.md">CAI-DAT-VPS.md</a></td></tr>
+    <tr><td>Cài trên <strong>một</strong> VPS <strong>bằng tay</strong>, để hiểu từng bước đang làm gì</td><td><a href="HUONG-DAN-CUNG-VPS.html">Cài đặt trên MỘT VPS</a></td></tr>
+    <tr><td>Master và Client ở <strong>hai</strong> VPS khác nhau — <strong>chưa ai chạy thử</strong></td><td><a href="HUONG-DAN-KHAC-VPS.html">Cài đặt trên HAI VPS</a></td></tr>
+  </table>
+  <p class="ghi-chu">Bạn đang đọc: <strong>Cài trên MỘT VPS bằng script</strong>. Bốn bản trên đều đi tới cùng một kết quả; khác nhau ở việc script làm hộ bao nhiêu và chạy trên mấy máy.</p>
 </div>
 
 <div class="muc-luc">
@@ -401,6 +415,17 @@ C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo    # go het dich vu va tac vu</code>
   <li><strong>Bật nút Algo Trading trên cả hai terminal</strong> (nút trên thanh công cụ phải sáng
     xanh).</li>
 </ol>
+
+<div class="hop do">
+  <span class="nhan">Khai địa chỉ Bridge vào danh sách cho phép của MT5</span>
+  <p>MT5 chỉ cho EA mở kết nối tới những địa chỉ <strong>đã khai trước</strong>. Chưa khai thì
+  <code>SocketConnect</code> hỏng ngay, EA <strong>không bao giờ lên <code>ONLINE</code></strong>,
+  và triệu chứng giống hệt sai token — rất khó đoán.</p>
+  <p>Trên <strong>cả hai</strong> terminal: <em>Tools → Options → Expert Advisors</em>, tick
+  <strong>Allow WebRequest for listed URL</strong> rồi thêm một dòng <code>127.0.0.1</code>. Cổng không cần ghi.</p>
+  <p class="ghi-chu">Không cần tick <em>Allow DLL imports</em> — EA dùng socket sẵn có của MQL5,
+  không nạp DLL nào.</p>
+</div>
 
 <div class="hop do">
   <span class="nhan">Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI</span>
@@ -729,8 +754,43 @@ Start-Service CopyBridge</code></pre>
       <td>Điền mục <code>[clicker]</code> trong <code>config.toml</code></td></tr>
   <tr><td>clicker thoát mã 3</td><td>Đã có một clicker khác lái terminal đó</td>
       <td>Đúng thiết kế. Tìm và tắt tiến trình kia</td></tr>
+  <tr><td><code>import bridge, clicker</code> thất bại</td><td>Gói cài không ở chế độ editable</td>
+      <td><code>pyproject.toml</code> chỉ khai <code>packages = ["bridge"]</code>, nên bắt buộc
+        <code>pip install -e .</code></td></tr>
+  <tr><td>Dịch vụ không dừng sạch</td><td><code>AppStopMethodConsole</code> bị đổi</td>
+      <td>Bridge chỉ dừng sạch qua sự kiện Ctrl+C. Xem <code>scripts/tao-dich-vu.ps1</code></td></tr>
+  <tr><td>Task Clicker chạy nhưng không bấm được gì</td><td><code>LogonType</code> sai</td>
+      <td>Phải là <code>Interactive</code>, không phải <code>S4U</code> hay <code>Password</code></td></tr>
+  <tr><td>EA không bao giờ lên <code>ONLINE</code></td><td>Chưa khai địa chỉ Bridge trong Tools → Options → Expert Advisors, hoặc Bridge chưa chạy</td>
+      <td>Tick <strong>Allow WebRequest for listed URL</strong> và thêm <code>127.0.0.1</code> — xem <a href="#mt5">mục 5</a>. Triệu chứng giống hệt sai token</td></tr>
   <tr><td>Master vào lệnh mà Client không copy</td><td><code>run_mode = PAUSED</code>, clicker chưa chạy, hoặc thiếu ánh xạ symbol</td>
       <td>Xem dashboard rồi <a href="#symbol">mục 6</a></td></tr>
+</table>
+
+<h3>Sự cố lúc chạy — theo mã cảnh báo</h3>
+<p>Bảng trên là lỗi <strong>lúc cài</strong>. Bảng này là lỗi <strong>lúc chạy</strong>, khoá theo
+mã cảnh báo hiện trên trang theo dõi. Các ví dụ có số đặt ở
+<a href="HUONG-DAN-CUNG-VPS.html#vi-du">mục &ldquo;Ví dụ các trường hợp&rdquo; của bản làm tay</a>.</p>
+<table>
+  <tr><th>Hiện tượng</th><th>Thường là do</th><th>Xử lý</th></tr>
+  <tr><td><code>NO_SYMBOL_MAPPING</code></td><td>Chưa khai ánh xạ symbol</td>
+      <td><strong>Lỗi hay gặp nhất khi cài lần đầu.</strong> Xem <a href="#symbol">mục 6</a></td></tr>
+  <tr><td><code>TRADE_NOT_ALLOWED</code></td><td>Terminal không đặt được lệnh</td>
+      <td><strong>Mở tab Experts trong MT5 để đọc lý do</strong> — EA ghi rõ chỗ nào đang chặn trong
+        bốn chỗ: nút Algo Trading, ô Allow Algo Trading của EA, và hai cài đặt phía sàn</td></tr>
+  <tr><td><code>CLIENT_TRADE_NOT_ALLOWED</code></td><td>Phần mềm từ chối mở vì Client sẽ không đóng được</td>
+      <td>Đúng thiết kế: <em>không mở cái không đóng được</em></td></tr>
+  <tr><td><code>ORPHANED_MASTER</code></td><td>Client đã đóng nhưng Master còn mở — mất cân bằng</td>
+      <td>Bạn quyết định: đóng Master, hay mở lại Client. Phần mềm cố ý không tự đoán</td></tr>
+  <tr><td><code>UI_OPEN_BUSY</code></td><td>Hai lệnh Master quá gần nhau</td>
+      <td>Đúng thiết kế: lệnh sau bị bỏ qua chứ không xếp hàng</td></tr>
+  <tr><td><code>VOLUME_BELOW_MIN</code></td><td>Hệ số nhân làm khối lượng nhỏ hơn mức tối thiểu của sàn Client</td>
+      <td>Sửa <code>--multiplier</code> bằng <code>cau-hinh-client</code></td></tr>
+  <tr><td>Lệnh bị từ chối, mã <code>10027</code></td><td>Terminal chưa bật quyền giao dịch</td>
+      <td>Xem lại hai công tắc Algo Trading</td></tr>
+  <tr><td>Có <code>sai lech dang cho</code></td><td>Sổ sách lệch với thực tế trên terminal</td>
+      <td>Mở tab <strong>Sai lệch</strong> trên trang theo dõi, <strong>đọc bằng chứng rồi mới
+        duyệt</strong>. Đừng duyệt hàng loạt</td></tr>
 </table>
 
 <h3>Sáu việc script không làm được</h3>

@@ -1,9 +1,17 @@
 # Cài đặt lên VPS Windows
 
-*Tài liệu này nói **gõ gì**, ngắn gọn. Bản chi tiết cho người vận hành — kèm cả quy trình
-**cập nhật** khi có mã nguồn mới — là
-[HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html). Muốn biết **vì sao** thì đọc
-[RUNBOOK.md](RUNBOOK.md) mục 5b.*
+## Bốn tài liệu cài đặt — bản nào dành cho bạn
+
+| Bạn muốn | Đọc bản |
+|---|---|
+| Cài trên **một** VPS, để script làm hộ — **khuyến nghị** | [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html) |
+| Bản tra cứu ngắn của đường trên, chỉ các lệnh cần gõ | **Bạn đang đọc bản này.** |
+| Cài trên **một** VPS **bằng tay**, để hiểu từng bước đang làm gì | [HUONG-DAN-CUNG-VPS.html](HUONG-DAN-CUNG-VPS.html) |
+| Master và Client ở **hai** VPS khác nhau — **chưa ai chạy thử** | [HUONG-DAN-KHAC-VPS.html](HUONG-DAN-KHAC-VPS.html) |
+
+Bốn bản đều đi tới cùng một kết quả; khác nhau ở việc script làm hộ bao nhiêu và chạy trên mấy
+máy. Bản này nói **gõ gì**, ngắn gọn. Muốn biết **vì sao** thì đọc
+[RUNBOOK.md](RUNBOOK.md) mục 5b.
 
 Kiến trúc ở đây là **tất cả trên một VPS**: Bridge, clicker và cả hai terminal MT5 cùng một máy.
 Agent nối tới Bridge qua `127.0.0.1`, nên không cần Tailscale, không cần luật firewall, không cần
@@ -214,7 +222,11 @@ Script không làm hộ phần này.
    ```
 3. Chép `.ex5` vào `MQL5\Experts` của từng terminal, gắn EA lên chart, điền `AgentToken`
    (`BridgeHost` để `127.0.0.1`, `BridgePort` để `8787`).
-4. **Bật nút Algo Trading trên cả hai terminal.**
+4. **Khai địa chỉ Bridge vào danh sách cho phép**, trên **cả hai** terminal: Tools → Options →
+   Expert Advisors, tick **Allow WebRequest for listed URL** rồi thêm dòng `127.0.0.1`. MT5 chỉ
+   cho EA mở kết nối tới địa chỉ đã khai trước; chưa khai thì EA **không bao giờ lên `ONLINE`**
+   và triệu chứng giống hệt sai token. Không cần tick *Allow DLL imports*.
+5. **Bật nút Algo Trading trên cả hai terminal.**
 
 > **Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI.** Đổi khung thời gian chỉ gọi lại
 > `OnInit` trên bản đã nạp trong bộ nhớ — MT5 **không** đọc lại `.ex5` từ đĩa. Dấu hiệu nạp đúng
@@ -283,6 +295,18 @@ cảnh báo đỏ nhắc biên dịch lại và **gắn lại EA**.
 Script **không tự `stash`, không tự `reset --hard`**. `git pull` hỏng vì có sửa cục bộ thì nó dừng
 và in `git status` cho bạn xử lý.
 
+> **Bốn tình huống bên dưới không có ở đây**, vì chúng cần nhiều bước và dễ làm hỏng dữ liệu.
+> Đọc chương 9 của
+> [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html#cap-nhat):
+>
+> - **Đừng cập nhật khi đang có cặp mở** (9.1) — cửa sổ an toàn là lúc `tinh-hinh` báo 0 cặp
+>   hedge. Tạm dừng và chờ trước đã.
+> - **Bản mới đổi cấu trúc database** (9.4) — migration là một chiều, không có đường hạ cấp.
+> - **Bản mới thêm khoá cấu hình** (9.5) — script không bao giờ tự sửa `config.toml` của bạn.
+> - **Lùi bản sau khi migration đã chạy** (9.8, trường hợp B) — phải phục hồi từ bản sao lưu
+>   và **xoá cả `-wal` lẫn `-shm`**, nếu không là trộn hai thời điểm khác nhau. `git checkout`
+>   một mình **không đủ**.
+
 ---
 
 ## 10. Những gì script KHÔNG làm được
@@ -323,6 +347,7 @@ tài khoản bị xử lý. Đọc điều khoản của cả hai broker.
 | `.venv san co khong dung duoc` | Chép cả `.venv` qua RDP; đường dẫn tuyệt đối bên trong vẫn trỏ về máy cũ | Chạy lại với `-LamMoiVenv` |
 | `import bridge, clicker` thất bại | Gói cài không ở chế độ editable | `pyproject.toml` chỉ khai báo `packages = ["bridge"]`; phải `pip install -e .` |
 | Bridge từ chối khởi động, lỗi parse TOML | `config.toml` có BOM | Ghi lại bằng UTF-8 **không BOM** |
+| EA không bao giờ lên `ONLINE`, log EA báo lỗi kết nối | Chưa khai địa chỉ Bridge trong Tools → Options → Expert Advisors | Tick **Allow WebRequest for listed URL**, thêm `127.0.0.1` (mục 6 bước 4) |
 | Dịch vụ không lên | Xem `logs\service-err.log` | Thường là `config.toml` sai |
 | Dịch vụ không dừng sạch | `AppStopMethodConsole` bị đổi | Bridge chỉ dừng sạch qua sự kiện Ctrl+C; xem `tao-dich-vu.ps1` |
 | Task Clicker chạy mà không bấm được gì | `LogonType` sai, hoặc UIPI | `LogonType` phải là `Interactive`, không phải `S4U`/`Password`; và mức toàn vẹn clicker phải ≥ MT5 |

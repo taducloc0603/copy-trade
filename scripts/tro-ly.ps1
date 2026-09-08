@@ -646,7 +646,7 @@ function buoc_ket() {
     if ($canhBao) {
         Get-Content $canhBao | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
     } else {
-        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 8."
+        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 10."
     }
 }
 

@@ -60,7 +60,7 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
 <body>
 <header><div class="bao">
   <h1>MT5 Copy Bridge — Cài đặt trên MỘT VPS</h1>
-  <p class="ghi-chu">Cả hai terminal và toàn bộ phần mềm chạy trên cùng một máy · Bản 06-09-2026</p>
+  <p class="ghi-chu">Cả hai terminal và toàn bộ phần mềm chạy trên cùng một máy · Bản 08-09-2026</p>
 </div></header>
 <div class="bao">
 
@@ -73,8 +73,10 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
       không phải lựa chọn.</li>
     <li><strong>Chưa đo được trường hợp ngắt phiên Remote Desktop.</strong> Nếu bạn chạy trên VPS
       và thoát ra, chưa ai chứng minh phần mềm còn mở lệnh được hay không.</li>
-    <li><strong>Không có cảnh báo gửi ra ngoài.</strong> Có sự cố thì bạn chỉ biết khi tự mở ra
-      xem.</li>
+    <li><strong>Kênh cảnh báo Telegram chưa ai gửi thử tin thật.</strong> Có kênh, nhưng mặc
+      định <strong>tắt</strong> — phải tự khai <code>telegram_token</code> và
+      <code>telegram_chat_id</code> trong <code>config.toml</code>, và chỉ mức ERROR/CRITICAL
+      mới đi ra. Chưa khai thì có sự cố bạn chỉ biết khi tự mở ra xem.</li>
   </ul>
   <p>Danh sách đầy đủ ở cuối tài liệu.</p>
 </div>
@@ -85,6 +87,18 @@ svg{max-width:100%;height:auto;display:block;margin:16px 0}
   đơn giản nhất và là cách <strong>duy nhất đã được chạy thử đầy đủ</strong>.</p>
   <p>Nếu hai tài khoản buộc phải ở hai máy khác nhau, dùng bản <strong>Cài đặt trên hai
   VPS</strong> thay cho bản này.</p>
+</div>
+
+<div class="hop lam" id="chon-ban">
+  <span class="nhan">Bốn tài liệu cài đặt — bản nào dành cho bạn</span>
+  <table>
+    <tr><th>Bạn muốn</th><th>Đọc bản</th></tr>
+    <tr><td>Cài trên <strong>một</strong> VPS, để script làm hộ — <strong>khuyến nghị</strong></td><td><a href="HUONG-DAN-CUNG-VPS-SCRIPT.html">Cài trên MỘT VPS bằng script</a></td></tr>
+    <tr><td>Bản tra cứu ngắn của đường trên, chỉ các lệnh cần gõ</td><td><a href="CAI-DAT-VPS.md">CAI-DAT-VPS.md</a></td></tr>
+    <tr><td>Cài trên <strong>một</strong> VPS <strong>bằng tay</strong>, để hiểu từng bước đang làm gì</td><td><strong>Bạn đang đọc bản này.</strong></td></tr>
+    <tr><td>Master và Client ở <strong>hai</strong> VPS khác nhau — <strong>chưa ai chạy thử</strong></td><td><a href="HUONG-DAN-KHAC-VPS.html">Cài đặt trên HAI VPS</a></td></tr>
+  </table>
+  <p class="ghi-chu">Bạn đang đọc: <strong>Cài đặt trên MỘT VPS (làm tay)</strong>. Bốn bản trên đều đi tới cùng một kết quả; khác nhau ở việc script làm hộ bao nhiêu và chạy trên mấy máy.</p>
 </div>
 
 <div class="muc-luc">
@@ -224,7 +238,20 @@ web_port = 8080
 db_path = "data/bridge.db"
 
 [security]
-dashboard_password = "dat-mot-mat-khau-manh-o-day"</code></pre>
+dashboard_password = "dat-mot-mat-khau-manh-o-day"
+
+[clicker]
+token = ""
+account_login = 538217
+terminal_title = "538217"</code></pre>
+<div class="hop cam">
+  <span class="nhan">Mục <code>[clicker]</code> điền sau</span>
+  <p>Để <code>token</code> trống lúc này — bạn chưa cấp mã. Bước
+  <em>Tạo tài khoản kết nối</em> bên dưới sẽ in ra mã của <code>AG-CLICKER</code>, lúc đó quay lại
+  dán vào đây. <code>account_login</code> là số tài khoản Client, còn
+  <code>terminal_title</code> là một mẩu tiêu đề cửa sổ terminal Client — thường chính là số tài
+  khoản đó.</p>
+</div>
 <p class="ghi-chu">Với <code>host = "127.0.0.1"</code>, trang theo dõi chỉ mở được <em>từ chính
 máy đó</em>, nên không ai bên ngoài chạm tới được.</p>
 </li>
@@ -261,6 +288,24 @@ Phải báo <strong>0 errors</strong>.</p>
 </li>
 
 <li>
+<h3>Tạo dòng client</h3>
+<div class="hop do">
+  <span class="nhan">Bỏ qua bước này thì không copy được lệnh nào</span>
+  <p><code>AG-CLIENT</code> mới chỉ là một kết nối. Cấu hình <strong>nghiệp vụ</strong> của Client
+  nằm ở một dòng riêng trong bảng <code>client_account</code>. Thiếu dòng này thì lệnh khai ánh xạ
+  symbol ở bước dưới báo <code>Khong co client CL-01</code>, và không lệnh nào của Master được
+  copy.</p>
+</div>
+<pre><code>.\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI</code></pre>
+<p><code>--open-route UI</code> là mặc định và là điều bạn muốn: đường <strong>mở</strong> lệnh đi
+qua giao diện MT5 để sàn ghi nhận deal là do người bấm, nên nó <strong>bắt buộc</strong> phải có
+một agent CLICKER. Đổi về <code>EA</code> thì lệnh mở đi bằng <code>OrderSend</code> và sàn ghi
+nhận là do máy đặt.</p>
+<p class="ghi-chu">Sửa về sau dùng <code>bridge.admin cau-hinh-client</code> — lệnh đó chỉ
+<em>sửa</em> chứ không tạo.</p>
+</li>
+
+<li>
 <h3>Gắn EA lên chart</h3>
 <p>Mở chart của symbol muốn copy, rồi mở <strong>Navigator</strong>
 (<kbd>Ctrl</kbd>+<kbd>N</kbd>) và kéo EA vào chart:</p>
@@ -281,6 +326,19 @@ Phải báo <strong>0 errors</strong>.</p>
 </figure>
 <p>Chart phải để đúng symbol muốn copy — phần mềm chỉ copy được <strong>một symbol</strong>, đúng
 cái chart đang mở.</p>
+</li>
+
+<li>
+<h3>Khai địa chỉ Bridge vào danh sách cho phép của MT5</h3>
+<div class="hop do">
+  <span class="nhan">Bỏ bước này thì EA không bao giờ lên ONLINE</span>
+  <p>MT5 chỉ cho EA mở kết nối tới những địa chỉ <strong>đã khai trước</strong>. Chưa khai thì
+  kết nối hỏng ngay, và triệu chứng <strong>giống hệt sai token</strong> — rất khó đoán.</p>
+</div>
+<p>Trên <strong>cả hai</strong> terminal: <em>Tools → Options → Expert Advisors</em>, tick
+<strong>Allow WebRequest for listed URL</strong> rồi thêm một dòng <code>127.0.0.1</code>. Cổng không cần ghi.</p>
+<p class="ghi-chu">Không cần tick <em>Allow DLL imports</em> — EA dùng socket sẵn có của MQL5,
+không nạp DLL nào.</p>
 </li>
 
 <li>
@@ -310,7 +368,14 @@ cái chart đang mở.</p>
 <p>Cửa sổ 1 — Bridge:</p>
 <pre><code>.\.venv\Scripts\python.exe -m bridge</code></pre>
 <p>Cửa sổ 2 — clicker (thay mã và số tài khoản Client):</p>
-<pre><code>.\.venv\Scripts\python.exe -m clicker --token &lt;MA-CUA-AG-CLICKER&gt; --account-login 538217 --terminal-title 538217</code></pre>
+<pre><code>.\.venv\Scripts\python.exe -m clicker</code></pre>
+<div class="hop cam">
+  <span class="nhan">Đừng truyền mã trên dòng lệnh</span>
+  <p>clicker tự đọc <code>token</code>, <code>account_login</code> và <code>terminal_title</code>
+  từ mục <code>[clicker]</code> trong <code>config.toml</code>. Có tham số <code>--token</code>
+  nhưng <strong>đừng dùng</strong>: dòng lệnh của một tiến trình là thứ mọi tài khoản trên cùng máy
+  đọc được bằng <code>Get-CimInstance Win32_Process</code>, mà clicker thì chạy suốt ngày.</p>
+</div>
 </li>
 
 <li>
@@ -616,8 +681,11 @@ tạo để kiểm chứng.</p>
     <strong>Hãy tự thử trên demo</strong>: vào lệnh, ngắt RDP, vài phút sau vào lại kiểm.</td>
 </tr>
 <tr>
-  <td><strong>Không có cảnh báo gửi ra ngoài</strong></td>
-  <td>Không có tin nhắn hay email khi gặp sự cố. Phải tự chạy <code>tinh-hinh</code>.</td>
+  <td><strong>Kênh cảnh báo ngoài chưa được kiểm chứng</strong></td>
+  <td>Có kênh Telegram, nhưng mặc định <strong>tắt</strong> và <strong>chưa ai gửi thử một
+    tin thật</strong>. Khai <code>telegram_token</code> + <code>telegram_chat_id</code> trong
+    <code>config.toml</code> để bật; chỉ ERROR và CRITICAL mới đi ra. Chưa bật thì phải tự
+    chạy <code>tinh-hinh</code>.</td>
 </tr>
 <tr>
   <td><strong>Chưa thử mất điện đột ngột</strong></td>
