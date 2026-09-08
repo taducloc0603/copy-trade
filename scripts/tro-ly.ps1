@@ -71,7 +71,10 @@ function doc_dong() {
 }
 
 function hoi_co_khong([string] $cauHoi, [bool] $macDinh = $true) {
-    if ($TuDongDongY) { return $macDinh -or $true }
+    # `$macDinh -or $true` luon la $true, nen -TuDongDongY tu tra loi CO cho ca nhung cau
+    # hoi mac dinh KHONG -- ke ca "di tiep du Bridge chua chay?" va "cap lai token?".
+    # Tu dong dong y nghia la lay dung mac dinh, khong phai lay dung CO.
+    if ($TuDongDongY) { return $macDinh }
     $goiY = if ($macDinh) { "[Y/n]" } else { "[y/N]" }
     while ($true) {
         Write-Host ""
@@ -309,8 +312,30 @@ function co_agent([string] $id) {
     return $false
 }
 
+function cap_lai_token([string] $id) {
+    $kq = admin @('cap-token', $id)
+    if ($kq.ma -ne 0) {
+        $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor Red }
+        throw "cap-token $id that bai."
+    }
+    $token = tach_token $kq.ra
+    if (-not $token) { throw "Cap lai token cho $id nhung khong doc duoc token tu output." }
+    ok "da cap token MOI cho $id -- token cu vua het hieu luc"
+    return $token
+}
+
 function tao_agent([string] $id, [string] $vaiTro, [int] $login) {
-    if (co_agent $id) { bo_qua "$id da ton tai"; return $null }
+    if (co_agent $id) {
+        bo_qua "$id da ton tai"
+        # Token tho chi hien dung MOT lan luc tao. Ai chay lai tro ly vi da mat token thi
+        # truoc day roi vao ngo cut: buoc nay im lang BO QUA, buoc Token in "khong co token
+        # moi", va khong cho nao noi cho ho biet duong ra. Nay hoi thang.
+        # Mac dinh KHONG, vi cap lai la giet token dang nam trong EA dang chay.
+        if (hoi_co_khong "  $id da co roi. Cap LAI token? (chi khi ban da mat token cu; EA dang chay se rot cho toi khi go token moi)" $false) {
+            return (cap_lai_token $id)
+        }
+        return $null
+    }
     $kq = admin @('them-agent', $id, '--role', $vaiTro, '--magic', "$($script:Magic)",
                   '--login', "$login")
     if ($kq.ma -ne 0) {
@@ -330,7 +355,9 @@ function buoc_agent() {
         "  MASTER  -- EA tren terminal Master, bao cao lenh ban mo",
         "  CLIENT  -- EA tren terminal Client, dong lenh va bao cao trang thai",
         "  CLICKER -- tien trinh bam giao dien MT5 de MO lenh phia Client",
-        "Agent da ton tai thi BO QUA, khong cap lai token -- cap lai la giet token dang nam trong EA."
+        "Agent da ton tai thi BO QUA. Luc do no hoi ban co muon cap LAI token khong --",
+        "mac dinh la KHONG, vi cap lai se giet token dang nam trong EA dang chay.",
+        "Chi tra loi CO khi ban da mat token cu va phai go lai vao MT5."
     )
     if (-not (hoi_co_khong "Tao $($script:IdMaster), $($script:IdClient), $($script:IdClicker)?")) {
         bo_qua "nguoi dung tu choi"; return
