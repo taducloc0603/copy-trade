@@ -165,8 +165,11 @@ function bao_dam_python() {
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         canh "Chua co Python, dang cai bang winget (vai phut)"
+        # Out-Host chu khong de tran: ham nay TRA VE $py, ma trong PowerShell gia tri tra
+        # ve la MOI thu ghi ra output stream -- ke ca stdout cua winget. De tran thi $py
+        # thanh mang va `$py.exe` o bao_dam_venv im lang thanh rong.
         winget install --id Python.Python.3.12 --exact --scope machine --silent `
-            --accept-package-agreements --accept-source-agreements
+            --accept-package-agreements --accept-source-agreements | Out-Host
         nap_lai_path
         $py = tim_python
     }
@@ -192,7 +195,7 @@ function bao_dam_git() {
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         canh "Chua co git, dang cai bang winget"
-        winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements
+        winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements | Out-Host
         nap_lai_path
     }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -221,7 +224,7 @@ function truoc_khi_cap_nhat([string] $venvPy) {
         # Sao luu TRUOC khi dung dich vu: neu buoc dung hong thi van con mot ban sao.
         Push-Location $ThuMuc
         try {
-            & $venvPy -m bridge.admin sao-luu
+            & $venvPy -m bridge.admin sao-luu | Out-Host
             if ($LASTEXITCODE -ne 0) { throw "sao-luu that bai, DUNG cap nhat." }
         } finally { Pop-Location }
         ok "da sao luu"
@@ -313,7 +316,7 @@ function bao_dam_venv($py) {
         return $venvPy
     }
 
-    & $py.exe @($py.args) -m venv (Join-Path $ThuMuc ".venv")
+    & $py.exe @($py.args) -m venv (Join-Path $ThuMuc ".venv") | Out-Host
     if (-not (Test-Path $venvPy)) { throw "Tao .venv that bai." }
     ok "da tao .venv"
     return $venvPy
@@ -462,6 +465,16 @@ function khoi_tao_va_kiem([string] $venvPy) {
 function sau_khi_cap_nhat([string] $commitCu) {
     buoc_moi "Ket thuc cap nhat"
     if (-not $CapNhat) { bo_qua "khong phai -CapNhat"; return }
+
+    # Duong lui in ra duoi day la lenh nguoi ta go luc dang hoang, nen no phai dung hoac
+    # phai im -- khong duoc in mot chuoi rac trong ra nhu that. Mot lenh native quen
+    # chuyen huong o `truoc_khi_cap_nhat` la du bien $commitCu thanh mang, va da tung xay ra.
+    if ($commitCu -is [array]) { $commitCu = $commitCu | Select-Object -Last 1 }
+    $commitCu = "$commitCu".Trim()
+    if ($commitCu -notmatch '^[0-9a-f]{40}$') {
+        if ($commitCu) { canh "khong doc duoc commit cu, bo qua duong lui" }
+        $commitCu = ""
+    }
 
     if ($commitCu) {
         $eaDoi = @(git -C $ThuMuc diff --name-only "$commitCu..HEAD" -- ea/)
