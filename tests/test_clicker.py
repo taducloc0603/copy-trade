@@ -262,8 +262,15 @@ async def test_clicker_that_bat_tay_va_tra_ack_qua_socket(
 
 # -- điểm khởi động ---------------------------------------------------------------------------
 
-def test_khong_co_dry_run_thi_tu_choi_khoi_dong() -> None:
-    """Driver chưa được đo thì không được phép chạy trên tài khoản thật."""
+def test_khong_co_dry_run_thi_tu_choi_khoi_dong(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Driver chưa được đo thì không được phép chạy trên tài khoản thật.
+
+    `doc_muc_clicker` phải bị chặn: thiếu nó thì `terminal_title` được điền từ
+    `config.toml` **thật của máy**, chốt chặn không kích hoạt, và `main()` chạy hẳn vòng
+    lặp clicker vô hạn — test không bao giờ trả về. Xanh trên máy chưa khai mục
+    `[clicker]`, treo trên đúng cái máy đã cài xong.
+    """
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
     code = main(["--token", CLICKER_TOKEN, "--account-login", str(CLICKER_LOGIN)])
     assert code == 2
 

@@ -35,6 +35,9 @@ param(
     [switch] $BoQuaGit,
     [switch] $LamMoiVenv,
     [switch] $BoQuaTest,
+    # Bo test khong duoc phep chay vo han: mot test TREO thi lan cai ket cung, khong bao
+    # gio tu thoat, va nguoi cai khong phan biet duoc "dang chay" voi "da treo".
+    [int] $GiayChoTest = 900,
     [switch] $KhongCaiPython
 )
 
@@ -424,8 +427,30 @@ function khoi_tao_va_kiem([string] $venvPy) {
         if ($BoQuaTest) {
             bo_qua "-BoQuaTest"
         } else {
-            & $venvPy -m pytest -q -m "not cham"
-            if ($LASTEXITCODE -ne 0) { throw "Bo test that bai. DUNG trien khai cho toi khi xanh." }
+            Write-Host "        Dang chay bo test -- vai phut tren VPS. Moi dau cham la mot test." -ForegroundColor DarkGray
+            Write-Host "        Muon bo qua buoc nay: chay lai voi -BoQuaTest." -ForegroundColor DarkGray
+
+            # Dung System.Diagnostics.Process chu khong phai `&` hay Start-Process, va ca hai
+            # deu co ly do da do bang thu nghiem:
+            #   `&`            -- khong co duong nao dat han. Mot test TREO thi ket cung vinh vien.
+            #   Start-Process  -- -ArgumentList noi bang dau cach va KHONG tu them ngoac, nen
+            #                     `not cham` bi tach lam hai tham so va pytest bao
+            #                     "file or directory not found: cham"; ngoai ra .ExitCode
+            #                     tra ve RONG sau WaitForExit(ms), tuc loi hong se LOT qua.
+            # Cach duoi day cho ca hai deu dung, va van in dau cham theo thoi gian thuc vi
+            # UseShellExecute=$false khong kem chuyen huong thi tien trinh con dung chung console.
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName         = $venvPy
+            $psi.Arguments        = '-m pytest -q -m "not cham"'
+            $psi.WorkingDirectory = $ThuMuc
+            $psi.UseShellExecute  = $false
+            $tt = [System.Diagnostics.Process]::Start($psi)
+            if (-not $tt.WaitForExit($GiayChoTest * 1000)) {
+                try { $tt.Kill() } catch { }
+                throw ("Bo test qua $GiayChoTest giay chua xong -- gan nhu chac chan co test TREO, " +
+                       "khong phai test hong. Chay lai voi -BoQuaTest de cai tiep, roi bao lai loi nay.")
+            }
+            if ($tt.ExitCode -ne 0) { throw "Bo test that bai. DUNG trien khai cho toi khi xanh." }
             ok "bo test xanh"
         }
     } finally { Pop-Location }
@@ -519,7 +544,7 @@ function in_buoc_tiep() {
     if ($canhBao) {
         Get-Content $canhBao | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
     } else {
-        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 8 -- 6 viec script KHONG lam duoc."
+        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 10 -- 6 viec script KHONG lam duoc."
     }
     if (-not $CapNhat) {
         Write-Host ""
