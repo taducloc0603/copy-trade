@@ -93,6 +93,11 @@ không khả thi khi lập trình, dừng lại và báo cáo thay vì tự ch�
 | D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
 | D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
 | D-26 | Mở lệnh qua **hộp thoại New Order**, không dùng One Click Trading. OCT không có ô Comment, mà thẻ trong comment là cơ chế tương quan duy nhất (D-07b, D-23). Ô volume phải ghi bằng `WM_CHAR`, không phải `WM_SETTEXT`. |
+| D-21b | Lệnh **ĐÓNG** phía Client cũng đi qua giao diện (`close_route = 'UI'`). D-21 giữ nguyên tinh thần — đổi kênh chứ không đổi tham số — nhưng phạm vi mở rộng sang deal đóng, vì bên kiểm tra nhìn cả `entry = OUT`. |
+| D-27 | Tương quan đóng làm tại Bridge bằng **cửa sổ command đang bay**, không bằng thẻ trong comment: hộp thoại đóng không có ô Comment. Thiếu nó thì mọi lệnh đóng của bot tự kích hoạt cascade. |
+| D-28 | Clicker hỏng thì đường đóng **được** rơi về `OrderSend` của EA (`close_degraded_fallback = EA`), ngược với D-25, kèm alert CRITICAL. Không mở được thì an toàn; không đóng được thì không. |
+| D-29 | Phía **Master** giữ nguyên `OrderSend`. Chỉ tài khoản Client bị soi `DEAL_REASON`. |
+| D-30 | Danh sách vị thế **không đọc được nội dung**. Nhắm một vị thế là **phép tìm có kiểm chứng**: mở hộp thoại theo dòng, đọc ngược ticket, sai thì huỷ rồi thử dòng khác. Mở và huỷ không đặt lệnh nào. |
 
 ## 5. Thuật ngữ
 
@@ -128,6 +133,7 @@ Các file được đánh số theo thứ tự thực hiện. **Làm tuần tự
 08-ket-noi-doi-chieu.md      mất kết nối, gửi bù, reconciliation
 09-dashboard.md              giao diện web
 10-dong-goi-nghiem-thu.md    đóng gói Windows, kịch bản nghiệm thu
+11-dong-qua-giao-dien.md     đóng lệnh Client qua giao diện MT5 (D-21b, D-27…D-30)
 ```
 
 ### Quy tắc bắt buộc cho MỌI phase

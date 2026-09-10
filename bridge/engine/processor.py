@@ -55,6 +55,11 @@ DEFAULT_DEADLINE_SCAN_SEC = 1.0
 #: `DEAL_REASON_CLIENT`. Mục tiêu của đường mở lệnh qua giao diện (D-21).
 DEAL_REASON_CLIENT = 0
 
+#: Moi loai lenh dong, ca duong EA lan duong giao dien. Bo sot mot cai o day nghia la ack hoac
+#: timeout cua no roi vao nhanh mac dinh cua duong MO va bi bo qua IM LANG — dung cai bay da can
+#: o phase 6b voi `OPEN_UI` (PROGRESS.md muc "Phase 6b - lap ke hoach va ra soat").
+LOAI_LENH_DONG = frozenset({"CLOSE", "CLOSE_PARTIAL", "CLOSE_UI", "CLOSE_UI_PARTIAL"})
+
 #: Tiền tố thẻ tương quan. Thẻ suy được từ `command_id` nên không cần cột riêng để tra ngược.
 TAG_PREFIX = "CB"
 TAG_ID_CHARS = 10
@@ -480,7 +485,7 @@ class EventProcessor:
 
     async def on_command_acked(self, command: sqlite3.Row, message: Any) -> None:
         """Hook được `BridgeServer` gọi sau khi ghi ack vào DB."""
-        if command["type"] in ("CLOSE", "CLOSE_PARTIAL"):
+        if command["type"] in LOAI_LENH_DONG:
             if command["pair_id"]:
                 await self.closing.on_close_acked(command, message)
             return
@@ -614,7 +619,7 @@ class EventProcessor:
         **Không tự động thử lại** (D-13): không biết lệnh đã khớp hay chưa, và mở thêm là hành
         động tăng rủi ro. Để đối chiếu ở phase 8 dọn.
         """
-        if command["type"] in ("CLOSE", "CLOSE_PARTIAL"):
+        if command["type"] in LOAI_LENH_DONG:
             self.closing.on_close_timeout(command)
             return
 
@@ -681,9 +686,14 @@ class EventProcessor:
             return "clicker dang ban"
 
         # Cổng 3 — **đừng mở cái mà không đóng được** (B-09). Đường mở đi qua giao diện nên
-        # không cần Algo Trading, còn đường đóng đi qua EA nên cần. Nếu EA của Client đang báo
-        # `trade_allowed = false` mà vẫn copy thì mỗi lệnh mở là một vị thế không có đường đóng
-        # tự động — đúng cách tích luỹ rủi ro một chiều mà không ai thấy cho tới lúc cần đóng.
+        # không cần Algo Trading. Đường đóng nay cũng đi qua giao diện, nhưng cổng này **vẫn
+        # cần**: khi clicker hỏng, đường đóng rơi về `OrderSend` của EA
+        # (`close_degraded_fallback = EA`), và đúng lúc đó Algo Trading là thứ duy nhất còn giữ
+        # cho vị thế đóng được. Tắt nó đi thì cú rơi về ấy cũng thất bại nốt.
+        #
+        # Nói cách khác: trước đây đây là đường đóng duy nhất, giờ nó là **lưới cuối**. Bỏ cổng
+        # này đi nghĩa là mỗi lệnh mở là một vị thế không có đường đóng tự động nào — đúng cách
+        # tích luỹ rủi ro một chiều mà không ai thấy cho tới lúc cần đóng.
         #
         # `None` (agent không báo, hoặc EA bản cũ) **không** chặn: "không biết" khác "biết là
         # tắt", và chặn vì không biết sẽ làm hệ thống tự dừng khi nâng cấp lệch phiên bản.

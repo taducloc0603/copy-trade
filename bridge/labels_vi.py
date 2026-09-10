@@ -106,6 +106,8 @@ UI = {
     "orphan_master_left": "Mất hedge — còn Master",
     "orphan_client_left": "Mất hedge — còn Client",
     "reason_mismatch": "Sai kênh mở lệnh",
+    "close_reason_mismatch": "Sai kênh đóng lệnh",
+    "reason_mismatch_ca_hai": "Sai kênh cả mở lẫn đóng",
     "no_pairs": "Chưa có cặp lệnh nào",
 
     "btn_pause_new": "Tạm dừng lệnh mới",

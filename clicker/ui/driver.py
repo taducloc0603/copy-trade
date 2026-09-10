@@ -1,4 +1,4 @@
-"""Hợp đồng của driver mở lệnh, bản `--dry-run`, và driver thật.
+"""Hợp đồng của driver giao diện, bản `--dry-run`, và driver thật.
 
 Ẩn số lớn nhất của phase này đã được trả lời bằng đo, không phải bằng suy luận (2026-09-05):
 **`WM_SETTEXT` chỉ đổi chữ hiển thị, không cập nhật trạng thái nội bộ của MT5.** Lệnh gửi đi
@@ -21,6 +21,20 @@ Sau khi điền, driver phải đọc ngược Symbol / Volume / Comment / chi�
 thì huỷ, đóng hộp thoại, trả `rejected`. Phải gom vào một hàm duy nhất sao cho **không có đường
 nào tới nút gửi mà không đi qua nó** (D-24). Toàn bộ chính sách retry của Bridge dựa vào ranh
 giới này, nên nó là hợp đồng chứ không phải chi tiết triển khai.
+
+## Đường ĐÓNG, và vì sao nó là một phép TÌM chứ không phải một cú bấm
+
+Đường MỞ biết trước mình đang điền vào đâu. Đường ĐÓNG thì không: danh sách vị thế **không đọc
+được nội dung** (`LVM_GETITEMTEXT` chép 0 ký tự, MT5 tự vẽ), nên không có cách nào hỏi "vị thế
+72205853 nằm ở dòng nào".
+
+Cái bù lại nằm ở hộp thoại: mở ra rồi thì ticket đọc được từ ba nguồn độc lập. Nên `close()` là
+một **phép tìm có kiểm chứng** — mở dòng 0, đọc ngược ticket, sai thì huỷ và thử dòng 1, đúng mới
+điền volume và bấm.
+
+Điều làm phép tìm này an toàn: **mở và huỷ hộp thoại không đặt lệnh nào.** Mọi bước dò đều nằm ở
+phía an toàn của ranh giới D-24, nên một lần dò trượt vẫn là `rejected` đúng nghĩa. Đây không phải
+đoán rồi sửa sau — không có "sau".
 """
 
 from __future__ import annotations
@@ -30,8 +44,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from clicker.ui import probe, win32
-from clicker.ui.dialog import DialogError, NewOrderDialog
+from clicker.ui import probe, tradetab, win32
+from clicker.ui.dialog import ClosePositionDialog, DialogError, NewOrderDialog
 
 
 @dataclass(frozen=True)
@@ -65,28 +79,101 @@ class OpenRequest:
 
 
 @dataclass(frozen=True)
-class OpenOutcome:
-    """Kết quả một lần mở lệnh, theo đúng bốn trạng thái của hợp đồng ack (plan 6b mục 6b.3)."""
+class CloseRequest:
+    """Nội dung một lệnh `CLOSE_UI` / `CLOSE_UI_PARTIAL`.
+
+    `volume = None` nghĩa là **đóng hẳn**: giữ nguyên volume hộp thoại đã điền sẵn thay vì tự gõ
+    lại con số của mình. Bridge và terminal có thể bất đồng về volume còn lại của một vị thế
+    (một lần đóng bớt vừa khớp mà event chưa về chẳng hạn), và trong tình huống đó thứ đúng là
+    thứ terminal đang giữ, không phải thứ sổ sách nghĩ.
+    """
+
+    position_id: int
+    volume: float | None = None
+
+    #: Loại command đóng hẳn, và loại đóng một phần. Hai loại riêng chứ không phải một loại với
+    #: `volume` tuỳ chọn, vì chúng phải **mâu thuẫn ồn ào** khi payload sai — xem `from_payload`.
+    LOAI_DONG_HAN = "CLOSE_UI"
+    LOAI_DONG_BOT = "CLOSE_UI_PARTIAL"
+
+    @classmethod
+    def from_payload(cls, payload: dict, command_type: str) -> CloseRequest:
+        """Đọc payload, và **bắt loại command khớp với payload**.
+
+        Chỗ này đáng một đoạn giải thích vì nó chặn một lỗi mất tiền im lặng: một
+        `CLOSE_UI_PARTIAL` rơi mất trường `volume` mà vẫn được chấp nhận sẽ thành **đóng hẳn**.
+        Không có gì trong hộp thoại báo động — nó chỉ đóng nhiều hơn phần đáng lẽ phải đóng, và
+        sổ sách thì tin là đã đóng đúng một phần.
+
+        Nên hai loại phải soi lẫn nhau: `CLOSE_UI` mà **có** `volume` cũng bị từ chối, vì nó nghĩa
+        là bên gọi đang nghĩ một đằng còn loại command nói một nẻo.
+        """
+        if command_type not in (cls.LOAI_DONG_HAN, cls.LOAI_DONG_BOT):
+            raise ValueError(f"Loai command khong phai lenh dong: {command_type!r}")
+        if payload.get("position_id") in (None, ""):
+            raise ValueError(f"Payload {command_type} thieu position_id")
+        if "magic" in payload:
+            # Cùng lý do với `OpenRequest`: có `magic` nghĩa là đang cầm payload của đường EA.
+            raise ValueError(f"Payload {command_type} khong duoc mang magic")
+        position_id = int(payload["position_id"])
+        if position_id <= 0:
+            raise ValueError(f"position_id phai duong, nhan duoc {position_id}")
+
+        volume = payload.get("volume")
+        if command_type == cls.LOAI_DONG_HAN:
+            if volume is not None:
+                raise ValueError(f"{cls.LOAI_DONG_HAN} khong duoc mang volume "
+                                 f"(nhan duoc {volume}); dong mot phan phai dung "
+                                 f"{cls.LOAI_DONG_BOT}")
+            return cls(position_id=position_id, volume=None)
+
+        if volume is None:
+            raise ValueError(f"{cls.LOAI_DONG_BOT} thieu volume")
+        volume = float(volume)
+        if volume <= 0:
+            raise ValueError(f"Volume phai duong, nhan duoc {volume}")
+        return cls(position_id=position_id, volume=volume)
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """Kết quả một lần thao tác, theo đúng bốn trạng thái của hợp đồng ack (plan 6b mục 6b.3)."""
 
     status: str
     reason: str
     #: `True` chỉ khi driver **biết chắc** đã bấm nút gửi. `None` nghĩa là không biết.
     clicked: bool | None = None
 
+    #: `already_closed` chỉ dùng được ở đường ĐÓNG, và nó có nghĩa hẹp: **đã quét hết danh sách
+    #: vị thế và không có vị thế đó**. Đây là kết quả bình thường chứ không phải lỗi (FR-18), và
+    #: nó khớp đúng ngữ nghĩa mà EA trả khi `PositionSelectByTicket` thất bại.
+    HOP_LE = ("ok", "failed", "already_closed", "rejected", "unknown")
+
     def __post_init__(self) -> None:
-        if self.status not in ("ok", "failed", "rejected", "unknown"):
+        if self.status not in self.HOP_LE:
             raise ValueError(f"Trang thai khong hop le: {self.status!r}")
 
 
-class OpenDriver(Protocol):
+#: Tên cũ, giữ lại vì nó xuất hiện trong test và trong log của các phase trước.
+OpenOutcome = Outcome
+
+
+class UiDriver(Protocol):
     """Thứ duy nhất clicker cần biết về giao diện."""
 
-    def open(self, request: OpenRequest) -> OpenOutcome:
+    def open(self, request: OpenRequest) -> Outcome:
         ...
 
-    def dry_probe(self) -> OpenOutcome:
+    def close(self, request: CloseRequest) -> Outcome:
+        ...
+
+    def dry_probe(self) -> Outcome:
         """Probe khô: mở hộp thoại, đọc lại các field, bấm ESC. Không đặt lệnh nào."""
         ...
+
+
+#: Tên cũ của `UiDriver`, từ khi driver mới chỉ biết mở lệnh.
+OpenDriver = UiDriver
 
 
 class DryRunDriver:
@@ -102,25 +189,35 @@ class DryRunDriver:
 
     def __init__(self) -> None:
         #: Các yêu cầu đã nhận, để test và để đọc log khi chạy thử.
-        self.seen: list[OpenRequest] = []
+        self.seen: list[OpenRequest | CloseRequest] = []
 
-    def open(self, request: OpenRequest) -> OpenOutcome:
+    def open(self, request: OpenRequest) -> Outcome:
         self.seen.append(request)
-        return OpenOutcome(
+        return Outcome(
             "rejected",
             f"{self.REASON}: che do chay thu, khong cham vao giao dien "
             f"({request.direction} {request.volume} {request.symbol})",
             clicked=False,
         )
 
-    def dry_probe(self) -> OpenOutcome:
-        return OpenOutcome("rejected", f"{self.REASON}: khong chay probe kho", clicked=False)
+    def close(self, request: CloseRequest) -> Outcome:
+        self.seen.append(request)
+        phan = "toan bo" if request.volume is None else f"{request.volume:g}"
+        return Outcome(
+            "rejected",
+            f"{self.REASON}: che do chay thu, khong cham vao giao dien "
+            f"(dong {phan} cua vi the {request.position_id})",
+            clicked=False,
+        )
+
+    def dry_probe(self) -> Outcome:
+        return Outcome("rejected", f"{self.REASON}: khong chay probe kho", clicked=False)
 
 
 class Mt5UiDriver:
-    """Driver thật: điền hộp thoại New Order của MT5 rồi bấm.
+    """Driver thật: điền hộp thoại của MT5 rồi bấm.
 
-    Trình tự dưới đây **được đo chứ không suy ra** (2026-09-05, Connext-Demo, build 5.00):
+    Trình tự đường MỞ **được đo chứ không suy ra** (2026-09-05, Connext-Demo, build 5.00):
     10/10 lệnh cho ra deal đúng volume, đúng chiều, comment nguyên vẹn, `DEAL_REASON = CLIENT`.
     Lặp lại 5/5 với cửa sổ minimized.
 
@@ -128,6 +225,11 @@ class Mt5UiDriver:
     vì trước cú bấm thì `rejected` là sự thật chứng minh được, còn sau cú bấm thì không còn gì
     chứng minh được nữa.
     """
+
+    #: Chờ hộp thoại đóng hiện ra sau một cú bấm vào dòng. Đo được 200–300 ms, nên 2 giây là dư
+    #: gấp nhiều lần. Phải nhỏ vì **mỗi dòng không phải vị thế sẽ tiêu đúng ngần này** — danh sách
+    #: có cả dòng tổng kết Balance, và nó không mở hộp thoại nào.
+    PROBE_CLOSE_SEC = 2.0
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
@@ -139,22 +241,24 @@ class Mt5UiDriver:
         self.settle_sec = settle_sec
         self.close_timeout_sec = close_timeout_sec
 
-    def open(self, request: OpenRequest) -> OpenOutcome:
+    # -- mở lệnh ---------------------------------------------------------------------------
+
+    def open(self, request: OpenRequest) -> Outcome:
         health = probe.probe(self.terminal_title)
         if not health or health.hwnd is None:
-            return OpenOutcome("rejected", f"Canary do: {health.detail}", clicked=False)
+            return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         try:
             dialog = NewOrderDialog.open(health.hwnd)
         except DialogError as exc:
-            return OpenOutcome("rejected", f"Khong mo duoc hop thoai: {exc}", clicked=False)
+            return Outcome("rejected", f"Khong mo duoc hop thoai: {exc}", clicked=False)
         return self._commit(dialog, request)
 
-    def _commit(self, dialog: NewOrderDialog, request: OpenRequest) -> OpenOutcome:
+    def _commit(self, dialog: NewOrderDialog, request: OpenRequest) -> Outcome:
         """Điền, **đọc lại**, so, rồi mới bấm. Không có đường nào tới nút gửi mà vòng qua đây."""
-        def bo_cuoc(ly_do: str) -> OpenOutcome:
+        def bo_cuoc(ly_do: str) -> Outcome:
             dialog.cancel()
             dialog.wait_closed()
-            return OpenOutcome("rejected", ly_do, clicked=False)
+            return Outcome("rejected", ly_do, clicked=False)
 
         try:
             # Đổi symbol qua ComboBox chưa được đo, nên ở đây chỉ **kiểm tra** chứ không đổi.
@@ -188,26 +292,160 @@ class Mt5UiDriver:
         if not win32.post_click(button.hwnd):
             # `PostMessage` chỉ xếp message vào hàng đợi. Thất bại ở đây gần như chắc chắn là
             # chưa bấm, nhưng "gần như chắc chắn" không đủ để cho phép thử lại.
-            return OpenOutcome("unknown", "PostMessage that bai, khong ro da bam hay chua")
+            return Outcome("unknown", "PostMessage that bai, khong ro da bam hay chua")
 
         if not dialog.wait_closed(self.close_timeout_sec):
-            return OpenOutcome("unknown", "Hop thoai khong dong sau khi bam", clicked=True)
-        return OpenOutcome("ok", f"{request.direction} {request.volume:g} {request.symbol}",
-                           clicked=True)
+            return Outcome("unknown", "Hop thoai khong dong sau khi bam", clicked=True)
+        return Outcome("ok", f"{request.direction} {request.volume:g} {request.symbol}",
+                       clicked=True)
 
-    def dry_probe(self) -> OpenOutcome:
+    # -- đóng lệnh -------------------------------------------------------------------------
+
+    def close(self, request: CloseRequest) -> Outcome:
+        """Tìm đúng vị thế trong danh sách rồi đóng nó. Xem phần đầu file về vì sao là phép tìm."""
+        health = probe.probe(self.terminal_title)
+        if not health or health.hwnd is None:
+            return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
+        pid = win32.get_process_id(health.hwnd)
+
+        try:
+            list_hwnd = tradetab.tim_danh_sach(health.hwnd)
+        except tradetab.TradeTabError as exc:
+            return Outcome("rejected", str(exc), clicked=False)
+
+        # Hộp thoại còn sót — từ lần trước, hoặc do người vận hành mở. Phải huỷ: MT5 đang ở vòng
+        # lặp modal thì cú double-click kế tiếp không đi tới đâu cả.
+        con_lai = ClosePositionDialog.find(pid)
+        if con_lai is not None:
+            con_lai.cancel()
+            con_lai.wait_closed()
+
+        so_dong = tradetab.so_dong(list_hwnd)
+        if so_dong is None:
+            return Outcome("rejected", "Danh sach vi the khong tra loi", clicked=False)
+        if so_dong == 0:
+            return Outcome("rejected", "Danh sach vi the rong", clicked=False)
+
+        da_gap: list[int | None] = []
+        mo_duoc_it_nhat_mot = False
+        for row in range(so_dong):
+            # Hộp thoại sót lại từ vòng trước — kể cả một cái mở **chậm hơn** thời gian chờ. MT5
+            # lúc đó đang ở vòng lặp modal và cú double-click kế tiếp sẽ không đi tới đâu cả, nên
+            # bỏ qua bước này là để cả phần còn lại của vòng lặp dò trong vô vọng.
+            sot = ClosePositionDialog.find(pid)
+            if sot is not None:
+                sot.cancel()
+                sot.wait_closed()
+
+            # Không đọc giá trị trả về như một điều kiện tiên quyết: `SendMessage` của cú
+            # double-click mở một hộp thoại **modal**, nên nó có thể hết hạn chờ trong khi hộp
+            # thoại vẫn mở ra bình thường. Bằng chứng duy nhất là hộp thoại có xuất hiện hay không.
+            tradetab.mo_hop_thoai_dong(list_hwnd, row)
+            hop = ClosePositionDialog.cho_mo(pid, self.PROBE_CLOSE_SEC)
+            if hop is None:
+                # Dòng này không mở hộp thoại nào. Bình thường: danh sách có cả dòng tổng kết
+                # Balance. Đi tiếp chứ không coi là lỗi.
+                continue
+            mo_duoc_it_nhat_mot = True
+            try:
+                ticket = hop.read_back().ticket()
+            except DialogError as exc:
+                hop.cancel()
+                hop.wait_closed()
+                return Outcome("rejected", f"Hop thoai dong khong dung hinh dang: {exc}",
+                               clicked=False)
+            da_gap.append(ticket)
+            if ticket == request.position_id:
+                return self._commit_close(hop, request)
+            hop.cancel()
+            hop.wait_closed()
+
+        if not mo_duoc_it_nhat_mot:
+            # **Không một dòng nào mở được hộp thoại.** Không được kết luận "vị thế đã đóng" từ
+            # đây: nó cũng là hình dạng của một giao diện đã ngừng điều khiển được — hộp thoại
+            # kẹt, terminal treo, danh sách đổi hình dạng trên bản MT5 khác.
+            #
+            # Phân biệt này quan trọng vì hai kết luận đi về hai hướng ngược nhau:
+            # `already_closed` làm Bridge ghi cặp thành `CLOSED` — nếu sai thì sổ sách nói vị thế
+            # đã đóng trong khi nó vẫn đang mở và vẫn đang lỗ. `rejected` thì chứng minh được là
+            # chưa bấm gì, nên Bridge còn đường rơi về EA.
+            return Outcome(
+                "rejected",
+                f"Khong dong nao trong {so_dong} dong mo duoc hop thoai — khong ket luan duoc "
+                f"vi the {request.position_id} con hay het",
+                clicked=False,
+            )
+
+        # Đã quét **hết** danh sách, ít nhất một dòng mở được hộp thoại (nên cơ chế dò đang chạy),
+        # và không có vị thế đó. `LVM_GETITEMCOUNT` đếm mọi dòng bất kể cuộn tới đâu, và
+        # `tim_danh_sach` đã bắt buộc đúng danh sách của tab Trade — nên đây không phải "tìm chưa
+        # kỹ", mà là vị thế **không còn mở trên terminal này**.
+        #
+        # Trả `rejected` ở đây sẽ khiến Bridge cho cặp sang `ORPHANED` kèm alert CRITICAL, tức là
+        # báo động cho đúng thứ đáng lẽ phải xảy ra: vị thế đã đóng rồi. `already_closed` là kết
+        # quả bình thường của việc hai bên cùng đóng gần như đồng thời (FR-18).
+        return Outcome(
+            "already_closed",
+            f"Khong con vi the {request.position_id} trong {so_dong} dong (gap: {da_gap})",
+            clicked=False,
+        )
+
+    def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest) -> Outcome:
+        """Điền volume, **đọc lại cả ticket lẫn volume**, rồi mới bấm.
+
+        Kiểm ticket **lần thứ hai** ở đây chứ không tin lần kiểm lúc tìm: giữa hai thời điểm có
+        một lần gõ phím vào hộp thoại, và thứ đắt nhất có thể xảy ra là đóng nhầm vị thế. Kiểm lại
+        một lần nữa rẻ hơn nhiều so với việc phải tin.
+        """
+        def bo_cuoc(ly_do: str) -> Outcome:
+            hop.cancel()
+            hop.wait_closed()
+            return Outcome("rejected", ly_do, clicked=False)
+
+        try:
+            if request.volume is not None:
+                hop.set_volume(request.volume)
+                time.sleep(self.settle_sec)
+
+            doc_lai = hop.read_back()
+            if doc_lai.ticket() != request.position_id:
+                return bo_cuoc(f"Hop thoai dang o vi the {doc_lai.ticket()}, "
+                               f"khong phai {request.position_id}")
+            if request.volume is not None and doc_lai.volume_as_float() != request.volume:
+                return bo_cuoc(f"Doc lai lech: volume {doc_lai.volume!r} "
+                               f"thay vi {request.volume}")
+
+            # Ném `DialogError` nếu nút không đúng hình dạng — vẫn ở phía an toàn của cú bấm.
+            button = hop.close_button()
+        except DialogError as exc:
+            return bo_cuoc(f"Hop thoai dong khong dung hinh dang: {exc}")
+
+        # ==== TỪ ĐÂY TRỞ ĐI KHÔNG CÒN ĐƯỜNG LÙI ====
+        if self.on_before_click is not None:
+            self.on_before_click()
+        if not win32.post_click(button.hwnd):
+            return Outcome("unknown", "PostMessage that bai, khong ro da bam hay chua")
+
+        if not hop.wait_closed(self.close_timeout_sec):
+            return Outcome("unknown", "Hop thoai dong khong dong sau khi bam", clicked=True)
+        phan = "toan bo" if request.volume is None else f"{request.volume:g}"
+        return Outcome("ok", f"dong {phan} cua vi the {request.position_id}", clicked=True)
+
+    # -- canary ----------------------------------------------------------------------------
+
+    def dry_probe(self) -> Outcome:
         """Probe khô: mở hộp thoại, đọc lại, đóng. Chứng minh toàn tuyến sống mà không đặt lệnh."""
         health = probe.probe(self.terminal_title)
         if not health or health.hwnd is None:
-            return OpenOutcome("rejected", f"Canary do: {health.detail}", clicked=False)
+            return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         try:
             dialog = NewOrderDialog.open(health.hwnd)
             state = dialog.read_back()
             dialog.button("BUY")
             dialog.button("SELL")
         except DialogError as exc:
-            return OpenOutcome("rejected", f"Probe kho hong: {exc}", clicked=False)
+            return Outcome("rejected", f"Probe kho hong: {exc}", clicked=False)
         dialog.cancel()
         dialog.wait_closed()
-        return OpenOutcome("rejected", f"Probe kho sach, hop thoai o {state.symbol[:20]!r}",
-                           clicked=False)
+        return Outcome("rejected", f"Probe kho sach, hop thoai o {state.symbol[:20]!r}",
+                       clicked=False)

@@ -201,22 +201,33 @@ REASON_CLIENT = 0
 
 
 def kiem_reason_client(db: Database) -> list[dict[str, object]]:
-    """TEST-23: **mọi** vị thế bot mở trên Client phải mang `DEAL_REASON_CLIENT`.
+    """TEST-23: **mọi deal** của bot trên Client phải mang `DEAL_REASON_CLIENT`.
 
     Bộ nghiệm thu yêu cầu rõ: kiểm **tự động bằng truy vấn**, không nhìn bằng mắt. Lý do là cỡ
     mẫu — nhìn mắt thì người ta xem ba dòng đầu rồi kết luận, mà cái sai duy nhất có thể nằm ở
     dòng thứ hai mươi.
 
-    Trả về danh sách cặp **vi phạm**. Rỗng nghĩa là đạt.
+    Soi **cả hai** cột, và đó là điểm khác so với bản đầu. Lúc chỉ đường MỞ đi qua giao diện thì
+    một cột là đủ. Từ khi đường ĐÓNG cũng đi qua giao diện, chỉ soi `client_open_reason` sẽ cho
+    một kết quả "ĐẠT" hoàn toàn thật mà vẫn bỏ sót đúng nửa số deal — nửa mà yêu cầu lần này
+    nhắm tới.
 
-    Cặp `client_open_reason IS NULL` không tính là vi phạm: đó là cặp chưa từng mở được vị thế
-    nào bên Client (`OPEN_FAILED`, hoặc còn `PENDING_OPEN` chưa tương quan xong), nên không có
-    deal nào để mà sai kênh.
+    Trả về danh sách cặp **vi phạm**, mỗi dòng kèm `cot` cho biết vế nào sai. Rỗng nghĩa là đạt.
+
+    Cột `NULL` không tính là vi phạm: cặp chưa mở được vị thế nào (`OPEN_FAILED`, hoặc còn
+    `PENDING_OPEN`) thì không có deal nào để mà sai kênh, và cặp chưa đóng thì chưa có deal đóng.
     """
     rows = db.query_all(
-        "SELECT pair_id, client_id, client_position_id, status, client_open_reason "
-        "FROM pair WHERE client_open_reason IS NOT NULL AND client_open_reason <> ? "
-        "ORDER BY pair_id", (REASON_CLIENT,))
-    if rows:
-        log.error("TEST-23 KHONG DAT: %d cap co vi the Client sai kenh mo", len(rows))
-    return [dict(r) for r in rows]
+        "SELECT pair_id, client_id, client_position_id, status, "
+        "       client_open_reason, client_close_reason "
+        "FROM pair WHERE (client_open_reason IS NOT NULL AND client_open_reason <> ?) "
+        "           OR (client_close_reason IS NOT NULL AND client_close_reason <> ?) "
+        "ORDER BY pair_id", (REASON_CLIENT, REASON_CLIENT))
+    vi_pham = []
+    for r in rows:
+        cot = [ten for ten in ("client_open_reason", "client_close_reason")
+               if r[ten] is not None and r[ten] != REASON_CLIENT]
+        vi_pham.append({**dict(r), "cot": ", ".join(cot)})
+    if vi_pham:
+        log.error("TEST-23 KHONG DAT: %d cap co deal Client sai kenh", len(vi_pham))
+    return vi_pham

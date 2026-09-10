@@ -366,3 +366,63 @@ def test_config_thieu_thi_khong_nem(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("clicker.__main__.load_config", _nem)
     assert doc_muc_clicker() == {}
+
+
+# -- lenh dong qua giao dien -------------------------------------------------------------------
+
+CLOSE_PAYLOAD = {"position_id": 72205853}
+
+
+async def test_nhan_close_ui_va_goi_dung_driver_close(tmp_path: Path) -> None:
+    """Định tuyến trong `_execute`: `OPEN_UI` đi vào `open()`, lệnh đóng đi vào `close()`."""
+    goi: list[str] = []
+
+    class Ghi(DryRunDriver):
+        def open(self, request):  # type: ignore[no-untyped-def]
+            goi.append("open")
+            return super().open(request)
+
+        def close(self, request):  # type: ignore[no-untyped-def]
+            goi.append("close")
+            return super().close(request)
+
+    link = _link(tmp_path, Ghi())
+    await link.handle_command(_command("CMD-1", command_type="CLOSE_UI",
+                                       payload=dict(CLOSE_PAYLOAD)))
+    await link.handle_command(_command("CMD-2", command_type="CLOSE_UI_PARTIAL",
+                                       payload={**CLOSE_PAYLOAD, "volume": 0.02}))
+    await link.handle_command(_command("CMD-3"))
+
+    assert goi == ["close", "close", "open"]
+
+
+@pytest.mark.parametrize("loai", ["OPEN", "CLOSE", "CLOSE_PARTIAL", "REQUEST_SNAPSHOT"])
+async def test_van_tu_choi_moi_loai_command_cua_duong_EA(tmp_path: Path, loai: str) -> None:
+    """Hàng rào chống định tuyến sai: nhận nhầm `CLOSE` trần nghĩa là đóng bằng `OrderSend`."""
+    link = _link(tmp_path)
+    ack = await link.handle_command(_command("CMD-1", command_type=loai,
+                                             payload=dict(CLOSE_PAYLOAD)))
+
+    assert ack["status"] == "rejected"
+    assert f"khong nhan command loai {loai}" in ack["retmsg"]
+    assert "CMD-1" not in link.journal
+
+
+async def test_close_ui_partial_thieu_volume_bi_tu_choi(tmp_path: Path) -> None:
+    """Nếu lọt, nó thành **đóng hẳn** trong im lặng — đóng nhiều hơn phần đáng lẽ phải đóng."""
+    link = _link(tmp_path)
+    ack = await link.handle_command(_command("CMD-1", command_type="CLOSE_UI_PARTIAL",
+                                             payload=dict(CLOSE_PAYLOAD)))
+
+    assert ack["status"] == "rejected"
+    assert "thieu volume" in ack["retmsg"]
+
+
+async def test_payload_dong_mang_magic_bi_tu_choi(tmp_path: Path) -> None:
+    """Có `magic` nghĩa là đang cầm payload của đường EA — định tuyến đã sai từ Bridge."""
+    link = _link(tmp_path)
+    ack = await link.handle_command(_command("CMD-1", command_type="CLOSE_UI",
+                                             payload={**CLOSE_PAYLOAD, "magic": 770001}))
+
+    assert ack["status"] == "rejected"
+    assert "magic" in ack["retmsg"]

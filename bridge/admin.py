@@ -123,14 +123,21 @@ def lenh_kiem_reason(db: Database, _args: argparse.Namespace) -> int:
     """TEST-23 dưới dạng một lệnh chạy lại được, không phải một lần nhìn màn hình."""
     vi_pham = kiem_reason_client(db)
     tong = db.query_one(
+        "SELECT COUNT(*) n FROM pair "
+        "WHERE client_open_reason IS NOT NULL OR client_close_reason IS NOT NULL")["n"]
+    mo = db.query_one(
         "SELECT COUNT(*) n FROM pair WHERE client_open_reason IS NOT NULL")["n"]
+    dong = db.query_one(
+        "SELECT COUNT(*) n FROM pair WHERE client_close_reason IS NOT NULL")["n"]
     if not vi_pham:
-        print(f"TEST-23 DAT: {tong}/{tong} vi the Client mang DEAL_REASON_CLIENT (0).")
+        print(f"TEST-23 DAT: {tong}/{tong} cap dung kenh "
+              f"({mo} deal mo, {dong} deal dong, tat ca DEAL_REASON_CLIENT (0)).")
         return 0
-    print(f"TEST-23 KHONG DAT: {len(vi_pham)}/{tong} cap sai kenh mo:", file=sys.stderr)
+    print(f"TEST-23 KHONG DAT: {len(vi_pham)}/{tong} cap sai kenh:", file=sys.stderr)
     for r in vi_pham:
         print(f"  {r['pair_id']}  position={r['client_position_id']}  "
-              f"reason={r['client_open_reason']}", file=sys.stderr)
+              f"mo={r['client_open_reason']} dong={r['client_close_reason']}  "
+              f"-> sai o {r['cot']}", file=sys.stderr)
     return 1
 
 
@@ -323,6 +330,13 @@ def lenh_them_client(db: Database, args: argparse.Namespace) -> int:
     if args.open_route == "UI" and not args.clicker_agent:
         print("open_route = UI can --clicker-agent", file=sys.stderr)
         return 1
+    # Mac dinh theo `--open-route`: mot Client dat duong giao dien de MO thi cung dat no de
+    # DONG, con mot Client con o duong EA thi giu nguyen ca hai. Khong co cach ghep nao khac
+    # vua hop ly vua khong bat nguoi ta phai go them mot co moi de giu nguyen hanh vi cu.
+    close_route = args.close_route or args.open_route
+    if close_route == "UI" and not args.clicker_agent:
+        print("close_route = UI can --clicker-agent", file=sys.stderr)
+        return 1
     if args.clicker_agent:
         clicker = db.get_agent(args.clicker_agent)
         if clicker is None:
@@ -336,9 +350,10 @@ def lenh_them_client(db: Database, args: argparse.Namespace) -> int:
     db.upsert_client_account(args.client_id, agent_id=args.agent_id,
                              display_name=args.ten or args.client_id,
                              open_route=args.open_route,
+                             close_route=close_route,
                              clicker_agent_id=args.clicker_agent)
     print(f"Da tao client {args.client_id} -> agent {args.agent_id} "
-          f"(open_route={args.open_route}"
+          f"(open_route={args.open_route}, close_route={close_route}"
           f"{', clicker ' + args.clicker_agent if args.clicker_agent else ''})")
     print("Buoc tiep: `anh-xa-symbol` -- THIEU ANH XA LA MOI LENH MASTER BI BO QUA.")
     return 0
@@ -372,6 +387,13 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
             print("open_route = UI can clicker_agent_id, chua co", file=sys.stderr)
             return 1
         doi["open_route"] = args.open_route
+    if args.close_route is not None:
+        # Cung rang buoc voi `open_route`, va vi cung mot ly do: bat duong giao dien ma khong co
+        # clicker la mot cau hinh vo nghia — lenh se khong bao gio gui duoc di dau.
+        if args.close_route == "UI" and not client["clicker_agent_id"]:
+            print("close_route = UI can clicker_agent_id, chua co", file=sys.stderr)
+            return 1
+        doi["close_route"] = args.close_route
     if args.can_close_master is not None:
         doi["can_close_master"] = 1 if args.can_close_master == "bat" else 0
 
@@ -379,6 +401,7 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
         print(f"{args.client_id}: copy_mode={client['copy_mode']} "
               f"volume_multiplier={client['volume_multiplier']} "
               f"open_route={client['open_route']} "
+              f"close_route={client['close_route']} "
               f"can_close_master={client['can_close_master']}")
         return 0
 
@@ -434,6 +457,8 @@ def build_parser() -> argparse.ArgumentParser:
     tc.add_argument("--clicker-agent", dest="clicker_agent",
                     help="agent_id vai tro CLICKER; bat buoc khi --open-route UI")
     tc.add_argument("--open-route", dest="open_route", default="UI", choices=("EA", "UI"))
+    tc.add_argument("--close-route", dest="close_route", default=None, choices=("EA", "UI"),
+                    help="Kenh gui lenh DONG. Mac dinh theo --open-route")
     tc.add_argument("--ten", help="Ten hien thi, mac dinh lay client_id")
 
     cf = sub.add_parser("cau-hinh-client", help="Xem hoac sua cau hinh mot Client")
@@ -441,6 +466,8 @@ def build_parser() -> argparse.ArgumentParser:
     cf.add_argument("--copy-mode", dest="copy_mode", choices=("SAME", "OPPOSITE"))
     cf.add_argument("--multiplier", type=float)
     cf.add_argument("--open-route", dest="open_route", choices=("EA", "UI"))
+    cf.add_argument("--close-route", dest="close_route", choices=("EA", "UI"),
+                    help="Kenh gui lenh DONG. UI de deal dong mang DEAL_REASON_CLIENT")
     cf.add_argument("--can-close-master", dest="can_close_master", choices=("bat", "tat"))
 
     ax = sub.add_parser("anh-xa-symbol", help="Xem hoac khai bao anh xa symbol giua hai san")

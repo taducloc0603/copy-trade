@@ -34,7 +34,8 @@ EventType: TypeAlias = Literal[
 #: nó sẽ **lặng lẽ đặt lệnh `EXPERT`** — đúng thứ phase 6b tồn tại để làm cho bất khả thi.
 #: Với `OPEN_UI`, EA rơi vào nhánh mặc định và trả `rejected` (D-22).
 CommandType: TypeAlias = Literal[
-    "OPEN", "OPEN_UI", "CLOSE", "CLOSE_PARTIAL", "REQUEST_SNAPSHOT"
+    "OPEN", "OPEN_UI", "CLOSE", "CLOSE_PARTIAL",
+    "CLOSE_UI", "CLOSE_UI_PARTIAL", "REQUEST_SNAPSHOT"
 ]
 #: Trạng thái ack. ``unknown`` là trường hợp đặc biệt và nguy hiểm nhất: EA đã **giữ chỗ**
 #: `command_id` trước khi đặt lệnh rồi terminal chết giữa chừng, nên nó không biết lệnh đã khớp

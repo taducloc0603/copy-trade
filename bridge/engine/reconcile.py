@@ -454,20 +454,31 @@ class Reconciler:
         return to_decimal(spec["volume_step"]) if spec is not None else Decimal(0)
 
     def _soi_reason(self, run_id: str, pair: sqlite3.Row, bang_chung: dict) -> int:
-        """Mục tiêu của cả phase 6b, kiểm lại ở đây thay vì tin."""
+        """Mục tiêu của cả đường giao diện, kiểm lại ở đây thay vì tin.
+
+        Soi **hai vế độc lập**: `open_route` quản deal mở, `close_route` quản deal đóng. Hai
+        đường bật tắt riêng được, nên gộp chúng lại sẽ vừa bỏ sót (Client chỉ bật đường đóng) vừa
+        báo oan (Client chỉ bật đường mở, đóng bằng EA nên deal đóng mang `EXPERT` là **đúng**).
+        """
         client = self.db.get_client_account(pair["client_id"])
-        if client is None or client["open_route"] != "UI":
+        if client is None:
             return 0
-        reason = pair["client_open_reason"]
-        if reason is None or int(reason) == 0:
-            return 0
-        self._create_finding(
-            run_id, "DECISION", "UI_REASON_MISMATCH", suggested_action="ALERT_ONLY",
-            pair_id=pair["pair_id"], master_position_id=pair["master_position_id"],
-            client_id=pair["client_id"],
-            evidence_json=json.dumps({**bang_chung, "client_open_reason": reason},
-                                     ensure_ascii=False))
-        return 1
+        so = 0
+        for tuyen, cot, kind in (("open_route", "client_open_reason", "UI_REASON_MISMATCH"),
+                                 ("close_route", "client_close_reason",
+                                  "UI_CLOSE_REASON_MISMATCH")):
+            if client[tuyen] != "UI":
+                continue
+            reason = pair[cot]
+            if reason is None or int(reason) == 0:
+                continue
+            self._create_finding(
+                run_id, "DECISION", kind, suggested_action="ALERT_ONLY",
+                pair_id=pair["pair_id"], master_position_id=pair["master_position_id"],
+                client_id=pair["client_id"],
+                evidence_json=json.dumps({**bang_chung, cot: reason}, ensure_ascii=False))
+            so += 1
+        return so
 
     @staticmethod
     def _bang_chung(pair: sqlite3.Row, vt_master: Any, vt_client: Any) -> dict[str, Any]:

@@ -26,10 +26,14 @@ code có câu SQL đóng lệnh mà điều kiện là `WHERE symbol = ?`, đó 
 **Chống vòng lặp bằng `caused_by_command_id`** (D-08). Event có trường này khác NULL nghĩa là
 do chính bot gây ra → cập nhật trạng thái, **không lan truyền tiếp**.
 
-> Đường ĐÓNG **không đổi gì** so với phase 5–6: lệnh đóng vẫn do EA gọi `OrderSend`, nên
-> `RememberCause` vẫn chạy và `caused_by_command_id` vẫn do EA gắn. Phase 6b chỉ đổi đường MỞ.
-> Riêng event `position_opened` của Client thì `caused_by_command_id` do **Bridge** gắn lúc
-> tương quan, không phải EA.
+> **Mục này đã đổi.** Lúc viết phase 7, đường ĐÓNG còn nằm trên `OrderSend` của EA, nên
+> `RememberCause` chạy và `caused_by_command_id` do EA gắn. Từ khi đường đóng phía Client chuyển
+> sang giao diện (D-21b, `plan/11`), **EA không còn gì để nhớ**: nó không gọi `OrderSend` nữa.
+>
+> Nên `caused_by_command_id` của event đóng nay do **Bridge** tự gắn, bằng bộ tương quan đóng
+> (D-27, `CloseFlow._ai_gay_ra`) — giống hệt cách event `position_opened` của Client đã được gắn
+> từ phase 6b. Thiếu nó thì mọi lệnh đóng của bot mang đúng dấu hiệu của một lệnh đóng tay, và
+> mục 7.5 sẽ cascade đóng vị thế Master mỗi lần bot đóng một cặp.
 
 ### 7.2 Master đóng hoàn toàn (FR-13)
 
@@ -39,9 +43,10 @@ do chính bot gây ra → cập nhật trạng thái, **không lan truyền ti�
 2. Nếu `caused_by_command_id` khác NULL → đây là hệ quả của cascade đang chạy, xử lý ở 7.5.
 3. Tìm **tất cả** pair có `master_position_id` này và `status` chưa kết thúc.
 4. Với mỗi pair: chuyển `CLOSING`, tạo command `CLOSE` cho Client tương ứng.
-   > **Gửi tới `client_account.agent_id` (EA), không phải `clicker_agent_id`.** Phase 6b thêm
-   > agent thứ hai cho mỗi Client, và clicker chỉ nhận `OPEN_UI`. Schema cũng không cho phép
-   > loại `CLOSE_UI`, nên định tuyến sai sẽ bị chặn — nhưng viết ra để không ai phải suy luận.
+   > **Mục này đã đổi.** Lúc viết phase 7, lệnh đóng gửi tới `client_account.agent_id` (EA) và
+   > schema cố ý không có loại `CLOSE_UI`. Nay `close_route = 'UI'` gửi `CLOSE_UI` /
+   > `CLOSE_UI_PARTIAL` tới `clicker_agent_id`, còn `close_route = 'EA'` giữ nguyên đường cũ.
+   > Điểm phễu duy nhất là `CloseFlow._gui_lenh_dong` — mọi lệnh đóng phía Client đi qua đó.
 5. Nhận ack thành công → `pair.status = CLOSED`, ghi `close_time_client`, `close_source = MASTER`.
 6. Ack `already_closed` → cũng là `CLOSED`, không phải lỗi.
 7. Ack thất bại → giữ `CLOSING`, retry theo bảng retcode, hết lượt thì `ORPHANED`
@@ -236,6 +241,8 @@ nhưng vẫn bảo vệ các cặp đang chạy — tắt cả đồng bộ đó
 - [ ] `EMERGENCY`: 5 cặp đang mở → đóng hết, Client trước Master sau, không sinh cascade thừa.
 - [ ] Kiểm tra không có câu SQL nào đóng lệnh theo symbol: `grep -rn "symbol" bridge/engine/`
       và soi thủ công mọi chỗ liên quan tới đóng lệnh.
+- [ ] *(thêm sau khi đổi đường đóng)* Lệnh đóng do **bot** phát ra không được kích hoạt cascade,
+      dù `caused_by_command_id` từ EA là NULL. Xem `tests/test_ui_close_flow.py`.
 
 ## Tiêu chí hoàn thành
 

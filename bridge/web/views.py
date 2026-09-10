@@ -153,9 +153,23 @@ def _mo_ta_cap(db: Database, row: Any) -> dict[str, Any]:
                 else UI["orphan_client_left"])
 
     client = db.get_client_account(row["client_id"])
-    qua_giao_dien = client is not None and client["open_route"] == "UI"
-    sai_kenh = (qua_giao_dien and row["client_open_reason"] is not None
-                and int(row["client_open_reason"]) != REASON_CLIENT)
+
+    def _sai(tuyen: str, cot: str) -> bool:
+        """Chỉ soi vế nào **thực sự** đi qua giao diện.
+
+        Client bật đường mở nhưng chưa bật đường đóng thì deal đóng mang `EXPERT` là **đúng**
+        cấu hình, không phải sự cố — gộp hai vế lại sẽ biến một cấu hình bình thường thành một
+        ô đỏ trên dashboard, và ô đỏ báo oan thì lần sau không ai nhìn nữa.
+        """
+        return (client is not None and client[tuyen] == "UI" and row[cot] is not None
+                and int(row[cot]) != REASON_CLIENT)
+
+    sai_mo = _sai("open_route", "client_open_reason")
+    sai_dong = _sai("close_route", "client_close_reason")
+    sai_kenh = sai_mo or sai_dong
+    nhan_sai = (UI["reason_mismatch"] if sai_mo and not sai_dong else
+                UI["close_reason_mismatch"] if sai_dong and not sai_mo else
+                UI["reason_mismatch_ca_hai"] if sai_kenh else None)
 
     return {
         "pair_id": row["pair_id"],
@@ -166,10 +180,10 @@ def _mo_ta_cap(db: Database, row: Any) -> dict[str, Any]:
         "status": trang_thai,
         "status_label": nhan,
         "attention": trang_thai in CAN_CAN_THIEP,
-        # Cặp mở qua giao diện mà `client_open_reason` khác CLIENT phải nổi bật: đó là dấu hiệu
-        # cơ chế của phase 6b đã ngừng hoạt động.
+        # Cặp đi qua giao diện mà `DEAL_REASON` khác CLIENT phải nổi bật: đó là dấu hiệu cơ
+        # chế đổi kênh đã ngừng hoạt động, và nó im lặng nếu không có ô này.
         "reason_mismatch": sai_kenh,
-        "reason_mismatch_label": UI["reason_mismatch"] if sai_kenh else None,
+        "reason_mismatch_label": nhan_sai,
     }
 
 

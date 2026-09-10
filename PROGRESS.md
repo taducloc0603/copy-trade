@@ -2037,3 +2037,269 @@ nhau theo cấu trúc chứ không phải chép tay. Ảnh: hai sơ đồ SVG v�
 ảnh đã che bằng cách vẽ đè lên pixel.
 
 **527 test xanh (+4), `ruff` sạch.**
+
+### Đổi đường ĐÓNG sang giao diện — lập kế hoạch và dựng dụng cụ đo
+
+*(2026-09-10.)*
+
+**Yêu cầu mới của người chủ dự án:** deal **đóng** phía Client phải mang `DEAL_REASON = CLIENT`
+chứ không phải `EXPERT` — "placed by manual" thay vì "placed by expert".
+
+Đây đúng là rủi ro treo số 3 ghi ở mục "Phase 6b — lập kế hoạch và rà soát": *"Nếu sau này phát
+hiện bên kiểm tra nhìn cả deal đóng thì phạm vi phải mở rộng đáng kể."* Nó đã xảy ra.
+
+**Ba điều đã chốt với người chủ dự án:**
+
+| | |
+|---|---|
+| Đóng hẳn và đóng một phần | **Cả hai** đều qua giao diện |
+| Clicker hỏng mà cần đóng | **Rơi về EA + alert CRITICAL** — ngoại lệ có ý thức với D-25 |
+| Phía Master | **Giữ `OrderSend`** — chỉ tài khoản Client bị soi |
+
+Lý do ngoại lệ với D-25 đáng ghi lại, vì nó ngược với phase 6b: không **mở** được thì an toàn, còn
+không **đóng** được thì không — Master đã đóng mà Client còn đứng vị thế trần là phơi nhiễm tiền
+thật. Sẽ thành hai khoá cấu hình cạnh nhau với hai mặc định ngược nhau: `ui_degraded_fallback`
+mặc định `SKIP`, `close_degraded_fallback` mặc định `EA`.
+
+**Chưa viết một dòng code sản phẩm nào,** và có lý do. Phase 6b chạy được nhờ phép đo E1: hộp
+thoại New Order là `#32770` với 53 control Win32 thật, nên `PostMessage` là đủ và không cần desktop
+tương tác. Đường **đóng** không có sự thật tương đương:
+
+- Để đóng đúng một `position_id` phải chạm tới danh sách vị thế ở tab Trade.
+- Danh sách đó nhiều khả năng do MT5 **tự vẽ**. Nếu vậy từng dòng không có HWND, không đọc được
+  text, không nhắm được bằng `PostMessage`.
+- Không có ID lệnh menu nào cho "Close position" từng được đo; cả dự án mới biết `32848`.
+- Rà lại toàn bộ `clicker/`: **không một dòng nào** chạm tới Toolbox, tab Trade, danh sách vị thế
+  hay menu chuột phải. Không có `SysListView`, `LVM_`, `WM_RBUTTON`, `SysTabControl`.
+
+Nếu dòng không có HWND thì đường còn lại là bấm theo toạ độ pixel — đúng thứ D-26 đã loại khi bàn
+về One Click Trading, và tệ hơn là nó có thể phá luôn tính chất sống-qua-RDP mà cách vận hành VPS
+dựa vào (B-08, TEST-19). Nên bước đầu là **khảo sát có cổng go/no-go**, đúng cách phase 6b làm.
+
+**Lượt này dựng dụng cụ đo, không đo.** `clicker/ui/dump.py` được nới từ bản in phẳng thành công cụ
+trả lời được bốn câu hỏi C1–C4:
+
+- cây control **lồng nhau** kèm `GetWindowRect` — cần để biết có phải bấm theo toạ độ không;
+- `--menu` đọc `GetMenu`/`GetSubMenu`/`GetMenuItemID`/`GetMenuStringW`, cho ID lệnh;
+- `--listview` thử `LVM_GETITEMCOUNT` và `LVM_GETITEMTEXTW`.
+
+**Một phép đo phụ đã lộ ra ngay khi hun khói trên Windows 11:** control **không phải** ListView
+vẫn trả `0` cho `LVM_GETITEMCOUNT` chứ không báo lỗi. Nên `0` một mình nó **mơ hồ** — hoặc danh
+sách rỗng, hoặc không phải danh sách. Bản đầu của `listview_item_count()` viết docstring nói `None`
+nghĩa là "không phải ListView", và điều đó **sai**. Đã sửa cả docstring lẫn cách công cụ kết luận:
+`0` cộng class sai thì in cảnh báo và trả mã thoát khác 0, để không ai đọc nhầm một phép đo âm
+thành phép đo dương.
+
+Ranh giới an toàn của `dump.py` được giữ và được **kiểm bằng test soi mã nguồn**, không bằng lời
+hứa trong docstring: không `post_click`, `post_command`, `post_close`, `set_text`, `type_text`.
+`--listview` có cấp phát một vùng nhớ tạm trong tiến trình MT5 vì `LVM_GETITEMTEXTW` đòi hỏi vậy;
+vùng đó do chính ta cấp phát và giải phóng ngay.
+
+`dump.py` trước đây không có test nào và không được nhắc ở đâu ngoài docstring của chính nó. Nay có
+25 test và một mục riêng trong `RUNBOOK.md` (mục 5a) — vì nó là công cụ để đối phó khi đổi sàn, mà
+đúng lúc cần thì không ai đi đọc docstring.
+
+**567 test xanh (+25), `ruff` sạch.**
+
+**Việc tiếp theo cần người, không cần code:** chạy bốn phép đo C1–C4 trên terminal Client thật có
+sẵn vị thế đang mở, rồi ghi kết quả vào đây **dù đi tiếp hay dừng**. Cổng quyết định: dòng vị thế
+không có HWND → dừng và bàn lại, vì lựa chọn còn lại đánh đổi đúng thứ không được phép đánh đổi
+âm thầm.
+
+### Bước 0 — bốn phép đo, và một phép đo thứ năm không có trong kế hoạch
+
+*(2026-09-10, tài khoản Client 538217, Connext-Demo, MT5 build 5.00, hai vị thế đang mở.)*
+
+Đo trên **máy hiện tại** chứ không phải VPS: VPS thuộc giai đoạn 2 và chưa dựng, hai bản MT5 đã
+nằm sẵn ở đây, và `EnumWindows` chỉ thấy cửa sổ trong phiên của chính tiến trình gọi nó — đo từ xa
+là việc không làm được, không phải chuyện bất tiện.
+
+| | Câu hỏi | Kết quả |
+|---|---|---|
+| **C1** | Tab Trade có control Win32 thật không? | **XANH.** `SysListView32` thật, ctrlID `10328`, header `SysHeader32` 10 cột |
+| **C2** | Từng dòng vị thế có đọc được không? | **Nửa xanh nửa đỏ** — xem dưới |
+| **C3** | Hộp thoại đóng có hình dạng gì? | **XANH.** Chính là hộp thoại New Order, cùng lớp `#32770` |
+| **C4** | Có ID lệnh menu để mở hộp thoại đóng không? | **ĐỎ.** Toàn bộ cây menu đọc được, và **không có mục "Close position"** ở đâu cả. `Tools` chỉ có `32848 New Order` |
+
+**C2 nói chính xác là gì.** Địa chỉ hoá một dòng thì được, đọc dòng đó là vị thế nào thì không:
+
+| Phép đo | Kết quả |
+|---|---|
+| `LVM_GETITEMCOUNT` | 2 — đúng số vị thế |
+| `LVM_GETITEMRECT` | `(0,31,1867,61)` và `(0,61,1867,91)` — chính xác, cao đúng 30px |
+| `LVM_SETITEMSTATE` | chạy, chọn được dòng theo chỉ số, `LVM_GETNEXTITEM` xác nhận |
+| **`LVM_GETITEMTEXT`** | **chép 0 ký tự** |
+
+MT5 tự vẽ nội dung và không giữ chuỗi trong control. Cùng kiểu ấy ở combo chọn vị thế (`10672`):
+`CB_GETLBTEXT` trả về `36` — đúng độ dài chuỗi — nhưng **không ghi một byte nào** vào vùng đệm.
+
+Điều này **đã được loại trừ khả năng là lỗi của bên đọc** trước khi ghi thành kết luận, vì một phép
+đo âm do chính mình gây ra là thứ đắt nhất trong cả bộ: ghi dấu vân tay `\xEE` vào vùng đệm rồi đọc
+lại thấy nguyên vẹn, `WriteProcessMemory` OK, struct đọc ngược đúng con trỏ và `cchTextMax`,
+`sizeof(LVITEMW) = 88` chuẩn x64, và Market Watch — nơi chắc chắn có chữ — cũng trả rỗng y hệt.
+
+**Cái cứu cả hướng đi nằm ở C3.** Hộp thoại đóng cho đọc ngược ticket bằng **ba đường độc lập**:
+
+```
+tiêu đề cửa sổ : 'Position: #72205853 buy 0.01 BTCUSD.s 78500.01'
+nút 10410      : 'Close #72205853 buy 0.01 BTCUSD.s 78500.01 by Market'
+combo 10672    : '#72205853 buy 0.01 BTCUSD.s 78500.01'   (WM_GETTEXT, không phải CB_GETLBTEXT)
+```
+
+Nên việc không đọc được danh sách **không còn là chặn**: nó biến từ một phép đoán thành một phép
+**tìm có kiểm chứng** — mở dòng N, đọc ngược ticket, sai thì ESC rồi thử dòng khác, đúng mới điền
+volume và bấm. Số dòng biết trước nên phép tìm có chặn trên, và mở/huỷ hộp thoại **không đặt lệnh
+nào**, nên ranh giới D-24 giữ nguyên: mọi thứ sai đều sai *trước* cú bấm.
+
+Ô volume của hộp thoại đóng là **cùng ctrlID `10333`** với hộp thoại mở, nên bài học `WM_CHAR`
+(`win32.type_text`) áp nguyên vẹn, không phải học lại.
+
+**C5 — phép đo không có trong kế hoạch, và nó suýt cho kết luận sai.** Câu hỏi: `PostMessage` mở
+được hộp thoại đóng không.
+
+- Bốn message `WM_LBUTTONDOWN/UP/DBLCLK/UP` bằng **`PostMessage`** → **không mở được**, cả hai dòng,
+  chờ 5 giây.
+- Nhưng `PostMessage` một cú bấm đơn **có đổi selection** từ 0 sang 1 → message tới nơi, `lParam`
+  được dùng thật, MT5 **không** đọc vị trí con trỏ thật.
+- `WM_LBUTTONDBLCLK` bằng **`SendMessage`** (`SendMessageTimeoutW`, đã có sẵn) → **mở được** hộp
+  thoại đúng vị thế.
+
+Nếu dừng ở phép thử đầu thì kết luận sẽ là "PostMessage không điều khiển được tab Trade", và nó
+**sai**. Cả cơ chế vẫn là message gửi thẳng tới window proc, không phải `SendInput` bơm vào hàng đợi
+bàn phím của phiên tương tác — tức là tính chất sống-qua-RDP **có cơ sở**, nhưng vẫn **chưa được
+chứng minh** và chỉ VPS mới chứng minh được (B-08, TEST-19, giai đoạn 2).
+
+**Một lỗi tiềm ẩn CÓ SẴN, phát hiện nhờ C3, độc lập với việc đổi đường đóng.**
+
+`SIGNATURE` ở `clicker/ui/dialog.py:37` là `(10333, 1001, 10408, 10409)`. Hộp thoại đóng có
+**đủ cả bốn**, đều đang hiện. Nên `NewOrderDialog._find()` **không phân biệt được hai hộp thoại**,
+mà `open()` (dòng 83-86) lại "dùng lại cái đang mở sẵn". Người vận hành lỡ để một hộp thoại đóng mở
+trên terminal thì lệnh `OPEN_UI` kế tiếp sẽ bám vào đúng hộp thoại đó. Chưa xảy ra vì clicker chưa
+bao giờ mở hộp thoại đóng — nhưng con người thì có.
+
+Thứ phân biệt được: control **`10410` đang hiện** mang chữ bắt đầu bằng `"Close #"`, hoặc tiêu đề
+bắt đầu bằng `"Position: #"`. Lưu ý `10410` cũng có **bản ẩn** mang chữ `'Close'` trần — đúng cái
+bẫy bản-ẩn đã biết với `10408`/`10409`.
+
+**Cổng quyết định: XANH, đi tiếp.** Điều kiện treo lại: tính chất sống-qua-RDP phải được đo trên VPS
+ở giai đoạn 2 **trước khi** chạy tài khoản thật, không phải sau.
+
+Trả máy sạch: không còn hộp thoại nào mở, vẫn đúng 2 vị thế, `Balance` không đổi. Không có lệnh nào
+được đặt trong toàn bộ quá trình đo — mọi phép đo đều dừng trước `10410`/`10408`/`10409`.
+
+### Phase 11 — đường ĐÓNG phía Client chuyển sang giao diện
+
+*(2026-09-10. Code xong, test xong; **chưa chạy thật trên demo**.)*
+
+Cổng go/no-go của Bước 0 xanh (xem mục trên), nên thực hiện. Chi tiết thiết kế ở
+`plan/11-dong-qua-giao-dien.md`; mục này ghi những gì đáng nhớ khi làm.
+
+**Phía clicker.** `dialog.py` tách hai chế độ của cùng một hộp thoại; `tradetab.py` mới cho danh
+sách vị thế; `driver.py` thêm `close()` là một **phép tìm có kiểm chứng** chứ không phải một cú
+bấm. `link.py` nhận thêm hai loại command, và vẫn từ chối `OPEN`/`CLOSE` trần.
+
+**Phía Bridge.** Migration `004`, `close_route` theo từng Client (mặc định `EA`), bộ tương quan
+đóng, `client_close_reason`, và `kiem-reason` soi cả hai cột.
+
+**Bốn thứ suýt sai, ghi lại vì cả bốn đều thuộc loại "vẫn chạy nên không ai thấy":**
+
+1. **`WM_LBUTTONDBLCLK` một mình mở được dòng 0 nhưng không mở được dòng 1.** Dòng 0 tình cờ đã
+   nhận một cú bấm đơn ở phép đo trước nên có sẵn trạng thái mà message ấy cần. Bản thiếu vẫn chạy
+   trên **dòng đầu tiên** — đúng trường hợp người ta thử tay. Phải gửi đủ `DOWN` + `UP` + `DBLCLK`.
+
+2. **Một file nháp tên `select.py` trong thư mục scratchpad che mất module `select` của thư viện
+   chuẩn**, nên nó tự chạy mỗi lần import và tự bấm vào danh sách trước khi script thật chạy. Ba
+   phép đo đã bị nhiễu trước khi phát hiện. Kết luận không đổi sau khi đo lại sạch, nhưng nếu nó
+   đổi thì cái sai đã đi thẳng vào thiết kế.
+
+3. **Quét hết danh sách mà không thấy vị thế trả `rejected`.** Nghĩa là mỗi lần vị thế đã đóng sẵn
+   sẽ làm cặp thành `ORPHANED` kèm alert CRITICAL — báo động cho đúng thứ đáng lẽ phải xảy ra. Đã
+   đổi thành `already_closed`, khớp đúng ngữ nghĩa EA trả khi `PositionSelectByTicket` thất bại.
+
+4. **`_gui_lenh_dong` ban đầu rơi về EA kèm alert CRITICAL cho *mọi* Client chưa có clicker.** 27
+   test của phase 7 vẫn xanh — chúng chỉ kiểm lệnh `CLOSE` được gửi — nhưng một Client cấu hình
+   đường EA sẽ ăn một alert CRITICAL mỗi lần đóng lệnh bình thường. Đó là lý do `close_route` tồn
+   tại thay vì suy ra từ việc có clicker hay không.
+
+**Một lỗ hổng CÓ SẴN được bịt luôn, độc lập với phase này.** Hộp thoại đóng mang **đủ cả bốn**
+control trong `SIGNATURE` của hộp thoại New Order, nên `NewOrderDialog._find()` không phân biệt
+được hai chế độ — mà `open()` lại có nhánh "dùng lại cái đang mở sẵn". Người vận hành lỡ để một
+hộp thoại đóng mở trên terminal thì lệnh `OPEN_UI` kế tiếp sẽ bám vào đúng nó. Đã bịt bằng
+`la_che_do_dong()`, và **kiểm trên terminal thật**: với hộp thoại đóng đang mở,
+`NewOrderDialog._find()` trả `None`.
+
+**Không sửa một dòng EA nào.** `DoClose`/`DoClosePartial`/`ClosePartOf` nguyên vẹn cho đường Master
+và cho cú rơi về EA. Test hợp đồng `test_ea_protocol_contract.py` vẫn xanh.
+
+**638 test xanh (+71), `ruff` sạch.** Trong đó `tests/test_ui_close_flow.py` (18) và
+`tests/test_ui_close.py` (41) là mới; test quan trọng nhất là
+`test_lenh_dong_cua_bot_KHONG_kich_hoat_cascade`.
+
+**Còn nợ, và không được quên:**
+
+1. **TEST-26/27/28 chưa chạy trên demo.** Test tự động chứng minh logic đúng; chỉ deal thật mới
+   chứng minh `reason = 0`. Bài học `driver.py` mục đầu áp nguyên: đọc lại chữ trong ô không
+   chứng minh được gì.
+2. **Đóng một phần chưa đo được** — vị thế demo hiện tại là 0.01, đúng mức tối thiểu của sàn, nên
+   không đóng một phần được. Cần một vị thế lớn hơn.
+3. **Tính chất sống-qua-RDP của cú double-click chưa được chứng minh.** Cơ chế là message gửi thẳng
+   tới window proc chứ không phải `SendInput`, nên có cơ sở — nhưng chỉ VPS mới trả lời được
+   (B-08, TEST-19, giai đoạn 2). Phải đo **trước** khi chạy tài khoản thật, không phải sau.
+4. **Con số trong hai file hướng dẫn HTML** (272 ms đóng hẳn, 285 ms đóng một phần) là số đo của
+   đường EA và sẽ sai sau thay đổi này. Đo lại rồi thay, đừng để số cũ.
+5. **Clicker nay là điểm nghẽn của cả hai đường.** Mở và đóng dùng chung một tiến trình xử lý một
+   lệnh tại một thời điểm. Đóng khẩn cấp nhiều cặp sẽ chậm hơn 1.101 ms đo ở TEST-21 — phải đo lại.
+6. **Tab Trade phải là tab đang mở** thì clicker mới thấy danh sách vị thế. Bridge từ chối ồn ào
+   chứ không đoán, nhưng đây là một giới hạn vận hành mới, cùng loại với B-01 (một symbol mỗi
+   terminal).
+
+### Rà lại phase 11 — ba lỗ hổng tìm được sau khi test đã xanh
+
+*(2026-09-10, cùng ngày. Cả ba đều lọt qua 634 test và chỉ lộ ra khi đọc lại **đường đi của các
+trạng thái lỗi** thay vì đường đi của trường hợp thành công.)*
+
+**1. `already_closed` kết luận từ một phép đo không đủ tư cách kết luận.** `close()` quét hết danh
+sách rồi trả `already_closed`. Nhưng nếu một hộp thoại mở **chậm hơn** thời gian chờ, MT5 vào vòng
+lặp modal và **mọi dòng sau đó không dò được** — cũng cho ra "quét hết, không thấy". Bridge khi đó
+ghi cặp thành `CLOSED` trong khi vị thế vẫn đang mở và vẫn đang lỗ.
+
+Sửa: `already_closed` chỉ được trả khi **ít nhất một dòng đã mở được hộp thoại** trong lượt đó —
+tức là có bằng chứng cơ chế dò đang chạy. Không dòng nào mở được thì trả `rejected`, vốn chứng
+minh được là chưa bấm gì nên Bridge còn đường rơi về EA. Và huỷ hộp thoại sót lại **trước mỗi
+dòng**, không chỉ một lần lúc bắt đầu.
+
+**2. Bộ tương quan đóng bỏ sót đúng ca hay xảy ra nhất.** Truy vấn chỉ xét `PENDING`/`SENT`/
+`ACK_OK`. Nhưng clicker bấm xong rồi chết trước khi báo về sẽ trả ack `unknown`, và
+`server._handle_ack` biến nó thành **`TIMEOUT`** — trong khi lệnh **đã thực sự khớp**. Event đóng
+vừa về sẽ bị hiểu là người dùng đóng tay, và với `can_close_master = 1` nó **cascade đóng vị thế
+Master**. Đúng thứ bộ tương quan tồn tại để ngăn, hỏng ở đúng tình huống nó cần nhất.
+
+Sửa: xét mọi trạng thái, chặn bằng thời gian (`COALESCE(acked_at, updated_at) >= mốc`).
+
+**3. `rejected` từ clicker làm cặp `ORPHANED` trong khi vị thế vẫn mở.** `close_degraded_fallback
+= EA` chỉ lo ca clicker **chết**. Ca clicker **sống mà từ chối** — tab Trade không mở, đọc lại
+lệch, không dò được dòng nào — thì trước đó không ai lo, và nó là nguyên nhân hay gặp nhất.
+
+Sửa: `rejected` trên đường UI thì thử lại bằng `OrderSend` của EA kèm CRITICAL. Đây **đúng tinh
+thần D-24** chứ không phải nới lỏng nó: `rejected` là trạng thái duy nhất được retry, và ở đây
+"retry" nghĩa là đổi kênh chứ không phải bấm lại đúng chỗ vừa từ chối. Không có nguy cơ lặp vì
+lệnh đi ra là `CLOSE`/`CLOSE_PARTIAL`, không thuộc `LOAI_DONG_QUA_UI`.
+
+**Điểm chung của cả ba:** test cũ kiểm *chuyện đúng xảy ra đúng*, không kiểm *chuyện sai xảy ra ra
+sao*. Đã thêm 4 test cho đúng ba đường này.
+
+**Một thứ CỐ Ý không làm:** không nối `dry_probe()` vào canary như kế hoạch ban đầu. Canary chạy
+mỗi giây, mà `dry_probe` mở rồi đóng hộp thoại thật. Và không đưa "tab Trade có đang mở không" vào
+canary chung: tab Trade đóng **không** ảnh hưởng đường mở, nên để nó làm canary đỏ sẽ dừng copy vì
+một lý do không liên quan. Thay vào đó, tab Trade đóng nay thất bại **ồn ào và đúng chỗ** — clicker
+trả `rejected` với thông báo rõ, rồi rơi về EA (sửa số 3).
+
+**Lỗ thứ tư, nằm trong chính quy trình cập nhật chứ không nằm trong code.** Bản đầu của
+`RUNBOOK.md` mục 5c bảo dùng `bridge.admin sao-luu` để sao lưu trước khi nâng cấp. Nhưng **mọi**
+lệnh `bridge.admin` đều mở database qua `Database(...)`, mà hàm đó mặc định `migrate=True` — nên nó
+chạy migration **trước**, rồi mới sao lưu bản đã migrate. Bản sao lưu ấy không quay lại được, và
+điều đó chỉ lộ ra vào đúng lúc cần tới nó.
+
+Sửa: bước sao lưu trước migration dùng `sqlite3` trần với `VACUUM INTO`, không đi qua `Database`.
+`bridge.admin sao-luu` vẫn đúng cho sao lưu thường ngày — chỉ không dùng được ở đúng thời điểm cần
+giữ trạng thái *trước* khi schema đổi.

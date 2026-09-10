@@ -588,6 +588,22 @@ class Database:
                 (status, error, pair_id, _now(), event_id),
             )
 
+    def set_event_cause(self, event_id: str, command_id: str) -> None:
+        """Gắn `caused_by_command_id` cho một event **sau khi** nó đã được ghi.
+
+        Bình thường EA gắn trường này lúc sinh event (`RememberCause`, D-08), và Bridge không
+        đụng vào. Đường ĐÓNG qua giao diện là ngoại lệ: EA không gọi `OrderSend` nên không có gì
+        để nhớ, và Bridge phải tự nhận cha cho event dựa trên lệnh đóng nó vừa gửi.
+
+        Không gắn thì nhật ký event nói dối: một lệnh đóng do chính bot phát ra sẽ nằm đó với
+        `caused_by_command_id = NULL`, tức là mang đúng dấu hiệu của một lệnh người dùng đóng tay.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE event SET caused_by_command_id = ? WHERE event_id = ?",
+                (command_id, event_id),
+            )
+
     def max_seq_for_agent(self, agent_id: str) -> int:
         """`seq` cao nhất đã ghi thành công của một agent. Dùng để phát hiện lỗ hổng ở phase 3."""
         row = self.query_one("SELECT MAX(seq) FROM event WHERE agent_id = ?", (agent_id,))

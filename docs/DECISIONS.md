@@ -40,6 +40,11 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-24 | Trên đường giao diện, **chỉ `rejected`** (chứng minh được là chưa bấm nút gửi) mới được retry. `failed` và `unknown` không bao giờ retry tự động. |
 | D-25 | Không gửi `OPEN_UI` cho clicker chưa chứng minh được nó điều khiển được giao diện. Clicker `DEGRADED` thì **không copy**, không tự rơi về đường EA. |
 | D-26 | Mở lệnh qua **hộp thoại New Order**, không dùng One Click Trading. OCT không có ô Comment, mà thẻ trong comment là cơ chế tương quan duy nhất (D-07b, D-23). Ô volume phải ghi bằng `WM_CHAR`, không phải `WM_SETTEXT`. |
+| D-21b | Lệnh **ĐÓNG** phía Client cũng đi qua giao diện (`close_route = 'UI'`). D-21 giữ nguyên tinh thần — đổi kênh chứ không đổi tham số — nhưng phạm vi mở rộng sang deal đóng, vì bên kiểm tra nhìn cả `entry = OUT`. |
+| D-27 | Tương quan đóng làm tại Bridge bằng **cửa sổ command đang bay**, không bằng thẻ trong comment: hộp thoại đóng không có ô Comment. Thiếu nó thì mọi lệnh đóng của bot tự kích hoạt cascade. |
+| D-28 | Clicker hỏng thì đường đóng **được** rơi về `OrderSend` của EA (`close_degraded_fallback = EA`), ngược với D-25, kèm alert CRITICAL. Không mở được thì an toàn; không đóng được thì không. |
+| D-29 | Phía **Master** giữ nguyên `OrderSend`. Chỉ tài khoản Client bị soi `DEAL_REASON`. |
+| D-30 | Danh sách vị thế **không đọc được nội dung**. Nhắm một vị thế là **phép tìm có kiểm chứng**: mở hộp thoại theo dòng, đọc ngược ticket, sai thì huỷ rồi thử dòng khác. Mở và huỷ không đặt lệnh nào. |
 
 ---
 
@@ -302,3 +307,93 @@ bộ của MT5, và lệnh gửi đi mang volume cũ. Tệ hơn nữa, MT5 giữ
 thoại, nên lỗi này gửi đi kích thước của **lệnh trước** chứ không phải một giá trị mặc định dễ
 nhận ra. Đo ngày 2026-09-05: yêu cầu 0.02 nhưng gửi đi 0.01; yêu cầu 0.06 nhưng gửi đi 0.04 của
 lệnh liền trước. Xem `clicker/ui/win32.py::type_text()`.
+
+### D-21b — Lệnh ĐÓNG phía Client cũng đi qua giao diện
+
+**Lý do:** D-21 chốt đường mở đi qua giao diện và **cố ý** để đường đóng lại trên `OrderSend`, với
+một lập luận cụ thể: bên kiểm tra chỉ nhìn vị thế / lệnh mở, mà `POSITION_REASON` lấy từ deal mở
+nên vẫn là `CLIENT`. Lập luận ấy đúng với thứ biết được lúc đó, và hệ quả của nó đã được ghi thẳng
+là một rủi ro treo: *"nếu sau này phát hiện bên kiểm tra nhìn cả deal đóng thì phạm vi phải mở
+rộng đáng kể."*
+
+Đã xảy ra. Nên D-21 **không bị xoá** — tinh thần của nó (`DEAL_REASON` đổi bằng đổi kênh, không
+bằng đổi tham số) vẫn nguyên vẹn và nay áp cho cả hai đường. Cái đổi là **phạm vi**, đúng cách
+D-07b đã thu hẹp D-07 chứ không lật nó.
+
+Cái giá đã được trả đúng như dự đoán trong chính D-21: đóng phải nhắm đúng một `position_id` và
+đóng được một phần theo volume chính xác — hai thứ giao diện làm rất tệ. Cách trả nằm ở D-30.
+
+Bật theo từng Client bằng `close_route`, mặc định `EA`, vì nâng cấp không được tự đổi hành vi của
+một Client đang chạy.
+
+### D-27 — Tương quan đóng bằng cửa sổ command, không bằng thẻ comment
+
+**Lý do:** đây là chỗ dễ mất tiền nhất của cả thay đổi, và nó không hiển nhiên.
+
+Đường đóng qua EA có `RememberCause`: EA gọi `OrderSend` nên biết deal nào là con của command nào
+và gắn `caused_by_command_id` (D-08). Đường đóng qua giao diện **không có gì tương đương** — EA
+không gọi `OrderSend` nên không có gì để nhớ. Mẹo gắn thẻ của D-07b/D-23 cũng không dùng được:
+**hộp thoại đóng không có ô Comment**.
+
+Hệ quả nếu để nguyên: mọi event `position_closed` do chính bot phát ra về Bridge với
+`caused_by_command_id = NULL`, tức mang **đúng dấu hiệu của một lệnh người dùng đóng tay**. Với
+`can_close_master = 1`, mỗi lệnh đóng của bot sẽ tự kích hoạt một cascade đóng vị thế Master.
+
+Cách bịt: Bridge tự nhận cha. Nó vừa gửi lệnh đóng cho đúng cặp ấy cách đây vài trăm mili giây,
+nên event vừa về là con của lệnh đó. Cửa sổ `ui_close_correlate_grace_ms` mặc định 5000 — đủ rộng
+cho một chu kỳ đóng đo được 0,3–3 giây, đủ hẹp để không nuốt nhầm một cú đóng tay ngay sau đó.
+
+**Mơ hồ thì nhận cha, không cascade.** Ngược với D-23, nơi mơ hồ thì dừng lại chờ người. Lý do là
+hai hướng sai không cân nhau: không cascade thì cùng lắm để lại một cặp `ORPHANED`, sửa được;
+cascade nhầm thì đóng vị thế Master và không lấy lại được.
+
+### D-28 — Clicker hỏng thì đường ĐÓNG được rơi về EA, ngược với D-25
+
+**Lý do:** không phải nới lỏng D-25, mà là **hai tình huống khác nhau về hậu quả**.
+
+* Không **mở** được thì an toàn. Bỏ một lệnh copy là mất một cơ hội — thấy được, sửa được.
+* Không **đóng** được thì không an toàn. Master đã đóng mà Client còn đứng vị thế trần là phơi
+  nhiễm tiền thật, và nó không tự hết.
+
+Sự khác biệt ấy được diễn đạt bằng **cấu hình chứ không bằng lời bình luận**: hai khoá cạnh nhau
+với hai mặc định ngược nhau, `ui_degraded_fallback = SKIP` và `close_degraded_fallback = EA`.
+
+Cái giá **được ghi nhận chứ không được nuốt**: deal đóng lần ấy mang `EXPERT`, và nó đi kèm alert
+CRITICAL `CLOSE_FELL_BACK_TO_EA` nói thẳng điều đó, cộng `pair.error_message` để dashboard thấy.
+
+Đặt `SKIP` là chấp nhận giữ vị thế trần khi clicker hỏng. Đó phải là lựa chọn có ý thức.
+
+### D-29 — Phía Master giữ `OrderSend`
+
+**Lý do:** chỉ tài khoản **Client** bị soi `DEAL_REASON` — đó là tài khoản được copy tới. Master là
+tài khoản của chính người chủ dự án. Đưa Master sang giao diện đồng nghĩa với dựng thêm một clicker
+nữa cho terminal Master, tức tăng phạm vi và chi phí vận hành mà không đổi lấy điều gì.
+
+Hệ quả cần nhớ khi đọc code: `_gui_lenh_dong_master()` và `_dang_dong_master()` **cố ý** không đi
+qua nhánh định tuyến mới, và SQL của cái sau vẫn lọc `type = 'CLOSE'`.
+
+### D-30 — Nhắm vị thế bằng phép tìm có kiểm chứng, không bằng phép đoán
+
+**Lý do:** đo ngày 2026-09-10 trên tab Trade của MT5 build 5.00 — danh sách vị thế là
+`SysListView32` **thật**, nhưng `LVM_GETITEMTEXT` chép về **0 ký tự**: MT5 tự vẽ từng dòng và không
+giữ chuỗi trong control. Nên hình học đọc được (số dòng, hình chữ nhật từng dòng, chọn dòng theo
+chỉ số) mà **nội dung thì không**. Nhắm một dòng là tất định; biết dòng đó là vị thế nào thì không.
+
+Cái bù lại nằm ở hộp thoại: mở ra rồi thì ticket đọc được từ **ba nguồn độc lập** — tiêu đề cửa sổ,
+chữ trên nút `Close #…`, và `WM_GETTEXT` của combo chọn vị thế. Nên trình tự là: mở dòng N, đọc
+ngược ticket, sai thì ESC rồi thử dòng khác, đúng mới điền volume và bấm.
+
+**Điều làm phép tìm này an toàn: mở và huỷ hộp thoại không đặt lệnh nào.** Mọi bước dò đều nằm ở
+phía an toàn của ranh giới D-24, nên một lần dò trượt vẫn là `rejected` đúng nghĩa. Đây không phải
+đoán rồi sửa sau — không có "sau".
+
+Quét hết danh sách mà không thấy vị thế là `already_closed`, **không phải lỗi**: `LVM_GETITEMCOUNT`
+đếm mọi dòng bất kể cuộn tới đâu, nên đó là bằng chứng vị thế không còn mở (FR-18).
+
+Hai chi tiết đã trả giá để biết, ghi lại để không ai phải trả lần nữa:
+
+* `WM_LBUTTONDBLCLK` phải gửi bằng **`SendMessage`**, và phải có `WM_LBUTTONDOWN` + `WM_LBUTTONUP`
+  đi trước. Bản thiếu vẫn mở được **dòng đầu tiên** — đúng trường hợp người ta thử tay.
+* Hộp thoại đóng mang **đủ cả bốn** control trong `SIGNATURE` của hộp thoại New Order, nên chữ ký
+  một mình nó không phân biệt được hai chế độ. Thứ phân biệt được là control `10410` đang hiện với
+  chữ bắt đầu bằng `"Close #"`, hoặc tiêu đề bắt đầu bằng `"Position: #"`.

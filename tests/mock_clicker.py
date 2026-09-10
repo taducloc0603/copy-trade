@@ -40,6 +40,12 @@ class MockClicker(MockAgent):
     journal: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: Payload của các `OPEN_UI` đã thực sự "bấm", theo thứ tự.
     clicked: list[dict[str, Any]] = field(default_factory=list)
+    #: Payload của các lệnh ĐÓNG đã thực sự "bấm", theo thứ tự.
+    closed: list[dict[str, Any]] = field(default_factory=list)
+    #: Vị thế đang mở trên "terminal" giả. `None` nghĩa là không mô phỏng — mọi ticket đều tìm
+    #: thấy. Đặt một tập vào đây để thử nhánh `already_closed`, vốn là kết quả **bình thường**
+    #: khi hai bên cùng đóng gần như đồng thời chứ không phải lỗi (FR-18).
+    open_positions: set[int] | None = None
 
     def _next_status(self) -> str:
         return self.status_sequence.pop(0) if self.status_sequence else self.next_status
@@ -61,10 +67,11 @@ class MockClicker(MockAgent):
             base.update({k: v for k, v in fields.items() if v is not None})
             return base
 
-        # Clicker chỉ biết đúng một loại command. Mọi thứ khác bị từ chối — kể cả `OPEN`, để
-        # một lỗi định tuyến không bao giờ biến thành một lệnh `EXPERT` lặng lẽ.
-        if command["type"] != "OPEN_UI":
-            return ack("rejected", retmsg=f"Clicker khong nhan command loai {command['type']}")
+        # Clicker chỉ biết ba loại command. Mọi thứ khác bị từ chối — kể cả `OPEN` và `CLOSE`
+        # trần, để một lỗi định tuyến không bao giờ biến thành một lệnh `EXPERT` lặng lẽ.
+        loai = command["type"]
+        if loai not in ("OPEN_UI", "CLOSE_UI", "CLOSE_UI_PARTIAL"):
+            return ack("rejected", retmsg=f"Clicker khong nhan command loai {loai}")
 
         # Bất biến: đã biết + có ack → gửi lại nguyên văn; đã biết + ack rỗng → "unknown".
         if command_id in self.journal:
@@ -77,6 +84,9 @@ class MockClicker(MockAgent):
         # Giữ chỗ TRƯỚC phím đầu tiên. Thiếu lệnh an toàn hơn thừa lệnh.
         self.journal[command_id] = {"reserved_at": utc_now_iso(), "ack": None}
         self.executed_commands.append(command_id)
+
+        if loai in ("CLOSE_UI", "CLOSE_UI_PARTIAL"):
+            return self._dong(command_id, loai, payload, ack)
 
         if self.enforce_guards:
             # `magic` không đặt được qua giao diện, nên payload `OPEN_UI` không được mang nó.
@@ -105,6 +115,49 @@ class MockClicker(MockAgent):
 
         # `ok` = "tôi đã bấm", KHÔNG kèm `result_position_id`.
         return self._finish(command_id, ack("ok"))
+
+    def _dong(self, command_id: str, loai: str, payload: dict[str, Any], ack: Any) -> dict:
+        """Đóng qua giao diện: dò danh sách theo ticket, đọc ngược, rồi mới bấm.
+
+        Giữ nguyên hai điều kiện khó của bản thật, chứ không làm dễ đi:
+
+        * Danh sách **không đọc được nội dung**, nên "tìm thấy" nghĩa là mở hộp thoại rồi đọc
+          ngược ticket. Không tìm thấy sau khi quét hết là `already_closed`, không phải lỗi.
+        * `CLOSE_UI` và `CLOSE_UI_PARTIAL` **soi lẫn nhau** về trường `volume`. Một lệnh đóng
+          một phần rơi mất `volume` mà vẫn chạy sẽ thành đóng hẳn trong im lặng.
+        """
+        if self.enforce_guards:
+            if "magic" in payload:
+                return self._finish(command_id, ack(
+                    "rejected", retmsg=f"Payload {loai} khong duoc co magic"))
+            if not payload.get("position_id"):
+                return self._finish(command_id, ack(
+                    "rejected", retmsg=f"Payload {loai} thieu position_id"))
+            if loai == "CLOSE_UI_PARTIAL" and payload.get("volume") is None:
+                return self._finish(command_id, ack("rejected",
+                                                    retmsg="Payload CLOSE_UI_PARTIAL thieu volume"))
+            if loai == "CLOSE_UI" and payload.get("volume") is not None:
+                return self._finish(command_id, ack(
+                    "rejected", retmsg="CLOSE_UI khong duoc mang volume"))
+
+        position_id = int(payload["position_id"])
+        if self.open_positions is not None and position_id not in self.open_positions:
+            return self._finish(command_id, ack(
+                "already_closed", retmsg=f"Khong con vi the {position_id} trong danh sach",
+                executed_volume=0.0))
+
+        status = self._next_status()
+        if status == "rejected":
+            return self._finish(command_id, ack("rejected", retmsg="Doc lai lech, da huy"))
+
+        self.closed.append(dict(payload))
+        if status == "failed":
+            return self._finish(command_id, ack("failed", retcode=10019, retmsg="San tu choi"))
+        if status == "unknown":
+            return self._finish(command_id, ack("unknown", retmsg="Khong doc duoc ket qua"))
+        if self.open_positions is not None and loai == "CLOSE_UI":
+            self.open_positions.discard(position_id)
+        return self._finish(command_id, ack("ok", executed_volume=payload.get("volume")))
 
     def _finish(self, command_id: str, ack: dict[str, Any]) -> dict[str, Any]:
         self.journal[command_id]["ack"] = dict(ack)

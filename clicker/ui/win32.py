@@ -32,6 +32,14 @@ CB_SETCURSEL = 0x014E
 WM_CHAR = 0x0102
 EM_SETSEL = 0x00B1
 
+#: Message của ListView, dùng cho khảo sát Bước 0 (đường đóng). `LVM_GETITEMCOUNT` trả về 0 hoặc
+#: lỗi khi control **không phải** ListView thật — và đó là một câu trả lời, không phải một thất bại.
+LVM_FIRST = 0x1000
+LVM_GETITEMCOUNT = LVM_FIRST + 4
+LVM_GETITEMTEXTW = LVM_FIRST + 115
+#: `LVITEMW.mask` cho biết chỉ quan tâm trường text.
+LVIF_TEXT = 0x0001
+
 #: Lớp cửa sổ của hộp thoại chuẩn — hộp thoại New Order thuộc lớp này (đo ở E1).
 DIALOG_CLASS = "#32770"
 
@@ -256,3 +264,346 @@ def post_close(hwnd: int) -> bool:
 def post_command(hwnd: int, command_id: int) -> bool:
     """Gửi một lệnh menu tới cửa sổ, như thể người dùng vừa chọn nó."""
     return bool(user32().PostMessageW(wintypes.HWND(hwnd), WM_COMMAND, command_id, 0))
+
+
+# -- khảo sát Bước 0: đọc thêm, vẫn không tác động ---------------------------------------------
+#
+# Cả phần dưới đây **chỉ đọc**. Không có `PostMessage`, không `WM_SETTEXT`, không `WM_CHAR`. Nó
+# sinh ra để trả lời bốn câu hỏi của Bước 0 trong kế hoạch đổi đường ĐÓNG sang giao diện: tab
+# Trade có control Win32 thật không, từng dòng vị thế có đọc được không, hộp thoại đóng có hình
+# dạng gì, và có ID lệnh menu nào mở được nó.
+#
+# Một phép đo **âm** ở đây cũng là kết quả. `listview_item_count()` trả `None` nghĩa là control
+# đó không phải ListView thật, và đó chính là thông tin cần để quyết định đi tiếp hay dừng.
+
+
+class RECT(ctypes.Structure):
+    _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+
+def get_window_rect(hwnd: int) -> tuple[int, int, int, int]:
+    """Toạ độ màn hình của một cửa sổ: `(left, top, right, bottom)`.
+
+    Cần cho Bước 0 vì nếu danh sách vị thế không có HWND cho từng dòng thì đường duy nhất còn lại
+    là bấm theo toạ độ — và phải nhìn thấy kích thước thật mới đánh giá được việc đó mong manh tới
+    đâu.
+    """
+    rect = RECT()
+    if not user32().GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+        return (0, 0, 0, 0)
+    return (int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
+
+
+def get_parent(hwnd: int) -> int:
+    """HWND cha, hoặc 0. Dùng để dựng lại cây từ danh sách phẳng của `EnumChildWindows`."""
+    return int(user32().GetParent(wintypes.HWND(hwnd)) or 0)
+
+
+# -- menu (chỉ đọc) ----------------------------------------------------------------------------
+
+def get_menu(hwnd: int) -> int:
+    """HMENU của thanh menu một cửa sổ, hoặc 0 nếu nó không có menu chuẩn.
+
+    Trả 0 là một câu trả lời có nghĩa: nghĩa là MT5 tự vẽ thanh menu, và khi đó không có ID lệnh
+    nào để `PostMessage(WM_COMMAND, ...)` như cách mở hộp thoại New Order đang làm.
+    """
+    return int(user32().GetMenu(wintypes.HWND(hwnd)) or 0)
+
+
+def get_menu_item_count(hmenu: int) -> int:
+    count = int(user32().GetMenuItemCount(wintypes.HMENU(hmenu)))
+    return count if count > 0 else 0
+
+
+def get_sub_menu(hmenu: int, position: int) -> int:
+    return int(user32().GetSubMenu(wintypes.HMENU(hmenu), position) or 0)
+
+
+def get_menu_item_id(hmenu: int, position: int) -> int:
+    """ID lệnh của một mục menu. `-1` nghĩa là mục đó mở menu con chứ không phải một lệnh."""
+    return int(ctypes.c_int(user32().GetMenuItemID(wintypes.HMENU(hmenu), position)).value)
+
+
+def get_menu_string(hmenu: int, position: int) -> str:
+    """Chữ của một mục menu, tra **theo vị trí**.
+
+    Chuỗi rỗng với mục owner-drawn là bình thường và cũng là một câu trả lời — nó nói rằng không
+    nhận ra mục cần tìm bằng chữ được, phải dựa vào vị trí hoặc vào ID.
+    """
+    api = user32()
+    MF_BYPOSITION = 0x0400
+    length = int(api.GetMenuStringW(wintypes.HMENU(hmenu), position, None, 0, MF_BYPOSITION))
+    if length <= 0:
+        return ""
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    api.GetMenuStringW(wintypes.HMENU(hmenu), position, buffer, length + 1, MF_BYPOSITION)
+    return buffer.value
+
+
+# -- ListView (chỉ đọc, qua bộ nhớ tiến trình đích) --------------------------------------------
+#
+# Đọc text của một dòng ListView thuộc tiến trình khác đòi hỏi cấp phát một vùng đệm **bên trong**
+# tiến trình đó: `LVM_GETITEMTEXTW` nhận một con trỏ và control sẽ ghi vào đúng con trỏ ấy trong
+# không gian địa chỉ của nó, nên một buffer của Python là vô nghĩa.
+#
+# Vẫn là **chỉ đọc** theo đúng nghĩa quan trọng: không có message nào làm MT5 đặt lệnh, huỷ lệnh
+# hay đổi trạng thái. Thứ được ghi là một vùng nhớ rác do chính ta cấp phát và giải phóng ngay.
+
+_kernel32: ctypes.WinDLL | None = None
+
+PROCESS_VM_OPERATION = 0x0008
+PROCESS_VM_READ = 0x0010
+PROCESS_VM_WRITE = 0x0020
+PROCESS_QUERY_INFORMATION = 0x0400
+MEM_COMMIT = 0x1000
+MEM_RESERVE = 0x2000
+MEM_RELEASE = 0x8000
+PAGE_READWRITE = 0x04
+
+
+class LVITEMW(ctypes.Structure):
+    _fields_ = [
+        ("mask", wintypes.UINT), ("iItem", ctypes.c_int), ("iSubItem", ctypes.c_int),
+        ("state", wintypes.UINT), ("stateMask", wintypes.UINT),
+        ("pszText", ctypes.c_void_p), ("cchTextMax", ctypes.c_int),
+        ("iImage", ctypes.c_int), ("lParam", ctypes.c_void_p),
+        ("iIndent", ctypes.c_int), ("iGroupId", ctypes.c_int),
+        ("cColumns", wintypes.UINT), ("puColumns", ctypes.c_void_p),
+        ("piColFmt", ctypes.c_void_p), ("iGroup", ctypes.c_int),
+    ]
+
+
+def kernel32() -> ctypes.WinDLL:
+    global _kernel32
+    if _kernel32 is not None:
+        return _kernel32
+    if not sys.platform.startswith("win"):
+        raise Win32Unavailable(f"Clicker chi chay tren Windows, dang la {sys.platform}")
+    try:
+        _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    except OSError as exc:  # pragma: no cover - chỉ xảy ra trên máy hỏng
+        raise Win32Unavailable(f"Khong nap duoc kernel32.dll: {exc}") from exc
+    return _kernel32
+
+
+def _send_timeout(hwnd: int, msg: int, wparam: int, lparam: int) -> int | None:
+    """`SendMessageTimeoutW` trần. `None` nghĩa là control không trả lời (hoặc đang treo)."""
+    result = ctypes.c_size_t()
+    ok = user32().SendMessageTimeoutW(
+        wintypes.HWND(hwnd), msg, ctypes.c_size_t(wparam), ctypes.c_void_p(lparam),
+        SMTO_ABORTIFHUNG, SEND_TIMEOUT_MS, ctypes.byref(result),
+    )
+    return int(result.value) if ok else None
+
+
+#: Lớp của ListView chuẩn. Cần đối chiếu vì `LVM_GETITEMCOUNT` **không** phân biệt được
+#: "ListView rỗng" với "không phải ListView" — xem `listview_item_count`.
+LISTVIEW_CLASS = "SysListView32"
+
+
+def listview_item_count(hwnd: int) -> int | None:
+    """Số dòng của một ListView chuẩn.
+
+    **Đọc kỹ giá trị trả về, nó không nói điều bạn tưởng.** Đo trên Windows 11 ngày 2026-09-10:
+    một control **không phải** ListView vẫn trả về `0` chứ không báo lỗi — nó nhận một message lạ,
+    không hiểu, và trả `0` như mọi message không xử lý. Nên:
+
+    * `None` — control không trả lời trong `SEND_TIMEOUT_MS`, tức là đang treo. Hiếm.
+    * `0` — **mơ hồ**: hoặc là ListView rỗng, hoặc không phải ListView. Một mình nó không kết luận
+      được gì; phải đối chiếu `get_class_name(hwnd) == LISTVIEW_CLASS`.
+    * `> 0` — gần như chắc chắn là ListView thật và đang có dữ liệu.
+
+    Ghi lại đầy đủ vì đây đúng loại phép đo dễ đọc nhầm thành kết quả dương: chạy trên tab Trade
+    có vị thế thật mà thấy `0` thì câu trả lời là **không đọc được**, không phải "không có vị thế".
+    """
+    return _send_timeout(hwnd, LVM_GETITEMCOUNT, 0, 0)
+
+
+class _RemoteBuffer:
+    """Vùng đệm cấp phát trong tiến trình đích, tự giải phóng khi ra khỏi `with`."""
+
+    def __init__(self, pid: int, size: int) -> None:
+        self.size = size
+        api = kernel32()
+        api.OpenProcess.restype = wintypes.HANDLE
+        self.process = api.OpenProcess(
+            PROCESS_VM_OPERATION | PROCESS_VM_READ | PROCESS_VM_WRITE
+            | PROCESS_QUERY_INFORMATION, False, pid)
+        if not self.process:
+            raise Win32Unavailable(f"Khong mo duoc tien trinh {pid} de doc ListView")
+        api.VirtualAllocEx.restype = ctypes.c_void_p
+        self.address = api.VirtualAllocEx(self.process, None, size,
+                                          MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
+        if not self.address:
+            api.CloseHandle(self.process)
+            raise Win32Unavailable(f"Khong cap phat duoc {size} byte trong tien trinh {pid}")
+
+    def __enter__(self) -> _RemoteBuffer:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        api = kernel32()
+        api.VirtualFreeEx(self.process, ctypes.c_void_p(self.address), 0, MEM_RELEASE)
+        api.CloseHandle(self.process)
+
+    def write(self, offset: int, data: bytes) -> bool:
+        written = ctypes.c_size_t()
+        return bool(kernel32().WriteProcessMemory(
+            self.process, ctypes.c_void_p(self.address + offset), data, len(data),
+            ctypes.byref(written)))
+
+    def read(self, offset: int, size: int) -> bytes:
+        buffer = (ctypes.c_char * size)()
+        got = ctypes.c_size_t()
+        if not kernel32().ReadProcessMemory(
+                self.process, ctypes.c_void_p(self.address + offset), buffer, size,
+                ctypes.byref(got)):
+            return b""
+        return bytes(buffer[:int(got.value)])
+
+
+def listview_item_text(hwnd: int, row: int, column: int = 0, max_chars: int = 260) -> str:
+    """Text của một ô trong ListView chuẩn. Chuỗi rỗng nếu không đọc được."""
+    pid = get_process_id(hwnd)
+    text_bytes = max_chars * 2
+    item_size = ctypes.sizeof(LVITEMW)
+    try:
+        with _RemoteBuffer(pid, item_size + text_bytes) as remote:
+            item = LVITEMW()
+            item.mask = LVIF_TEXT
+            item.iItem = row
+            item.iSubItem = column
+            item.pszText = remote.address + item_size
+            item.cchTextMax = max_chars
+            if not remote.write(0, bytes(memoryview(item).tobytes())):
+                return ""
+            if _send_timeout(hwnd, LVM_GETITEMTEXTW, row, remote.address) is None:
+                return ""
+            raw = remote.read(item_size, text_bytes)
+            if not raw:
+                return ""
+            return raw.decode("utf-16-le", errors="replace").split("\x00", 1)[0]
+    except Win32Unavailable:
+        return ""
+
+
+# -- ListView: hình học và lựa chọn ------------------------------------------------------------
+#
+# Đo ngày 2026-09-10 trên tab Trade của Connext-Demo build 5.00: control là `SysListView32` thật,
+# và tuy **không đọc được text của dòng** (MT5 tự vẽ), nó vẫn trả lời đầy đủ các message về hình
+# học và lựa chọn. Nhờ vậy việc nhắm một dòng là **tất định**, không phải đoán toạ độ pixel trên
+# một canvas — khác hẳn tình huống mà D-26 đã loại khi bàn về One Click Trading.
+
+LVM_GETITEMRECT = LVM_FIRST + 14
+LVM_SETITEMSTATE = LVM_FIRST + 43
+LVM_GETNEXTITEM = LVM_FIRST + 12
+
+LVIF_STATE = 0x0008
+LVIS_FOCUSED = 0x0001
+LVIS_SELECTED = 0x0002
+LVNI_SELECTED = 0x0002
+
+#: Toàn bộ dòng, kể cả các cột phụ.
+LVIR_BOUNDS = 0
+
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP = 0x0202
+WM_LBUTTONDBLCLK = 0x0203
+MK_LBUTTON = 0x0001
+
+
+def listview_item_rect(hwnd: int, row: int) -> tuple[int, int, int, int] | None:
+    """Hình chữ nhật của một dòng, theo toạ độ **client** của chính ListView.
+
+    Đây là nguồn toạ độ duy nhất được phép dùng để bấm vào một dòng. Tự tính bằng chiều cao dòng
+    nhân chỉ số là sai ngay khi có cuộn dọc, mà lúc đó cú bấm rơi vào **dòng khác** — nghĩa là
+    mở nhầm vị thế.
+    """
+    pid = get_process_id(hwnd)
+    size = ctypes.sizeof(RECT)
+    try:
+        with _RemoteBuffer(pid, size) as remote:
+            # `left` mang mã LVIR_* khi gửi đi, không phải toạ độ.
+            yeu_cau = RECT()
+            yeu_cau.left = LVIR_BOUNDS
+            if not remote.write(0, bytes(memoryview(yeu_cau).tobytes())):
+                return None
+            if _send_timeout(hwnd, LVM_GETITEMRECT, row, remote.address) is None:
+                return None
+            raw = remote.read(0, size)
+            if len(raw) < size:
+                return None
+            got = RECT.from_buffer_copy(raw)
+            return (int(got.left), int(got.top), int(got.right), int(got.bottom))
+    except Win32Unavailable:
+        return None
+
+
+def listview_selected_row(hwnd: int) -> int | None:
+    """Chỉ số dòng đang được chọn, hoặc `None` nếu không có dòng nào.
+
+    `LVM_GETNEXTITEM` trả về `-1` khi không tìm thấy, và giá trị đó về đây dưới dạng số không dấu
+    64-bit, nên phải đổi lại tường minh chứ không so với `-1`.
+    """
+    ket_qua = _send_timeout(hwnd, LVM_GETNEXTITEM, 0xFFFFFFFFFFFFFFFF, LVNI_SELECTED)
+    if ket_qua is None:
+        return None
+    row = ctypes.c_ssize_t(ket_qua).value
+    return None if row < 0 else row
+
+
+def listview_select_row(hwnd: int, row: int) -> bool:
+    """Chọn một dòng bằng chính API của ListView, **không** qua chuột.
+
+    Dùng trước cú double-click: đo được rằng MT5 mở hộp thoại theo dòng đang chọn, và đặt lựa chọn
+    bằng message thì tất định hơn hẳn việc trông chờ một cú bấm chuột rơi đúng chỗ.
+    """
+    pid = get_process_id(hwnd)
+    try:
+        with _RemoteBuffer(pid, ctypes.sizeof(LVITEMW)) as remote:
+            item = LVITEMW()
+            item.mask = LVIF_STATE
+            item.state = LVIS_SELECTED | LVIS_FOCUSED
+            item.stateMask = LVIS_SELECTED | LVIS_FOCUSED
+            if not remote.write(0, bytes(memoryview(item).tobytes())):
+                return False
+            return bool(_send_timeout(hwnd, LVM_SETITEMSTATE, row, remote.address))
+    except Win32Unavailable:
+        return False
+
+
+def send_double_click(hwnd: int, x: int, y: int) -> bool:
+    """Double-click vào một điểm trong cửa sổ, bằng `SendMessageTimeout`.
+
+    **`SendMessage` chứ không phải `PostMessage`, và đó là kết quả đo chứ không phải sở thích.**
+    Ngày 2026-09-10, gửi đủ bốn message `WM_LBUTTONDOWN/UP/DBLCLK/UP` bằng `PostMessage` vào tab
+    Trade **không mở được** hộp thoại, chờ 5 giây, cả hai dòng. Cùng điểm ấy, `WM_LBUTTONDBLCLK`
+    bằng `SendMessage` thì mở được ngay.
+
+    Đáng ghi lại vì phép thử đầu suýt cho kết luận sai — rằng `PostMessage` không điều khiển được
+    tab Trade. Nó **có**: một cú bấm đơn `PostMessage` đổi được lựa chọn từ 0 sang 1, tức message
+    tới nơi và `lParam` được dùng thật; MT5 **không** đọc vị trí con trỏ thật.
+
+    Vẫn là message gửi thẳng tới window proc chứ không phải `SendInput` bơm vào hàng đợi của phiên
+    tương tác, nên tính chất sống-qua-RDP có cơ sở — nhưng **chưa được chứng minh**, và chỉ đo trên
+    VPS mới chứng minh được (B-08, TEST-19).
+
+    Dùng `SendMessageTimeout` chứ không phải `SendMessage` trần: message này làm MT5 mở một hộp
+    thoại modal, và `SendMessage` trần sẽ chặn tới khi hộp thoại đóng — tức là treo cả clicker.
+
+    **Phải gửi đủ `WM_LBUTTONDOWN` + `WM_LBUTTONUP` trước `WM_LBUTTONDBLCLK`**, và đây cũng là kết
+    quả đo chứ không phải làm cho giống thật. Bản đầu chỉ gửi mỗi `WM_LBUTTONDBLCLK`: nó mở được
+    dòng 0 nhưng **không** mở được dòng 1. Lý do là dòng 0 tình cờ đã nhận một cú bấm đơn ở phép đo
+    trước đó, nên nó có sẵn trạng thái mà `WM_LBUTTONDBLCLK` cần; dòng 1 thì không.
+
+    Đúng loại bẫy khó thấy nhất: bản thiếu vẫn chạy trên **dòng đầu tiên**, tức là chạy trên đúng
+    trường hợp mà người ta thử tay. Không gửi `WM_LBUTTONUP` cuối cùng vì lúc đó MT5 đã ở trong
+    vòng lặp modal của hộp thoại, và message ấy chỉ tổ chờ hết hạn.
+    """
+    lparam = ((y & 0xFFFF) << 16) | (x & 0xFFFF)
+    if _send_timeout(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam) is None:
+        return False
+    if _send_timeout(hwnd, WM_LBUTTONUP, 0, lparam) is None:
+        return False
+    return _send_timeout(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lparam) is not None

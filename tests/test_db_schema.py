@@ -12,7 +12,9 @@ from pathlib import Path
 import pytest
 
 from bridge.db.migrations import (
+    SCHEMA_PATH,
     SCHEMA_VERSION,
+    SCHEMA_VERSION_DDL,
     MigrationError,
     apply_migrations,
     current_version,
@@ -296,3 +298,57 @@ def test_chay_lai_migration_khong_ghi_de_config_da_sua(db_path: Path) -> None:
     second = Database(db_path)
     assert second.get_config("run_mode") == "RUNNING", "INSERT OR IGNORE phải giữ giá trị cũ"
     second.close()
+
+
+# -- migration 004 tren DB DA CO DU LIEU ---------------------------------------------------------
+
+def test_migration_004_giu_nguyen_du_lieu_command_cu(tmp_path: Path) -> None:
+    """Migration 004 dung lai bang `command` de noi rong CHECK. Phai giu nguyen du lieu cu.
+
+    Kiem tren DB **da co du lieu** chu khong phai DB rong, vi do la dung tinh huong that: bo
+    migration cua du an nay chua tung chay qua version 1 tren du lieu quy (`PROGRESS.md` muc
+    "Phase 6b - lap ke hoach va ra soat", rui ro treo so 1), va mot migration dung lai bang la
+    dung loai co the lam mat sach mot bang ma test tren DB rong khong bao gi.
+    """
+    duong = tmp_path / "cu.db"
+    conn = sqlite3.connect(duong)
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.execute(SCHEMA_VERSION_DDL)
+    conn.execute("INSERT INTO schema_version (version, applied_at) VALUES (1, ?)",
+                 ("1970-01-01T00:00:00.000Z",))
+    now = "2026-01-01T00:00:00.000Z"
+    conn.execute("INSERT INTO agent (agent_id, role, token_hash, magic_number, created_at, "
+                 "updated_at) VALUES ('AG-X','CLIENT','h',1,?,?)", (now, now))
+    conn.execute("INSERT INTO command (command_id, target_agent_id, type, status, attempt, "
+                 "retmsg, created_at, updated_at) "
+                 "VALUES ('CMD-CU','AG-X','CLOSE','ACK_OK',2,'xong',?,?)", (now, now))
+    conn.commit()
+
+    apply_migrations(conn)
+
+    row = conn.execute("SELECT * FROM command WHERE command_id = 'CMD-CU'").fetchone()
+    assert row is not None, "Migration da lam mat du lieu command cu"
+    cols = [c[0] for c in conn.execute("SELECT * FROM command LIMIT 0").description]
+    lay = dict(zip(cols, row, strict=True))
+    assert lay["type"] == "CLOSE" and lay["status"] == "ACK_OK"
+    assert lay["attempt"] == 2 and lay["retmsg"] == "xong"
+
+    # Loai moi phai duoc chap nhan sau migration...
+    conn.execute("INSERT INTO command (command_id, target_agent_id, type, created_at, "
+                 "updated_at) VALUES ('CMD-MOI','AG-X','CLOSE_UI',?,?)", (now, now))
+    # ...va loai bia dat van phai bi tu choi: CHECK khong duoc noi rong qua tay.
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("INSERT INTO command (command_id, target_agent_id, type, created_at, "
+                     "updated_at) VALUES ('CMD-XAU','AG-X','CLOSE_MAGIC',?,?)", (now, now))
+
+    # Ba index phai duoc dung lai: DROP TABLE xoa luon index cua no.
+    ten = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='command'")}
+    assert {"idx_cmd_inflight", "idx_cmd_pair", "idx_command_dang_bay"} <= ten
+
+    # Cot moi va cau hinh moi phai co mat.
+    assert conn.execute("SELECT close_route FROM client_account LIMIT 0").description
+    assert conn.execute("SELECT client_close_reason FROM pair LIMIT 0").description
+    khoa = {r[0] for r in conn.execute("SELECT key FROM system_config")}
+    assert {"close_degraded_fallback", "ui_close_correlate_grace_ms"} <= khoa
+    conn.close()

@@ -8,7 +8,12 @@ Ba điều nó **không** làm, và đều là cố ý:
 * Không gửi `event`. Vị thế do EA Client báo lên; clicker không nhìn thấy sổ lệnh.
 * Không trả lời `REQUEST_SNAPSHOT`. Nó không có vị thế nào để báo cáo — Bridge cũng đã lọc theo
   role nên lệnh này không bao giờ tới.
-* Không nhận `CLOSE`. Đường đóng vẫn là `OrderSend` của EA và không đổi ở phase 6b.
+* Không nhận `OPEN` hay `CLOSE` **trần**. Hai loại đó là của đường EA, và nhận nhầm chúng nghĩa là
+  lặng lẽ đặt một lệnh `EXPERT` — đúng thứ cả đường giao diện tồn tại để làm cho bất khả thi.
+
+> Clicker nhận `CLOSE_UI` và `CLOSE_UI_PARTIAL` **từ khi đường đóng chuyển sang giao diện**. Trước
+> đó nó chỉ nhận `OPEN_UI`, và tài liệu ở đây từng ghi thẳng là "không nhận lệnh đóng" — câu ấy
+> nay không còn đúng nữa.
 """
 
 from __future__ import annotations
@@ -24,13 +29,13 @@ from bridge.logging_setup import get_logger
 from bridge.protocol.framing import LineBuffer, encode_line
 from clicker.journal import CommandJournal
 from clicker.ui import probe as ui_probe
-from clicker.ui.driver import OpenDriver, OpenRequest
+from clicker.ui.driver import CloseRequest, OpenRequest, UiDriver
 
 log = get_logger(__name__)
 
-#: Loại command duy nhất clicker biết làm. Mọi loại khác bị từ chối — kể cả `OPEN`, để một lỗi
-#: định tuyến không bao giờ biến thành một lệnh `EXPERT` lặng lẽ (plan 6b mục 6b.2).
-SUPPORTED_COMMAND = "OPEN_UI"
+#: Các loại command clicker biết làm. Mọi loại khác bị từ chối — kể cả `OPEN` và `CLOSE` trần, để
+#: một lỗi định tuyến không bao giờ biến thành một lệnh `EXPERT` lặng lẽ (plan 6b mục 6b.2).
+SUPPORTED_COMMANDS = frozenset({"OPEN_UI", "CLOSE_UI", "CLOSE_UI_PARTIAL"})
 
 #: Mot giay, khop voi EA. Bridge danh agent OFFLINE sau `heartbeat_timeout_ms` (mac dinh
 #: 5000), nen gui moi 5 giay la bien bang 0: chi can mot nhip cham la roi OFFLINE. Ma
@@ -62,7 +67,7 @@ class ClickerLink:
 
     config: LinkConfig
     journal: CommandJournal
-    driver: OpenDriver
+    driver: UiDriver
     #: Ở chế độ chạy thử, canary luôn báo đỏ: một clicker không chạm vào giao diện thì **không**
     #: điều khiển được giao diện, và Bridge phải biết điều đó thay vì gửi lệnh vào hư không.
     dry_run: bool = True
@@ -207,7 +212,7 @@ class ClickerLink:
             return {"v": 1, "kind": "ack", "ts": utc_now_iso(), "command_id": command_id,
                     "status": status, "retmsg": retmsg[:500], "attempt": 1}
 
-        if message.get("type") != SUPPORTED_COMMAND:
+        if message.get("type") not in SUPPORTED_COMMANDS:
             return ack("rejected", f"Clicker khong nhan command loai {message.get('type')}")
 
         # Đã biết `command_id` này rồi thì TUYỆT ĐỐI không chạm vào giao diện lần nữa.
@@ -244,8 +249,12 @@ class ClickerLink:
             self.journal.complete(command_id, result)
             return result
 
+        loai = message.get("type")
         try:
-            request = OpenRequest.from_payload(message.get("payload") or {})
+            payload = message.get("payload") or {}
+            request: OpenRequest | CloseRequest = (
+                OpenRequest.from_payload(payload) if loai == "OPEN_UI"
+                else CloseRequest.from_payload(payload, loai))
         except ValueError as exc:
             result = ack("rejected", f"Payload khong hop le: {exc}")
             self.journal.complete(command_id, result)
@@ -257,7 +266,8 @@ class ClickerLink:
             self.driver.on_before_click = lambda: self.journal.mark_clicked(command_id)
 
         try:
-            outcome = self.driver.open(request)
+            outcome = (self.driver.open(request) if isinstance(request, OpenRequest)
+                       else self.driver.close(request))
         except Exception as exc:
             # Driver ném ngoại lệ giữa chừng: KHÔNG được kết luận là chưa bấm.
             log.exception("Driver hong khi xu ly command %s", command_id)

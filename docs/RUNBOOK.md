@@ -25,8 +25,8 @@ hành phải biết cách bấm nó **trước khi** cần dùng tới.
 | Tiến trình | Chạy ở đâu | Vai trò |
 |---|---|---|
 | **Bridge** (`python -m bridge`) | Máy Bridge | TCP server 8787, dashboard 8080, toàn bộ logic. |
-| **EA** (`CopyBridgeClient.mq5`, `CopyBridgeMaster.mq5`) | Trong mỗi terminal MT5 | Gửi event, thực thi lệnh **ĐÓNG**. Client mở được lệnh, **Master thì không** — xem D-01. |
-| **clicker** (`python -m clicker`) | Cùng phiên đăng nhập Windows với terminal Client | Mở lệnh qua hộp thoại New Order (D-21, D-22, D-26). |
+| **EA** (`CopyBridgeClient.mq5`, `CopyBridgeMaster.mq5`) | Trong mỗi terminal MT5 | Gửi event; thực thi lệnh **ĐÓNG phía Master**, và phía Client khi `close_route = 'EA'` hoặc khi clicker hỏng (D-28). |
+| **clicker** (`python -m clicker`) | Cùng phiên đăng nhập Windows với terminal Client | Mở lệnh qua hộp thoại New Order (D-21, D-22, D-26) và **đóng lệnh** khi `close_route = 'UI'` (D-21b, D-30). |
 
 Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 
@@ -118,6 +118,7 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI  # dong qua giao dien
 .\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING      # dat
 .\.venv\Scripts\python.exe -m bridge.admin sao-luu
@@ -160,6 +161,31 @@ Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba th�
 `run_mode`, canary của clicker, và số finding đối chiếu đang chờ.
 
 ---
+
+## 5a. Đo lại cấu trúc giao diện MT5 — khi đổi sàn hoặc khi clicker hành xử lạ
+
+Clicker nhắm các ô trong hộp thoại New Order bằng **`ctrlID` chôn cứng**, đo trên *Connext-Demo
+build 5.00* (`clicker/ui/dialog.py`). Mỗi sàn phát hành một bản MT5 riêng, nên các hằng số đó
+**không có gì bảo đảm** đúng trên terminal khác. Triệu chứng khi chúng sai: clicker báo `rejected`
+với "Hop thoai khong dung hinh dang", hoặc tệ hơn là không tìm thấy hộp thoại dù nó đang mở.
+
+Công cụ để trả lời, **chỉ đọc, không bấm gì** — chạy được cả khi đang có lệnh thật đang mở:
+
+```powershell
+.\.venv\Scripts\python.exe -m clicker.ui.dump                        # mọi hộp thoại đang mở
+.\.venv\Scripts\python.exe -m clicker.ui.dump --title 538287         # kèm cây control của terminal
+.\.venv\Scripts\python.exe -m clicker.ui.dump --title 538287 --menu  # cây menu và ID lệnh
+.\.venv\Scripts\python.exe -m clicker.ui.dump --all-controls         # kể cả control ẩn
+.\.venv\Scripts\python.exe -m clicker.ui.dump --listview 0x1A2B3C    # thử đọc một control danh sách
+```
+
+Cách dùng: mở hộp thoại cần đo **bằng tay** trên terminal, rồi chạy lệnh trên ở cửa sổ khác. Bản in
+cho `ctrlID`, class, kích thước và chữ của từng control — đúng bộ số cần để sửa hằng số trong
+`dialog.py`. `--menu` cho ID lệnh, tức nguồn của hằng số như `MENU_NEW_ORDER = 32848`.
+
+> **Đọc `--listview` cho đúng.** Một control **không phải** ListView vẫn trả `0` chứ không báo lỗi.
+> Nên `0` một mình nó không có nghĩa là "danh sách rỗng" — công cụ in kèm cảnh báo class và trả mã
+> thoát khác 0 trong trường hợp đó. Chi tiết ở `clicker/ui/win32.py::listview_item_count`.
 
 ## 5b. Triển khai tất cả trên MỘT VPS
 
@@ -219,6 +245,91 @@ sống trong một phiên người dùng đang tồn tại.
 
 ---
 
+## 5c. Cập nhật lên đường ĐÓNG qua giao diện
+
+> **Migration `004` dựng lại bảng `command`.** SQLite không sửa được ràng buộc `CHECK`, nên cách
+> duy nhất để nhận thêm hai loại lệnh mới là tạo bảng mới, chép dữ liệu, xoá bảng cũ, đổi tên.
+> Sao lưu trước là **bắt buộc**, không phải khuyến nghị. Việc chép dữ liệu có test riêng
+> (`test_migration_004_giu_nguyen_du_lieu_command_cu`) chạy trên DB **đã có dữ liệu**, nhưng một
+> test không thay được một bản sao lưu.
+
+Migration chạy **tự động** khi Bridge mở database. Không có lệnh chạy tay, và không cần có.
+
+### Thứ tự
+
+```powershell
+# 1. Dung an toan. Cho toi khi khong con gi dang bay.
+.\.venv\Scripts\python.exe -m bridge.admin run-mode PAUSED
+.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh      # phai sach: 0 cap chua dong
+# 2. Tat clicker truoc, roi Bridge (Ctrl+C ca hai).
+# 3. Sao luu TRUOC MIGRATION -- xem canh bao ngay duoi.
+.\.venv\Scripts\python.exe -c "import sqlite3,pathlib,datetime; t=datetime.datetime.now().strftime('%Y%m%d-%H%M%S'); d=pathlib.Path('data/backup'); d.mkdir(parents=True,exist_ok=True); c=sqlite3.connect('data/bridge.db'); c.execute('VACUUM INTO ?', (str(d/f'truoc-004-{t}.db'),)); print('Da sao luu:', d/f'truoc-004-{t}.db')"
+# 4. Lay code moi.
+git pull
+# 5. Bat Bridge mot lan -> migration 004 chay. Kiem version.
+.\.venv\Scripts\python.exe -m bridge
+```
+
+> **Đừng dùng `bridge.admin sao-luu` cho bản sao lưu TRƯỚC migration.** Mọi lệnh `bridge.admin`
+> đều mở database qua `Database(...)`, mà hàm đó mặc định `migrate=True` — nên nó sẽ **chạy
+> migration trước, rồi mới sao lưu bản đã migrate**. Bản sao lưu đó không quay lại được.
+>
+> Lệnh ở bước 3 dùng `sqlite3` trần với `VACUUM INTO`: không đi qua `Database`, không chạm
+> migration, và cho ra một file duy nhất đã gộp WAL nên chép đi đâu cũng mở được.
+>
+> `bridge.admin sao-luu` vẫn đúng cho mọi việc sao lưu **thường ngày** — chỉ riêng thời điểm này,
+> khi cái cần giữ là trạng thái *trước* khi schema đổi, thì nó không dùng được.
+
+Kiểm migration đã chạy (Bridge vẫn đang bật, mở PowerShell khác):
+
+```powershell
+.\.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('data/bridge.db'); print(c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0])"
+```
+
+Phải in ra `4`. Nếu không, **dừng lại** — đừng bật `RUNNING` trên một schema nửa vời.
+
+```powershell
+# 6. Bat duong dong qua giao dien cho tung Client. Mac dinh la EA, tuc khong doi gi.
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01          # xem lai
+# 7. Bat clicker, cho canary xanh tren dashboard.
+# 8. Roi moi chay.
+.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING
+```
+
+Sau phiên đầu tiên có đóng lệnh:
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin kiem-reason
+```
+
+Nay nó soi **cả hai** cột. `TEST-23 DAT: n/n` kèm số deal mở và số deal đóng mới là đạt.
+
+### Quay lại nếu cần
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route EA
+```
+
+Chỉ vậy. **Không cần hạ migration** — schema mới tương thích ngược, và `close_route = 'EA'` đi
+đúng đường cũ, im lặng, không alert. Đó là lý do cờ này tồn tại thay vì suy ra từ việc có clicker
+hay không.
+
+### Hai điều kiện vận hành MỚI
+
+1. **Tab Trade của Toolbox phải là tab đang mở** trên terminal Client. Clicker nhận ra danh sách
+   vị thế bằng ctrlID `10328`, và tab không mở thì control đó không `visible`. Bridge **từ chối ồn
+   ào** chứ không đoán, nên không có nguy cơ đóng nhầm — nhưng lệnh đóng sẽ rơi về EA và deal đóng
+   mang `EXPERT`. Cùng loại giới hạn với B-01 (một symbol mỗi terminal).
+2. **Toolbox không được tắt** (`Ctrl+T` bật lại).
+
+### Hai khoá cấu hình mới
+
+| Khoá | Mặc định | Nghĩa |
+|---|---|---|
+| `close_degraded_fallback` | `EA` | Clicker hỏng thì vẫn đóng bằng `OrderSend`, kèm CRITICAL. Đặt `SKIP` là **chấp nhận giữ vị thế trần** thay vì để một deal mang `EXPERT`. |
+| `ui_close_correlate_grace_ms` | `5000` | Cửa sổ Bridge nhận cha cho event đóng do chính nó gây ra. Đặt quá ngắn → bot tự cascade đóng Master. Đặt quá dài → nuốt mất lệnh đóng tay của người dùng. |
+
 ## 6. Mạng và bảo mật cho kiến trúc NHIỀU MÁY — **CHƯA LÀM**
 
 > Chạy tất cả trên một VPS thì đọc **mục 5b** thay cho mục này; phần lớn mục 6 không áp
@@ -266,11 +377,35 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 | Finding đối chiếu đang chờ | Sổ sách lệch với thực tế trên terminal | Mở finding trên dashboard, đọc `evidence_json` (có đủ ba nguồn) rồi mới `accept`. Không accept khi chưa đọc bằng chứng. |
 | EA gửi bù lặp không dứt | Đã sửa ở Phase 10: trần 3 lần cho mỗi mốc `from_seq` | Nếu tái diễn, xem `bridge/protocol/server.py`. |
 | Lệnh mở bị từ chối vì symbol lệch | Hộp thoại New Order lấy symbol theo chart đang mở | **Giới hạn đã biết** (`BACKLOG.md` B-01): mỗi terminal Client copy được một symbol. Mở đúng chart đó. |
+| Clicker báo "Hop thoai khong dung hinh dang" | `ctrlID` chôn cứng không khớp bản MT5 của sàn này | Đo lại bằng `python -m clicker.ui.dump` — xem **mục 5a**. Đừng đoán hằng số. |
+| Alert `CLOSE_FELL_BACK_TO_EA` | Clicker hỏng nên lệnh đóng đi qua `OrderSend` của EA | **Vị thế đã đóng được** — đây không phải mất tiền, mà là một deal đóng mang `EXPERT` thay vì `CLIENT`. Sửa clicker rồi chạy `kiem-reason` để biết còn bao nhiêu deal sai kênh. Đây là ngoại lệ có ý thức với D-25 (xem D-28). |
+| Alert `CLOSE_KHONG_GUI_DUOC` | Clicker hỏng **và** `close_degraded_fallback = SKIP` | **Vị thế Client vẫn đang mở và không còn đối ứng.** Cần người xử lý ngay: sửa clicker, hoặc đóng tay, hoặc đổi khoá về `EA`. |
+| Alert `UI_CLOSE_REASON_MISMATCH` | Deal đóng mang `EXPERT` trong khi `close_route = 'UI'` | Cơ chế đổi kênh đã ngừng hoạt động. Đây đúng là điều cả đường đóng qua giao diện tồn tại để ngăn — dừng lại và tìm hiểu trước khi copy tiếp. |
+| Alert `UI_CLOSE_CORRELATE_MO_HO` | Một cặp có hơn một lệnh đóng qua giao diện trong cùng cửa sổ | Không nên xảy ra (mục 7.6 chặn hai lệnh đóng cùng chạy trên một cặp). Bridge nhận cha theo lệnh mới nhất và **không** cascade — hướng an toàn — nhưng cần xem lại vì sao có hai lệnh. |
+| Lệnh đóng `rejected` với "Tab Trade cua Toolbox dang khong mo" | Người vận hành chuyển Toolbox sang tab khác | **Giới hạn đã biết:** clicker chỉ nhìn thấy danh sách vị thế khi tab Trade đang mở. Chuyển về tab Trade. Bridge từ chối chứ không đoán, nên không có nguy cơ đóng nhầm. |
 
 ---
 
 ## 8. Trước khi chuyển sang tài khoản thật
 
+
+> **Thêm sau khi đường ĐÓNG chuyển sang giao diện — điều kiện này CHƯA đạt.**
+>
+> Cú double-click mở hộp thoại đóng đi bằng `SendMessage` tới window proc, **không** phải
+> `SendInput` bơm vào hàng đợi bàn phím của phiên tương tác. Nên về nguyên lý nó sống qua phiên
+> RDP đã ngắt, giống hệt đường mở. Nhưng **đó là suy luận, chưa phải phép đo** — và bài học của
+> chính dự án này là suy luận về giao diện MT5 sai nhiều hơn đúng.
+>
+> Phép đo bắt buộc, chỉ VPS mới làm được (B-08, TEST-19):
+>
+> 1. Mở một cặp trên demo qua VPS.
+> 2. **Ngắt phiên RDP** bằng cách đóng cửa sổ Remote Desktop — *không* bấm Sign out, vì Sign out
+>    kết thúc phiên và cả clicker lẫn terminal đều chết theo.
+> 3. Đóng lệnh phía Master từ máy khác.
+> 4. Nối lại RDP, kiểm: vị thế Client **đã đóng**, và `kiem-reason` báo `reason = 0` cho deal đóng.
+>
+> Đo ra kết quả âm thì đặt `close_route = EA` cho tới khi có hướng khác. Đừng chạy tiền thật với
+> một đường đóng chưa biết có sống qua RDP ngắt hay không.
 > Kế hoạch chi tiết theo thứ tự nên làm nằm ở **`docs/KE-HOACH-CHAY-THAT.md`**. Mục này là bản
 > rút gọn của các điều kiện.
 
