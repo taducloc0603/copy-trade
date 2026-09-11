@@ -2382,3 +2382,86 @@ giữ nguyên như lúc bắt đầu.
 
 **Còn nợ:** đóng khẩn cấp nhiều cặp chưa đo lại thật (chỉ sửa hằng số và test bằng mock); hai file
 hướng dẫn HTML còn số cũ của đường EA.
+
+### TEST-29 và đo lại đóng khẩn cấp — hai lỗi nữa, cả hai chỉ lộ ra khi chạy thật
+
+*(2026-09-11. Tiếp phiên nghiệm thu hôm trước, sau khi dọn nợ cũ: 6 sai lệch và 53 alert tồn đọng
+đã xử lý, sao lưu mới.)*
+
+#### TEST-29 — bộ tương quan đóng, **cả hai chiều**, với `can_close_master = 1`
+
+Ba bài hôm trước đều chạy với cờ TẮT, nên đường nguy hiểm nhất chưa bao giờ sống. Lần này bật lên:
+
+| Chiều | Kết quả |
+|---|---|
+| **Bot đóng** (Master đóng → bot đóng Client) | Đúng **2** lệnh cho cặp, **0** lệnh `CLOSE` tới `AG-MASTER`, **0** alert |
+| **Người dùng đóng tay** vị thế Client | **1** lệnh `CLOSE` tới `AG-MASTER` `ACK_OK` 363 ms, alert `CASCADE_STARTED` |
+
+Hai event **giống hệt nhau** từ phía EA — `caused_by_command_id = NULL` cả hai — mà Bridge phân
+biệt đúng. Nó không kích hoạt thừa, cũng không nuốt mất lệnh thật.
+
+#### Lỗi 1 — một cú bấm nút đóng khẩn cấp sinh ra **hai lượt chạy song song**
+
+`POST /api/emergency` gọi thẳng `emergency_close_all()`, còn `check_emergency()` thấy `run_mode`
+đổi sang `EMERGENCY` cũng gọi. Chốt `_emergency_done` chỉ chặn được đường thứ hai.
+
+Hai lượt phá đúng thứ tự mà hàm ấy tồn tại để giữ: lượt A gửi lệnh đóng Client rồi chờ; lượt B
+thấy mọi cặp đã có lệnh đang bay nên **không gửi gì**, danh sách chờ của nó **rỗng**,
+`_cho_lenh_xong([])` trả về ngay, và nó đi đóng Master luôn.
+
+Đo được: Master đóng xong lúc `06:21:15.7` trong khi Client mãi `06:21:28.0` mới xong — **Master
+đóng trước Client 13 giây**. Trong cả khoảng ấy nhóm phơi nhiễm một chiều.
+
+API còn trả `client: 3, master: 0` trong khi thực tế có 3 lệnh đóng Master — hai con số mâu thuẫn
+chính là dấu vết của hai lượt chạy.
+
+Lỗi **có sẵn từ trước**, nhưng chỉ lộ khi đường đóng chuyển sang giao diện: với `OrderSend` 300 ms
+cửa sổ đua hẹp tới mức không thấy, với ~5 giây thì nó vỡ chắc chắn.
+
+Sửa: khoá `asyncio.Lock` đặt trong `CloseFlow` chứ không ở endpoint — nó phải đúng bất kể ai gọi.
+Đo lại sau khi sửa: Master tạo lúc `06:28:17.341`, **148 ms sau** khi Client cuối cùng ack lúc
+`06:28:17.193`. Đúng thứ tự. Toàn bộ 3 cặp cả hai vế: **14,5 giây**.
+
+#### Lỗi 2 — cửa sổ nhận cha đo từ "bây giờ" thay vì từ lúc event **tới**
+
+Lần đo lại lộ tiếp: một cặp bị ghi `ORPHANED` kèm alert ERROR **dù đã đóng sạch cả hai phía**.
+
+`process_pending()` xử lý event tuần tự, nên lúc một event tới có thể cách lúc nó được xử lý hàng
+giây. Lấy `utc_now()` làm mốc là trộn độ trễ của **hàng đợi Bridge** vào một cửa sổ đáng lẽ chỉ đo
+độ trễ **của sàn**. Và nó hỏng đúng lúc tệ nhất — đóng khẩn cấp là lúc hàng đợi dài nhất:
+
+| Vị thế | Nhận | Xử lý | Trễ | Kết quả |
+|---|---|---|---|---|
+| 72530339 | 06:28:**08.092** | 06:28:17.456 | **9,4 s** | **trượt** → `ORPHANED` oan |
+| 72530365 | 06:28:12.637 | 06:28:17.456 | 4,8 s | khớp — dư **0,2 giây** |
+| 72530392 | 06:28:17.146 | 06:28:17.461 | 0,3 s | khớp |
+
+Cái thứ hai chỉ dư 0,2 giây. Nới cửa sổ chỉ dời ngưỡng chứ không sửa gì.
+
+Sửa đúng gốc: đo từ `event.received_at` — dấu thời gian do chính Bridge đóng lúc nhận, nên miễn
+nhiễm với độ trễ hàng đợi. Test mới được kiểm là **đỏ trên bản cũ, xanh trên bản sửa**; một test
+không phân biệt được hai bản thì không canh gác gì cả.
+
+Với `can_close_master = 1`, cặp trượt sẽ không chỉ bị ghi `ORPHANED` mà còn **cascade đóng Master**.
+
+#### Bộ đối chiếu tự bắt được chỗ sổ sách hỏng
+
+Cặp bị `ORPHANED` oan được vòng đối chiếu phát hiện ngay sau đó (`ORPHAN_RESOLVED` →
+`MARK_CLOSED`) và đã sửa xong. Đúng thứ phase 8 sinh ra để làm.
+
+Hai finding khác (`MASTER_CLOSED_OFFLINE`) là ảnh chụp lúc cặp còn `CLOSING` và đã tự đóng đúng sau
+đó — **bỏ qua có ghi chú** chứ không chấp nhận, vì chấp nhận sẽ gửi lệnh đóng thật để "sửa" một thứ
+đã đúng.
+
+#### Nghiệm thu tổng
+
+`kiem-reason`: **ĐẠT 50/51** — 51 deal mở và **11 deal đóng**, tất cả `DEAL_REASON = CLIENT`, trừ
+đúng một lần rơi về EA cố ý ở TEST-28 hôm trước.
+
+**647 test xanh (+2).** Trả máy: `PAUSED`, 0 cặp chưa đóng, 0 sai lệch, 0 alert chưa xem, token
+clicker thu hồi, `[clicker]` đã xoá khỏi `config.toml`. Master 0 vị thế; Client còn đúng lệnh tay
+của người chủ dự án, nguyên vẹn suốt hai phiên.
+
+**Còn nợ, không làm được ở laptop:** B-08 (phiên RDP ngắt), B-02/TEST-19 (mất điện), B-03 (24 giờ).
+Và một món nhỏ: hai cặp `OPEN_FAILED` từ diễn tập 2026-09-05 làm ô "cần can thiệp" đỏ vĩnh viễn —
+xem B-18.

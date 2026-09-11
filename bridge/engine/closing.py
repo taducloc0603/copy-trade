@@ -25,7 +25,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
-from bridge.clock import to_iso, utc_now, utc_now_iso
+from bridge.clock import parse_iso, to_iso, utc_now, utc_now_iso
 from bridge.db.repo import Database
 from bridge.engine.sizing import round_to_step, to_decimal
 from bridge.logging_setup import get_logger
@@ -86,6 +86,10 @@ class CloseFlow:
         #: `EventProcessor._alert` — dùng chung để alert vừa vào DB vừa ra log.
         self._alert = alert
         self._tasks: set[asyncio.Task[None]] = set()
+        #: Chan hai luot dong khan cap chay song song. Xem `emergency_close_all()` — thieu no thi
+        #: mot cu bam nut sinh ra hai luot, va luot thu hai di dong Master trong khi luot dau con
+        #: dang cho Client. Do duoc tren demo 2026-09-11: Master dong truoc Client 13 giay.
+        self._emergency_lock = asyncio.Lock()
 
     async def stop(self) -> None:
         for task in list(self._tasks):
@@ -372,7 +376,25 @@ class CloseFlow:
             return self.db.get_command(event["caused_by_command_id"])
 
         grace = self.db.get_config_int("ui_close_correlate_grace_ms", DEFAULT_UI_CLOSE_GRACE_MS)
-        moc = to_iso(utc_now() - timedelta(milliseconds=grace))
+        # Đo từ lúc event **TỚI**, không phải từ "bây giờ". Khác biệt này là cả một lớp lỗi.
+        #
+        # Event xếp hàng: `process_pending()` xử lý tuần tự theo `id`, nên lúc tới một event có thể
+        # cách lúc nó được xử lý hàng giây. Lấy `utc_now()` làm mốc là trộn hai thứ khác hẳn nhau —
+        # độ trễ của **hàng đợi Bridge** bị tính vào cửa sổ đáng lẽ chỉ đo độ trễ **của sàn**.
+        #
+        # Và nó hỏng đúng lúc tệ nhất: đóng khẩn cấp là lúc hàng đợi dài nhất. Đo được trên demo
+        # 2026-09-11, đóng khẩn cấp 3 cặp:
+        #
+        #   pos 72530339  nhan 06:28:08.092  xu ly 06:28:17.456  -> tre 9,4s  -> TRUOT
+        #   pos 72530365  nhan 06:28:12.637  xu ly 06:28:17.456  -> tre 4,8s  -> khop, du 0,2s
+        #   pos 72530392  nhan 06:28:17.146  xu ly 06:28:17.461  -> tre 0,3s  -> khop
+        #
+        # Cặp trượt bị ghi `ORPHANED` kèm alert ERROR dù **đã đóng sạch cả hai phía** — sổ sách nói
+        # sai về một cặp hoàn toàn bình thường. Với `can_close_master = 1` thì nó còn cascade.
+        #
+        # `received_at` do chính Bridge đóng dấu lúc nhận, nên nó miễn nhiễm với độ trễ hàng đợi.
+        moc_goc = parse_iso(event["received_at"]) if event["received_at"] else utc_now()
+        moc = to_iso(moc_goc - timedelta(milliseconds=grace))
         # Xét **mọi trạng thái**, không chỉ `ACK_OK`, và đây là chỗ dễ viết thiếu nhất.
         #
         # Ca nguy hiểm là clicker bấm xong rồi chết trước khi báo về: ack `unknown` làm command
@@ -716,7 +738,32 @@ class CloseFlow:
 
         Trả về số lệnh đã gửi cho **từng vế**, không phải số cặp được xét — con số cũ (`len(pairs)`)
         báo ra là 3 kể cả khi không đóng được gì.
+
+        ## Khoá chống chạy song song, và vì sao nó là chuyện sống còn chứ không phải dọn dẹp
+
+        Có **hai** đường vào hàm này: `POST /api/emergency` gọi thẳng, còn `check_emergency()` gọi
+        khi thấy `run_mode` đổi sang `EMERGENCY`. Chốt `_emergency_done` của `check_emergency()`
+        **không chặn được** đường thứ nhất, nên bấm nút một lần sinh ra **hai lượt chạy song song**.
+
+        Hai lượt ấy phá đúng thứ tự mà hàm này tồn tại để giữ: lượt A gửi lệnh đóng Client rồi
+        `_cho_lenh_xong()` chờ; lượt B thấy mọi cặp đã có lệnh đang bay nên không gửi gì, danh sách
+        chờ của nó **rỗng**, `_cho_lenh_xong([])` trả về ngay, và nó đi đóng Master luôn.
+
+        Đo được trên demo 2026-09-11: Master đóng xong lúc `06:21:15.7` trong khi Client mãi
+        `06:21:28.0` mới xong — **Master đóng trước Client 13 giây**. Trong cả khoảng ấy nhóm phơi
+        nhiễm một chiều, đúng thứ D-10 tồn tại để ngăn.
+
+        Lỗi có sẵn từ trước, nhưng chỉ lộ ra khi đường đóng chuyển sang giao diện: với `OrderSend`
+        300 ms thì cửa sổ đua hẹp tới mức không thấy, với ~5 giây thì nó vỡ chắc chắn.
+
+        Khoá đặt ở **đây** chứ không ở endpoint, vì nó phải đúng bất kể ai gọi. Lượt thứ hai chờ
+        lượt đầu xong rồi mới đọc danh sách cặp — và lúc đó không còn cặp nào để đóng, nên nó không
+        làm gì và trả về 0.
         """
+        async with self._emergency_lock:
+            return await self._emergency_close_all()
+
+    async def _emergency_close_all(self) -> dict[str, int]:
         pairs = self.db.query_all(
             "SELECT * FROM pair WHERE status NOT IN ('CLOSED','OPEN_FAILED') ORDER BY pair_id")
         if not pairs:

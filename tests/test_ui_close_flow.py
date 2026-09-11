@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 import pytest
 
@@ -581,3 +582,88 @@ async def test_dong_khan_cap_cho_theo_SO_LENH_chu_khong_phai_10_giay_co_dinh(env
     assert han and han[0] is not None
     assert han[0] > 10.0, f"Han cho phai co gian theo so lenh, nhan duoc {han[0]}"
     assert han[0] <= mod.EMERGENCY_WAIT_MAX_SEC
+
+
+async def test_hai_luot_dong_khan_cap_song_song_khong_pha_thu_tu(env: Env) -> None:
+    """Bam nut dong khan cap MOT lan sinh ra HAI luot chay, va luot thu hai pha thu tu.
+
+    `POST /api/emergency` goi thang `emergency_close_all()`, con `check_emergency()` thay
+    `run_mode` doi sang EMERGENCY cung goi. Chot `_emergency_done` chi chan duong thu hai.
+
+    Hai luot pha dung thu tu ma ham nay ton tai de giu: luot A gui lenh dong Client roi cho; luot
+    B thay moi cap da co lenh dang bay nen khong gui gi, danh sach cho cua no RONG, `_cho_lenh_xong`
+    tra ve ngay, va no di dong Master luon.
+
+    Do duoc tren demo 2026-09-11: Master dong xong luc 06:21:15.7 trong khi Client mai 06:21:28.0
+    moi xong -- Master dong truoc Client 13 giay.
+    """
+    import asyncio as _asyncio
+
+    for pid in (5070, 5071, 5072):
+        await env.master_open(pid)
+    env.db.set_config("run_mode", "EMERGENCY")
+
+    # Hai duong vao, chay dong thoi -- dung nhu luc bam nut that.
+    ket = await _asyncio.gather(env.processor.closing.emergency_close_all(),
+                                env.processor.check_emergency())
+
+    lenh = env.commands()
+    dong_client = [c for c in lenh if c["type"] in ("CLOSE_UI", "CLOSE_UI_PARTIAL")]
+    dong_master = [c for c in lenh if c["type"] == "CLOSE" and c["target_agent_id"] == MASTER_AGENT]
+
+    assert len(dong_client) == 3, f"Moi cap dung mot lenh dong Client, nhan duoc {len(dong_client)}"
+    # Khoa phai lam luot thu hai khong tim thay cap nao de dong nua.
+    assert ket[0]["client"] == 3
+
+    # Thu tu la hop dong: moi lenh dong Master phai duoc TAO sau khi MOI lenh dong Client da ack.
+    if dong_master:
+        ack_client_muon_nhat = max(c["acked_at"] for c in dong_client if c["acked_at"])
+        tao_master_som_nhat = min(c["created_at"] for c in dong_master)
+        assert tao_master_som_nhat >= ack_client_muon_nhat, (
+            f"Master dong luc {tao_master_som_nhat} truoc khi Client xong luc {ack_client_muon_nhat}")
+
+
+async def test_event_xep_hang_lau_van_duoc_nhan_cha(env_cascade: Env) -> None:
+    """Cua so nhan cha phai do tu luc event TOI, khong phai tu "bay gio".
+
+    `process_pending()` xu ly tuan tu theo `id`, nen luc toi mot event co the cach luc no duoc xu
+    ly hang giay. Lay `utc_now()` lam moc la tron do tre cua HANG DOI BRIDGE vao mot cua so dang le
+    chi do do tre CUA SAN.
+
+    Hong dung luc te nhat: dong khan cap la luc hang doi dai nhat. Do duoc tren demo 2026-09-11,
+    mot cap bi ghi ORPHANED kem alert ERROR du da dong sach ca hai phia.
+    """
+    pair_id = await env_cascade.master_open(5080)
+    pos = _client_pos(env_cascade, pair_id)
+    await env_cascade.master_close(5080)
+    await _wait_until(lambda: env_cascade.commands("CLOSE_UI")[0]["status"] == "ACK_OK",
+                      timeout=3.0)
+
+    # Cua so rat hep, va event "toi" tu truoc do mot chut -- nhung van trong cua so tinh tu
+    # `received_at`. Neu moc la `utc_now()` thi no da truot.
+    env_cascade.db.set_config("ui_close_correlate_grace_ms", "2000")
+    cmd = env_cascade.commands("CLOSE_UI")[0]
+    with env_cascade.db.transaction() as conn:
+        conn.execute("UPDATE command SET acked_at = ? WHERE command_id = ?",
+                     (to_iso(utc_now() - timedelta(seconds=30)), cmd["command_id"]))
+
+    # Gui event nhung KHONG xu ly ngay -- phai sua dau thoi gian truoc, neu khong thi cascade da
+    # xay ra o lan xu ly dau va phep thu nay do mot thu da roi.
+    await env_cascade.client.send_event(
+        "position_closed", position_id=pos, deal_entry="OUT", symbol=CLIENT_SYMBOL,
+        direction="SELL", volume_delta=0.5, volume_after=0.0, reason=REASON_CLIENT)
+    await _wait_until(lambda: env_cascade.db.query_one(
+        "SELECT 1 FROM event WHERE position_id = ? AND type = 'position_closed'",
+        (pos,)) is not None)
+
+    # Event nay "toi" tu 30 giay truoc va nam trong hang doi lau. Lenh dong cung ack tu luc do.
+    # Moc tinh tu `received_at` thi hai cai cach nhau ~0; moc tinh tu `utc_now()` thi lech 30 giay
+    # va cap se bi cascade oan.
+    with env_cascade.db.transaction() as conn:
+        conn.execute("UPDATE event SET received_at = ? WHERE position_id = ? "
+                     "AND type = 'position_closed'",
+                     (to_iso(utc_now() - timedelta(seconds=30)), pos))
+    await env_cascade.processor.process_pending()
+
+    assert env_cascade.commands("CLOSE") == [], "Event den tu lau van phai duoc nhan cha"
+    assert env_cascade.alerts("CASCADE_STARTED") == []

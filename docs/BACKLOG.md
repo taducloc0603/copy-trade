@@ -143,6 +143,26 @@ khi vòng đối chiếu bắt được.
 **Có sẵn ở cả đường EA**, không phải lỗi mới. Không sửa ngay vì đối chiếu đúng là cơ chế tồn tại
 cho loại lệch này, và vì đường đi này chưa quan sát thấy lần nào trên demo.
 
+### B-18 — Ô "cần can thiệp" đỏ vĩnh viễn vì hai cặp diễn tập cũ
+
+`views.py` đếm mọi pair ở `ORPHANED` hoặc `OPEN_FAILED`. Hai cặp `PAIR-20260905-000006` và
+`000007` là dấu vết của một buổi diễn tập bị abort ở phase 6b — đã ghi rõ lý do trong
+`error_message`, đã hết từ lâu ngoài đời, và **không còn gì để can thiệp**.
+
+Nhưng `OPEN_FAILED` nằm trong `TERMINAL_STATUSES` nên vòng đối chiếu không bao giờ nhìn lại chúng,
+và không có khái niệm "đã xem" cho pair như `alert.acknowledged_at`. Nên ô ấy đỏ **vĩnh viễn**.
+
+Chính bình luận trong `views.py` nói vì sao điều đó tệ: *"Chỉ tô đỏ khi khác 0. Nếu luôn đỏ, mắt sẽ
+quen và bỏ qua."*
+
+**Cố ý chưa sửa.** Ba hướng đều có nhược điểm và không hướng nào nên chọn vội ngay trước khi lên
+VPS: lọc theo `error_message IS NOT NULL` sẽ **giấu luôn** các lỗi thật (`CLOSE_TIMEOUT`,
+`CLOSE_FELL_BACK_TO_EA` cũng ghi cột đó); lọc theo thời gian là một ngưỡng tuỳ tiện khác; thêm cột
+"đã xem" cho pair là đúng nhất nhưng cần migration và một lệnh admin.
+
+Đổi ngữ nghĩa của một tín hiệu được thiết kế để tin, dưới sức ép thời gian, là đúng loại thay đổi
+không nên làm.
+
 ## Mở rộng — không thuộc MVP
 
 - Nhiều Client **thật** trên giao diện: cấu hình riêng từng Client, so sánh chéo, chính sách
