@@ -386,6 +386,71 @@ def test_admin_doc_va_dat_run_mode(db: Database, monkeypatch, capsys) -> None:
     assert capsys.readouterr().out.strip() == "RUNNING"
 
 
+# -- xac-nhan-alert ----------------------------------------------------------------------------
+
+def _admin_tren(db: Database, monkeypatch):
+    from bridge import admin
+
+    monkeypatch.setattr(admin, "_mo_db", lambda: (db, Path("bridge.db")))
+    monkeypatch.setattr(db, "close", lambda: None)
+    return admin
+
+
+def _ma_con_mo(db: Database) -> list[tuple[str, str]]:
+    return sorted((r["code"], r["created_at"]) for r in db.list_open_alerts())
+
+
+def test_admin_xac_nhan_alert_mac_dinh_chi_dem(db: Database, monkeypatch, capsys) -> None:
+    """Thiếu `--that` thì không ghi gì — kể cả khi mã và mốc đều khớp."""
+    admin = _admin_tren(db, monkeypatch)
+    db.create_alert("WARNING", "RECONCILE_NO_SNAPSHOT", "thu", created_at="2026-09-08T07:18:40.860Z")
+
+    assert admin.main(["xac-nhan-alert", "--code", "RECONCILE_NO_SNAPSHOT",
+                       "--truoc", "2026-09-11T09:00:00Z"]) == 0
+    assert "CHUA ghi gi" in capsys.readouterr().out
+    assert len(db.list_open_alerts()) == 1
+
+
+def test_admin_xac_nhan_alert_chi_dung_ma_va_chi_truoc_moc(db: Database, monkeypatch) -> None:
+    """Ba thứ phải còn nguyên: mã khác, alert sinh SAU mốc, và finding đang chờ.
+
+    Mốc `16:30+07:00` là `09:30Z` — kiểm luôn việc quy đổi múi giờ trước khi so chuỗi.
+    """
+    admin = _admin_tren(db, monkeypatch)
+    db.create_alert("WARNING", "RECONCILE_NO_SNAPSHOT", "cu", created_at="2026-09-08T07:18:40.860Z")
+    db.create_alert("WARNING", "RECONCILE_NO_SNAPSHOT", "cu", created_at="2026-09-11T09:29:59.999Z")
+    db.create_alert("ERROR", "FINDING_BO_QUEN", "cu", created_at="2026-09-11T08:50:42.423Z")
+    db.create_alert("CRITICAL", "CLOSE_FAILED", "ma khac", created_at="2026-09-08T11:20:59.134Z")
+    db.create_alert("WARNING", "RECONCILE_NO_SNAPSHOT", "moi", created_at="2026-09-11T09:30:00.001Z")
+    db.create_finding("REC-THU", "SAFE", "BOTH_CLOSED", suggested_action="MARK_CLOSED")
+
+    assert admin.main(["xac-nhan-alert", "--code", "RECONCILE_NO_SNAPSHOT",
+                       "--code", "FINDING_BO_QUEN",
+                       "--truoc", "2026-09-11T16:30:00+07:00", "--that"]) == 0
+
+    assert _ma_con_mo(db) == [("CLOSE_FAILED", "2026-09-08T11:20:59.134Z"),
+                              ("RECONCILE_NO_SNAPSHOT", "2026-09-11T09:30:00.001Z")]
+    assert len(db.list_findings(resolution="PENDING")) == 1
+
+
+@pytest.mark.parametrize("moc", ["2026-09-11T16:30:00", "hom-qua"])
+def test_admin_xac_nhan_alert_tu_choi_moc_mo_ho(db: Database, monkeypatch, moc: str) -> None:
+    """Mốc không có múi giờ bị từ chối: đoán sai 7 tiếng là nuốt mất 7 tiếng alert."""
+    admin = _admin_tren(db, monkeypatch)
+    db.create_alert("WARNING", "RECONCILE_NO_SNAPSHOT", "cu", created_at="2026-09-08T07:18:40.860Z")
+
+    assert admin.main(["xac-nhan-alert", "--code", "RECONCILE_NO_SNAPSHOT",
+                       "--truoc", moc, "--that"]) == 1
+    assert len(db.list_open_alerts()) == 1
+
+
+def test_admin_xac_nhan_alert_bat_buoc_chon_ma(db: Database, monkeypatch) -> None:
+    """Không có dạng "mọi mã"."""
+    admin = _admin_tren(db, monkeypatch)
+    with pytest.raises(SystemExit):
+        admin.main(["xac-nhan-alert", "--truoc", "2026-09-11T09:00:00Z", "--that"])
+
+
 # -- TEST-23 ------------------------------------------------------------------------------------
 
 def test_kiem_reason_client_bat_dung_cap_sai_kenh(seeded: Database) -> None:

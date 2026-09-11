@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
-from bridge.clock import utc_now_iso
+from bridge.clock import to_iso, utc_now_iso
 from bridge.config import load_config
 from bridge.db.repo import Database
 from bridge.ops import (
@@ -442,6 +443,56 @@ def lenh_run_mode(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_xac_nhan_alert(db: Database, args: argparse.Namespace) -> int:
+    """Đánh dấu **đã xem** các alert cũ theo mã. Không đổi gì khác ngoài `acknowledged_at`.
+
+    Dashboard chỉ xác nhận từng alert một. Sau đợt chạy thử, VPS ngày 2026-09-11 có 240 alert
+    chưa xem, 207 trong số đó là hai mã lặp (`RECONCILE_NO_SNAPSHOT` mỗi phút, `FINDING_BO_QUEN`
+    mỗi giờ). Bấm 240 lần thì không ai bấm, và ô "cảnh báo chưa xem" đỏ vĩnh viễn nghĩa là
+    alert thật kế tiếp chìm luôn trong đó.
+
+    Ba chốt, đều cố ý:
+
+    * `--code` bắt buộc, không có "tất cả": phải nhìn thấy mã thì mới xác nhận được.
+    * `--truoc` bắt buộc và phải có múi giờ: alert sinh ra **sau** lúc người vận hành đọc không
+      bao giờ bị nuốt theo, và không phải đoán giờ địa phương hay UTC.
+    * Mặc định chỉ đếm; phải có `--that` mới ghi.
+
+    Không đụng `reconcile_finding`: xác nhận đã xem một lời nhắc không giải quyết sai lệch mà nó
+    nhắc tới.
+    """
+    try:
+        moc = datetime.fromisoformat(args.truoc)
+    except ValueError:
+        print(f"--truoc khong phai thoi diem ISO 8601: {args.truoc}", file=sys.stderr)
+        return 1
+    if moc.tzinfo is None:
+        print("--truoc phai co mui gio, vi du 2026-09-11T16:30:00+07:00 hoac "
+              "2026-09-11T09:30:00Z. Khong doan gio dia phuong hay UTC.", file=sys.stderr)
+        return 1
+    moc_iso = to_iso(moc)
+    ma = sorted(set(args.code))
+    dau_hoi = ", ".join("?" for _ in ma)
+    rows = db.query_all(
+        "SELECT level, code, COUNT(*) n, MIN(created_at) dau, MAX(created_at) cuoi FROM alert "
+        f"WHERE acknowledged_at IS NULL AND created_at < ? AND code IN ({dau_hoi}) "
+        "GROUP BY level, code ORDER BY n DESC", (moc_iso, *ma))
+    tong = sum(int(r["n"]) for r in rows)
+
+    print(f"Alert chua xem, sinh truoc {moc_iso}:")
+    for r in rows:
+        print(f"  {r['level']:<8} {r['code']:<28} {r['n']:>5}  ({r['dau']} -> {r['cuoi']})")
+    if tong == 0:
+        print("  (khong co)")
+        return 0
+    if not args.that:
+        print(f"CHUA ghi gi. {tong} alert o tren se duoc xac nhan khi chay lai kem --that.")
+        return 0
+    so = db.acknowledge_alerts_by_code(ma, before=moc_iso)
+    print(f"Da xac nhan {so} alert.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m bridge.admin",
                                 description="Cong cu van hanh Bridge")
@@ -495,6 +546,15 @@ def build_parser() -> argparse.ArgumentParser:
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
+
+    xn = sub.add_parser("xac-nhan-alert",
+                        help="Danh dau DA XEM cac alert cu theo ma (mac dinh chi dem)")
+    xn.add_argument("--code", action="append", required=True,
+                    help="Ma alert. Lap lai de chon nhieu ma. Khong co 'tat ca'")
+    xn.add_argument("--truoc", required=True,
+                    help="Chi alert sinh TRUOC moc nay, bat buoc co mui gio, "
+                         "vi du 2026-09-11T16:30:00+07:00")
+    xn.add_argument("--that", action="store_true", help="Ghi that. Thieu co nay thi chi dem")
     return p
 
 
@@ -526,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
+        if args.lenh == "xac-nhan-alert":
+            return lenh_xac_nhan_alert(db, args)
     finally:
         db.close()
     return 2

@@ -34,8 +34,15 @@ def _cach_ly_config_may(monkeypatch: pytest.MonkeyPatch) -> None:
 
     Test nào cần giá trị cấu hình cụ thể vẫn `monkeypatch.setattr` đè lên được, vì lần đặt
     sau thắng.
+
+    Cùng lý do, không test nào được ghi vào `logs/` **của máy đang chạy**. `main()` gọi
+    `setup_logging()` thật, ghi theo thư mục hiện hành — mà `cai-dat.ps1 -CapNhat` chạy bộ test
+    ngay trong `C:\\CopyBridge`. Trên VPS 2026-09-11, `logs/clicker.log` thật chứa ~500 KB log test,
+    kể cả dòng CRITICAL "Thieu token" do test cố ý gây ra: người vận hành đọc log sẽ tưởng
+    clicker thật đang hỏng. Lộ ra vì mốc giờ của file **sớm hơn** giờ clicker khởi động.
     """
     monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict, raising=False)
+    monkeypatch.setattr("clicker.__main__.setup_logging", lambda **_kw: None, raising=False)
     monkeypatch.delenv("COPYBRIDGE_CLICKER_TOKEN", raising=False)
 
 

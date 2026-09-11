@@ -2532,3 +2532,49 @@ cài, bảng mục kiểm, bảng 9.2). `cai-dat.ps1` lên bản `2026-09-11`.
 Việc trên VPS (người vận hành làm): chẩn đoán chỉ đọc → `cai-dat.ps1 -CapNhat` → xác nhận PID mới,
 `schema_version = 4` → `cau-hinh-client CL-01 --close-route UI` → dọn tồn đọng theo evidence → đo
 lại ctrlID → `RUNNING` → chạy thử demo → B-08.
+
+#### Sau khi cập nhật: bộ test ghi vào log thật của VPS
+
+Cập nhật chạy đúng (commit `0459350`, cả bốn tiến trình khởi động 16:08, mục 4b xanh). Nhưng
+`logs/clicker.log` trên VPS có mốc giờ **16:06:50 — sớm hơn giờ clicker mới khởi động (16:08:34)**,
+và nặng 509 KB, đúng bằng hai lượt ~254 KB mà bộ test sinh ra. Tức là file log "của clicker" lúc đó
+chứa toàn log **của bộ test** mà `-CapNhat` chạy hai lần.
+
+Nguyên nhân: `tests/test_clicker.py` gọi `main()` thật, `main()` gọi `setup_logging()` thật, ghi vào
+`logs/` theo thư mục hiện hành — và `cai-dat.ps1` chạy bộ test ngay trong `C:\CopyBridge`. Có từ
+trước (khi còn ghi chung thì nó lẫn vào `bridge.log`), chỉ lộ ra khi clicker có file riêng. Trong log
+test có cả dòng CRITICAL "Thieu token" do test cố ý gây ra — người đọc log thật sẽ tưởng clicker hỏng.
+
+**Sửa:** fixture autouse `_cach_ly_config_may` trong `tests/conftest.py` chặn luôn
+`clicker.__main__.setup_logging`. Kiểm: `clicker.log` 254485 byte / 15:17:42.157 trước và sau một
+lượt `pytest` đầy đủ — không đổi. Test khẳng định tên file log riêng vẫn đè được lên patch này.
+
+#### Tồn đọng trên VPS đọc được gì, và `bridge.admin xac-nhan-alert`
+
+Đọc chỉ-đọc DB của VPS (không mở bảng `agent`). **5 sai lệch**, đều từ đợt thử 2026-09-08:
+
+| # | Loại | Kết luận |
+|---|---|---|
+| 1 | SAFE `BOTH_CLOSED` cặp 000004 | Hai chân đều trống lúc đó — chấp nhận chỉ ghi sổ `CLOSED` |
+| 2 | DECISION `UNPAIRED_MASTER` AUDCHF | Lệnh không có ánh xạ symbol, `ALERT_ONLY` |
+| 3 | SAFE `ACK_LOST` → `REBIND_BY_TAG` cặp 000013 | **KHÔNG được chấp nhận**: ghép cặp vào vị thế Client 71789826, mà snapshot hôm nay Client có 0 vị thế |
+| 4 | DECISION `UNPAIRED_CLIENT` 71789826 | Vị thế đó không còn |
+| 5 | SAFE `ORPHAN_RESOLVED` cặp 000015 | Master `CLOSED`, Client volume 0 — chấp nhận |
+
+Chống trùng ở `_create_finding` chỉ xét finding **đang chờ**, nên bỏ qua một finding cũ không làm
+mất gì: nếu sai lệch vẫn còn, vòng đối chiếu kế tiếp sinh finding mới theo tình trạng **hiện tại**.
+Vòng 16:20 báo "0 sai lệch mới" dù cặp 000013 lẽ ra phải sinh `BOTH_CLOSED` hoặc `CLIENT_NOT_OPENED`
+— tức nhiều khả năng cặp đó đã rời `PENDING_OPEN`; cần xác nhận trên VPS trước khi xử lý.
+
+**240 alert chưa xem**, 207 là hai mã lặp (`RECONCILE_NO_SNAPSHOT` 138 — Master không gửi
+snapshot suốt 2 giờ ngày 09-08; `FINDING_BO_QUEN` 69). Không alert nào báo chuyện đang xảy ra.
+Dashboard chỉ xác nhận từng cái — 240 lần bấm thì không ai bấm, và ô đỏ vĩnh viễn làm alert thật
+kế tiếp chìm luôn. Thêm `bridge.admin xac-nhan-alert` với ba chốt: `--code` bắt buộc (không có "tất
+cả"), `--truoc` bắt buộc **có múi giờ** (alert sinh sau lúc đọc không bị nuốt, không đoán giờ địa
+phương hay UTC), và mặc định chỉ đếm — phải `--that` mới ghi. Không đụng `reconcile_finding`. +5 test,
+trong đó một test kiểm quy đổi `16:30+07:00` = `09:30Z` với alert cách mốc 1 ms ở hai phía.
+
+RUNBOOK: sửa câu sai về `service-err.log` — nó là **toàn bộ output console** của Bridge (vì vậy 7,6
+MB), không phải chỉ lỗi.
+
+**655 test xanh.**

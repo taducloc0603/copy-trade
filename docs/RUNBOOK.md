@@ -124,6 +124,8 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin sao-luu
 .\.venv\Scripts\python.exe -m bridge.admin bao-tri               # retention + sao luu + don ban cu
 .\.venv\Scripts\python.exe -m bridge.admin kiem-reason           # TEST-23
+# Danh dau DA XEM alert cu theo ma. Mac dinh chi dem; them --that de ghi. Khong dung finding.
+.\.venv\Scripts\python.exe -m bridge.admin xac-nhan-alert --code FINDING_BO_QUEN --truoc 2026-09-11T16:30:00+07:00
 ```
 
 **Token thô chỉ hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc
@@ -156,8 +158,10 @@ ngoài đang **tắt có chủ đích**, nên đây là cách duy nhất bạn b
 
 Log: `logs/bridge.log` (Bridge) và `logs/clicker.log` (clicker), xoay vòng theo ngày, giữ 30
 ngày, UTF-8. Có bộ lọc che token — `grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06:
-0 dòng trên ~15.000 dòng log). Lỗi của chính dịch vụ (Python không khởi động được, traceback lúc
-xoay log) nằm ở `logs/service-err.log` do NSSM ghi.
+0 dòng trên ~15.000 dòng log). `logs/service-err.log` do NSSM ghi là **toàn bộ output console** của Bridge
+— trùng nội dung với `bridge.log`, không phải chỉ lỗi — cộng thêm những thứ `bridge.log` không
+bắt được: Python không khởi động được, traceback của chính bộ ghi log (ví dụ lần xoay hỏng). NSSM
+tự xoay nó ở 10 MB. Tìm lỗi trong đó bằng `Select-String`, đừng đọc cả file.
 
 **Mỗi tiến trình một file log, không bao giờ dùng chung.** Trước 2026-09-11 clicker ghi vào
 chính `bridge.log`. Trên Windows, hai tiến trình chạy lâu cùng giữ một file mở thì lần xoay lúc

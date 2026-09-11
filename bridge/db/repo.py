@@ -732,3 +732,19 @@ class Database:
     def acknowledge_alert(self, alert_id: int) -> None:
         with self.transaction() as conn:
             conn.execute("UPDATE alert SET acknowledged_at = ? WHERE id = ?", (_now(), alert_id))
+
+    def acknowledge_alerts_by_code(self, codes: list[str], before: str) -> int:
+        """Xác nhận các alert chưa xem có mã thuộc `codes` và sinh ra **trước** `before`.
+
+        Trả về số dòng thực sự đổi. Cố ý không có dạng "mọi mã" — xem `bridge.admin
+        xac-nhan-alert`.
+        """
+        if not codes:
+            return 0
+        dau_hoi = ", ".join("?" for _ in codes)
+        with self.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE alert SET acknowledged_at = ? WHERE acknowledged_at IS NULL "
+                f"AND created_at < ? AND code IN ({dau_hoi})",
+                (_now(), before, *codes))
+            return int(cur.rowcount)
