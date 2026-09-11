@@ -2584,7 +2584,13 @@ MB), không phải chỉ lỗi.
 Sau khi dọn trên dashboard, lệnh đếm `xac-nhan-alert` lúc 17:41 hiện một `RECONCILE_FINDINGS`
 **mới** (17:41:01) — vòng đối chiếu vừa sinh finding, trong khi nếu dọn đúng thì không còn gì để sinh.
 Giả thuyết mạnh nhất: finding #3 `ACK_LOST → REBIND_BY_TAG` đã bị chấp nhận (bấm nhầm, hoặc qua nút
-"Chấp nhận tất cả mục an toàn"). Chưa xác nhận trên VPS lúc viết mục này.
+"Chấp nhận tất cả mục an toàn"). **Đã xác nhận trên VPS:** #3 `ACCEPTED` lúc 10:40:45Z, cặp 000013
+chuyển `OPEN` gắn vị thế 71789826; 16 giây sau vòng đối chiếu tự sinh #6 `BOTH_CLOSED` cho đúng cặp đó.
+Chấp nhận #6 đưa cặp về `CLOSED`, không gửi lệnh (hai terminal 0 vị thế). **Lịch sử của cặp 000013 bị
+ghi đè vĩnh viễn:** `open_time_client` thành giờ 2026-09-11, `close_source` thành `BROKER` và
+`close_time_client` thành giờ 2026-09-11 thay vì 2026-09-08 11:19:39 — chấp nhận được trên demo, và là
+lý do chốt chặn dưới đây phải có trước khi lên tài khoản thật. Sau khi dọn xong: `tinh-hinh` chỉ còn
+`PAUSED`, 0 cặp cần can thiệp, 0 sai lệch, 0 cảnh báo.
 
 Dù thao tác là gì, đọc code thấy đây là **lỗi thật**:
 
