@@ -258,6 +258,7 @@ async function taiCauHinh() {
     pre.textContent = (r.data.preview || []).join("\n");
     them(UI.cfg_preview + ":").appendChild(pre);
     them(UI.cfg_open_route + ": " + c.open_route);
+    them(UI.cfg_close_route + ": " + c.close_route);
     them(UI.cfg_can_close_master + ": " + (c.can_close_master ? "1" : "0"));
     el.appendChild(d);
   }

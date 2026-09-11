@@ -10,9 +10,11 @@
     tao khong.
 
  2. ALGO TRADING (B-09).
-    Duong MO phia Client di qua giao dien nen KHONG can Algo Trading;
-    duong DONG di qua EA nen CAN. Terminal tat Algo Trading van mo
-    lenh binh thuong roi moi hong luc dong -- hong muon nhat co the.
+    Ca duong MO lan duong DONG phia Client deu di qua giao dien nen
+    KHONG can Algo Trading de chay binh thuong. Nhung no van CAN, vi
+    do la LUOI CUOI: clicker hong thi duong dong roi ve OrderSend cua
+    EA, va luc ay Algo Trading la thu duy nhat con giu cho vi the dong
+    duoc. Tat no di thi ca duong chinh lan duong du phong deu mat.
     Sau MOI lan VPS khoi dong lai hoac MT5 tu cap nhat: kiem nut Algo
     Trading sang xanh tren CA HAI terminal.
 

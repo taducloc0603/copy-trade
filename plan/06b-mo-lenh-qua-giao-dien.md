@@ -269,3 +269,7 @@ Kèm bảng độ trễ copy mới, đo lại đúng cách phase 6 đã đo, đ�
 
 Không đụng vào đường **ĐÓNG** — nó vẫn dùng `OrderSend` của EA và giữ nguyên `RememberCause`.
 Không làm đối chiếu (phase 8). Không làm giao diện web (phase 9).
+
+> Câu trên **đúng với phase 6b** và được giữ nguyên văn. Đường ĐÓNG đã chuyển sang giao diện ở
+> **phase 11** (`plan/11-dong-qua-giao-dien.md`, D-21b), và lúc đó `RememberCause` hết tác dụng cho
+> đường đóng — Bridge phải tự nhận cha cho event (D-27).

@@ -211,14 +211,18 @@ sẽ từ chối khởi động nếu thiếu — xem mục 2).
 ### Ba rủi ro mới
 
 1. **Phiên RDP ngắt (B-08) — nghiêm trọng nhất.** Cách vận hành VPS bình thường là RDP vào rồi
-   ngắt ra, và từ giây đó mọi lệnh mở đều đi qua một cơ chế **chưa ai chứng minh là còn chạy**.
+   ngắt ra, và từ giây đó **mọi lệnh mở lẫn lệnh đóng** đều đi qua một cơ chế **chưa ai chứng minh
+   là còn chạy**. Chiều đóng nguy hiểm hơn: không mở được thì mất một cơ hội, còn tưởng đã đóng mà
+   chưa đóng là phơi nhiễm mà không ai biết.
    Phải đo trước khi tin: ngắt phiên RDP (đóng cửa sổ, **không** Sign out), rồi kiểm qua database
    xem lệnh tiếp theo có được copy không.
-2. **Algo Trading tắt (B-09).** Đường mở phía Client đi qua giao diện nên **không cần** Algo
-   Trading; đường đóng đi qua EA nên **cần**. Terminal có Algo Trading tắt vẫn mở lệnh bình
-   thường rồi mới hỏng lúc đóng. Bridge hiện **không nhìn thấy** trạng thái này. Sau mỗi lần VPS
-   khởi động lại hoặc MT5 tự cập nhật: kiểm nút **Algo Trading** sáng xanh trên **cả hai**
-   terminal.
+2. **Algo Trading tắt (B-09).** Cả đường mở lẫn đường đóng phía Client đều đi qua giao diện nên
+   **không cần** Algo Trading để chạy bình thường — nhưng nó vẫn **cần**, vì đó là **lưới cuối**:
+   clicker hỏng thì lệnh đóng rơi về `OrderSend` của EA (D-28), và lúc ấy Algo Trading là thứ duy
+   nhất còn giữ cho vị thế đóng được. Bridge **nhìn thấy** trạng thái này từ migration `003` (EA
+   gửi `trade_allowed` trong heartbeat) và có cổng thứ ba ở đường mở: Client không đóng được thì
+   không mở lệnh mới. Vẫn kiểm bằng mắt sau mỗi lần VPS khởi động lại hoặc MT5 tự cập nhật: nút
+   **Algo Trading** sáng xanh trên **cả hai** terminal.
 3. **Hai tài khoản, một địa chỉ IP.** Hai tài khoản mở vị thế ngược chiều, cùng symbol, cách nhau
    dưới một giây, từ cùng một IP là một dấu vết rất dễ nhận. Nhiều broker cấm hoặc huỷ lợi nhuận
    từ mô hình này. Đây là rủi ro **điều khoản**, không phải rủi ro kỹ thuật, và nó không hiện ra

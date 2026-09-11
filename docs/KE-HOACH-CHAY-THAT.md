@@ -93,6 +93,16 @@ Phân biệt hai chế độ hỏng, vì chúng khác nhau hoàn toàn:
 |---|---|
 | Canary đỏ, không có `OPEN_UI` | **An toàn** — Bridge tự dừng copy, D-25 làm đúng việc |
 | Canary xanh nhưng không có vị thế Client | **Nguy hiểm** — hệ thống tưởng mình đang copy mà không |
+| Canary đỏ, lệnh đóng rơi về `CLOSE` của EA | **An toàn** — vị thế vẫn đóng được, có alert `CLOSE_FELL_BACK_TO_EA`, chỉ mất `DEAL_REASON = CLIENT` cho deal đó (D-28) |
+| Canary xanh, có `CLOSE_UI`, nhưng vị thế Client **không đóng** | **Nguy hiểm nhất trong bảng** — sổ sách tưởng đã đóng, tiền thì chưa. Tệ hơn ô trên: không mở được thì mất một cơ hội, còn tưởng đã đóng mà chưa đóng là phơi nhiễm mà không ai biết |
+
+> Hai dòng dưới thêm sau **phase 11**, khi đường ĐÓNG cũng chuyển sang giao diện (D-21b). Nghĩa là
+> B-08 nay **quan trọng hơn** lúc nó được viết: trước đây nó chỉ quyết định việc copy có chạy hay
+> không, giờ nó quyết định cả việc **thoát ra** có chạy hay không.
+>
+> Cách đo cho đường đóng: sau khi ngắt phiên RDP, **đóng lệnh phía Master từ một máy khác**, rồi nối
+> lại và kiểm hai thứ — vị thế Client đã đóng chưa, và `kiem-reason` báo `reason` bằng bao nhiêu cho
+> deal đóng đó.
 
 Nếu rơi vào ô thứ hai thì **dừng hẳn kế hoạch chạy thật** cho tới khi giải xong.
 

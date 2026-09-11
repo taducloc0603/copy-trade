@@ -530,9 +530,11 @@ sai lệch đang chờ xử lý.</p>
 </div>
 
 <p>Kèm theo, sau mỗi lần khởi động lại hoặc sau khi MT5 tự cập nhật, kiểm lại
-<strong>nút Algo Trading sáng xanh trên cả hai terminal</strong>. Đường mở lệnh phía Client đi qua
-giao diện nên <em>không cần</em> Algo Trading; đường đóng đi qua EA nên <em>cần</em>. Terminal tắt
-Algo Trading vẫn mở lệnh bình thường rồi mới hỏng lúc đóng — hỏng muộn nhất có thể.</p>
+<strong>nút Algo Trading sáng xanh trên cả hai terminal</strong>. Cả đường mở lẫn đường đóng phía
+Client đều đi qua giao diện nên <em>không cần</em> Algo Trading để chạy bình thường — nhưng nó vẫn
+<em>cần</em>, vì đó là <strong>lưới cuối</strong>: clicker hỏng thì lệnh đóng rơi về EA, và lúc ấy
+Algo Trading là thứ duy nhất còn giữ cho vị thế đóng được. Tắt nó đi thì mất cả đường chính lẫn
+đường dự phòng.</p>
 
 <h3>Sao lưu</h3>
 <p>Tác vụ <code>BaoTri</code> chạy 03:00 hằng ngày, giữ 14 bản gần nhất trong

@@ -94,6 +94,55 @@ bấm không tới nơi (nguy hiểm).
 
 ---
 
+### B-14 — Tab Trade của Toolbox phải là tab đang mở
+
+**Trạng thái:** giới hạn vận hành của đường đóng qua giao diện, cùng loại với B-01.
+
+Clicker nhận ra danh sách vị thế bằng `ctrlID 10328`, và tab không mở thì control đó không
+`visible`. Chế độ hỏng là **an toàn**: `tradetab.tim_danh_sach()` từ chối ồn ào chứ không đoán, nên
+không có nguy cơ đóng nhầm vị thế. Nhưng lệnh đóng sẽ rơi về EA và deal đó mang `EXPERT`.
+
+**Cách trả:** đo xem có chuyển tab được bằng `TCM_SETCURSEL` hay bằng `ToolbarWindow32` của Toolbox
+mà MT5 thật sự đổi nội dung hay không — cùng kiểu nghi ngờ đã dùng cho `WM_SETTEXT`. Trước khi đo
+được thì đây là một dòng trong `RUNBOOK.md` mục 5c, không phải một tính năng.
+
+### B-15 — Đóng lệnh qua giao diện chậm hơn đường EA khoảng 16 lần
+
+Đo 2026-09-10 trên demo: `CLOSE_UI` **5,1–5,5 giây**, `CLOSE_UI_PARTIAL` **5,8–5,9 giây**, so với
+**342 ms** của đường EA. Clicker xử lý **một lệnh tại một thời điểm** (`link._gate`), nên nó là
+điểm nghẽn của **cả hai** đường — mở và đóng giành nhau cùng một cổng.
+
+Hệ quả đã xử lý: hạn chờ của đóng khẩn cấp co giãn theo số lệnh (`10 + 8n`, trần 120 giây) thay vì
+10 giây cố định.
+
+Hệ quả **chưa** xử lý: một cặp đang chờ đóng sẽ làm chậm lệnh mở của cặp khác. Chưa quan sát thấy
+gây hại, nhưng chưa đo với nhiều cặp cùng lúc.
+
+**Cách trả:** phần lớn thời gian có vẻ nằm ở việc `_map_controls` đọc `WM_GETTEXT` của ~50 control
+mỗi lần quét hộp thoại, và `cho_mo` quét lại mỗi 50 ms. Đo trước khi tối ưu — đừng đoán.
+
+### B-16 — `dry_probe()` chưa được nối vào canary
+
+**Đây là quyết định có chủ đích, ghi lại để không ai tưởng là quên.** Canary chạy mỗi giây, mà
+`dry_probe` mở rồi đóng một hộp thoại **thật** trên terminal đang giao dịch. Nối thẳng vào nhịp
+heartbeat là sai.
+
+Canary hiện chỉ kiểm cửa sổ terminal còn sống (`probe.probe()`), không kiểm được "hộp thoại còn
+điền được". Khoảng trống đó có thật.
+
+**Cách trả:** chạy `dry_probe` theo chu kỳ riêng, thưa hơn hẳn (vài phút), và **chỉ khi không có
+lệnh nào đang bay**. Cũng không đưa "tab Trade có đang mở" vào canary chung: tab Trade đóng **không**
+ảnh hưởng đường mở, nên để nó làm canary đỏ sẽ dừng copy vì một lý do không liên quan.
+
+### B-17 — `already_closed` cho lệnh đóng **một phần** để lại volume cũ
+
+Nếu một `CLOSE_UI_PARTIAL` (hoặc `CLOSE_PARTIAL`) trả `already_closed` — vị thế đã biến mất trước
+khi lệnh tới — thì `_sau_dong_bot` trừ `0` và cặp nằm lại `PARTIALLY_CLOSED` với volume cũ, cho tới
+khi vòng đối chiếu bắt được.
+
+**Có sẵn ở cả đường EA**, không phải lỗi mới. Không sửa ngay vì đối chiếu đúng là cơ chế tồn tại
+cho loại lệch này, và vì đường đi này chưa quan sát thấy lần nào trên demo.
+
 ## Mở rộng — không thuộc MVP
 
 - Nhiều Client **thật** trên giao diện: cấu hình riêng từng Client, so sánh chéo, chính sách

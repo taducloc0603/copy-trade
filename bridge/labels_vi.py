@@ -139,6 +139,9 @@ UI = {
     "cfg_multiplier": "Hệ số volume",
     "cfg_preview": "Xem trước",
     "cfg_open_route": "Kênh mở lệnh phía Client",
+    # Chinh cot nay quyet dinh deal DONG mang CLIENT hay EXPERT, nen no phai nhin thay duoc
+    # tren dashboard chu khong chi qua `bridge.admin cau-hinh-client`.
+    "cfg_close_route": "Kênh đóng lệnh phía Client",
     "cfg_master_close_always": "Master đóng thì Client đóng: LUÔN BẬT, không tắt được",
     "cfg_can_close_master": "Cho phép Client đóng ngược Master",
     "confirm_can_close_master": ("Bật mục này nghĩa là khi một Client đóng, Bridge sẽ đóng "

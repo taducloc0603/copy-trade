@@ -122,6 +122,12 @@ Trang cấu hình Client cần thêm ô **`open_route`** (`EA` / `UI`). Đổi s
 chỉ đích danh một clicker đang ONLINE, và phải có hộp xác nhận nêu rõ: thông lượng giảm còn
 khoảng một lệnh mỗi 2–4 giây, và độ trễ copy tăng từ vài trăm mili giây lên vài giây.
 
+> **Thêm sau phase 11:** cần cả ô **`close_route`** bên cạnh, vì nó chính là thứ quyết định deal
+> đóng mang `CLIENT` hay `EXPERT`. Hiện `close_route` **đã hiện** trên trang cấu hình nhưng vẫn ở
+> mức đọc (B-05), giống `open_route`. Hộp xác nhận khi bật `UI` phải nói thêm: đóng lệnh chậm hơn
+> đường EA khoảng 16 lần (đo được 5,1–5,9 giây), và clicker trở thành điểm nghẽn của **cả hai**
+> đường vì nó xử lý một lệnh tại một thời điểm.
+
 **Bảng ánh xạ symbol** phải có nút kiểm tra thực sự gọi xuống agent để xác nhận symbol tồn tại
 trên sàn Client và lấy về spec. **Không cho lưu mapping chưa kiểm tra** (`verified_at` NULL).
 

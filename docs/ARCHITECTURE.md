@@ -77,10 +77,10 @@ Tài liệu này mở rộng các mục 1, 2, 3 của `plan/00-README.md`.
 
 | Vai trò | Là gì | Được làm gì |
 |---|---|---|
-| EA (MQL5) | Agent mỏng gắn vào chart mỗi terminal | Bắt sự kiện, thực thi lệnh, gửi heartbeat |
+| EA (MQL5) | Agent mỏng gắn vào chart mỗi terminal | Bắt sự kiện, thực thi lệnh, gửi heartbeat. Đóng lệnh phía Master, và phía Client khi clicker hỏng (D-28) |
 | Bridge (Python) | Tiến trình độc lập, nguồn sự thật duy nhất | Toàn bộ logic nghiệp vụ, ghi DB |
 | Dashboard | Web phục vụ bởi chính Bridge | Hiển thị và điều khiển |
-| Clicker | Tiến trình Python cạnh terminal Client | **Chỉ** mở lệnh qua giao diện MT5 (D-21) |
+| Clicker | Tiến trình Python cạnh terminal Client | Mở **và đóng** lệnh qua giao diện MT5 (D-21, D-21b) |
 
 ### EA được làm
 
@@ -208,7 +208,8 @@ bridge/
   engine/           processor, sizing, reconcile             (phase 6, 7, 8)
   web/              FastAPI + WebSocket                      (phase 9)
 ea/                 CopyBridgeCommon.mqh, Master, Client     (phase 4, 5)
-clicker/            mở lệnh qua giao diện MT5, chạy cạnh terminal Client  (phase 6b)
+clicker/            mở và đóng lệnh qua giao diện MT5, cạnh terminal Client (phase 6b, 11)
+  ui/tradetab.py    danh sách vị thế ở tab Trade — nơi duy nhất mở được hộp thoại đóng
 tests/              conftest.py, mock_agent.py               (mock agent: phase 3)
 data/               SQLite và archive — trong .gitignore
 logs/               log xoay vòng theo ngày — trong .gitignore

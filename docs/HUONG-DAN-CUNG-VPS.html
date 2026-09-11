@@ -123,7 +123,7 @@ Master đóng lệnh thì Client cũng đóng theo.</p>
 
 <figure>
 <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img"
-     aria-label="Terminal Master gửi sự kiện tới Bridge; Bridge sai clicker mở lệnh qua giao diện và sai EA đóng lệnh">
+     aria-label="Terminal Master gửi sự kiện tới Bridge; Bridge sai clicker mở và đóng lệnh qua giao diện MT5; đường qua EA chỉ là dự phòng khi clicker hỏng">
   <defs>
     <marker id="ml" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto">
       <path d="M0,0 L0,6 L8,3 z" fill="#388bfd"/></marker>
@@ -152,24 +152,28 @@ Master đóng lệnh thì Client cũng đóng theo.</p>
   <line x1="212" y1="73" x2="332" y2="73" stroke="#388bfd" stroke-width="2" marker-end="url(#ml)"/>
   <text class="n" x="222" y="64" fill="#388bfd">sự kiện</text>
   <path d="M440,118 L440,172" stroke="#3fb950" stroke-width="2" fill="none" marker-end="url(#mx)"/>
-  <text class="n" x="448" y="150" fill="#3fb950">sai đi MỞ lệnh</text>
+  <text class="n" x="448" y="150" fill="#3fb950">sai MỞ và ĐÓNG</text>
   <path d="M542,218 C610,218 620,170 662,152" stroke="#3fb950" stroke-width="2" fill="none" marker-end="url(#mx)"/>
   <text class="n" x="556" y="250" fill="#3fb950">bấm qua giao diện</text>
   <path d="M542,73 C620,73 630,110 662,126" stroke="#f5a524" stroke-width="2" fill="none" marker-end="url(#mc)"/>
-  <text class="n" x="556" y="66" fill="#f5a524">sai EA ĐÓNG lệnh</text>
+  <text class="n" x="556" y="66" fill="#f5a524">dự phòng qua EA</text>
 </svg>
-<figcaption>Đường <span style="color:#3fb950">xanh</span> là mở lệnh, đường
-<span style="color:#f5a524">cam</span> là đóng lệnh. Hai đường đi khác nhau — đó là điểm quan
-trọng nhất cần nhớ.</figcaption>
+<figcaption>Đường <span style="color:#3fb950">xanh</span> là đường chính: <strong>cả mở lẫn
+đóng</strong> đều đi qua clicker. Đường <span style="color:#f5a524">cam</span> là đường
+<strong>dự phòng</strong>, chỉ dùng khi clicker hỏng.</figcaption>
 </figure>
 
 <div class="hop lam">
-  <span class="nhan">Vì sao mở và đóng đi hai đường khác nhau?</span>
+  <span class="nhan">Vì sao phải bấm qua giao diện, không để phần mềm tự đặt lệnh?</span>
   <p>Sàn ghi lại <em>ai đã tạo ra lệnh này</em>. Nếu để phần mềm tự đặt lệnh, sàn ghi là
   <strong>lệnh của máy</strong>. Nếu bấm qua giao diện MT5 như người dùng bình thường, sàn ghi là
   <strong>lệnh của người</strong>.</p>
-  <p>Vì thế lệnh <strong>mở</strong> được bấm qua giao diện thật (chương trình <code>clicker</code>
-  làm việc này), còn lệnh <strong>đóng</strong> đi thẳng qua EA cho nhanh và chắc.</p>
+  <p>Vì thế <strong>cả lệnh mở lẫn lệnh đóng</strong> đều được bấm qua giao diện thật (chương
+  trình <code>clicker</code> làm việc này).</p>
+  <p>Đường qua EA vẫn còn, nhưng chỉ là <strong>dự phòng</strong>: nếu clicker hỏng mà Master đã
+  đóng lệnh, vị thế của bạn bên Client phải đóng được bằng đường nào đó. Thà một lệnh đóng bị sàn
+  ghi là <em>lệnh của máy</em> còn hơn để vị thế nằm đó không ai đóng. Lúc đó hệ thống báo một
+  cảnh báo đỏ nói rõ chuyện vừa xảy ra.</p>
 </div>
 
 <p>Đây là hộp thoại mà <code>clicker</code> điền và bấm hộ bạn. Nó dùng hộp thoại
