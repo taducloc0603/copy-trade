@@ -121,6 +121,16 @@ gây hại, nhưng chưa đo với nhiều cặp cùng lúc.
 **Cách trả:** phần lớn thời gian có vẻ nằm ở việc `_map_controls` đọc `WM_GETTEXT` của ~50 control
 mỗi lần quét hộp thoại, và `cho_mo` quét lại mỗi 50 ms. Đo trước khi tối ưu — đừng đoán.
 
+**Đo trên VPS 2026-09-11 — con số "5 giây" không phải chi phí của đường giao diện.** Tách từng chặng
+của một lần đóng thật: Master báo → Bridge gửi `CLOSE_UI` **95 ms**; clicker **6,1 s** rồi `rejected`;
+rơi về EA **26 ms**; EA đóng **264 ms**. 6,1 giây đó là **một cú double-click bị treo** (chặn đúng
+hết hạn 2 giây, không mở hộp thoại) cộng 2 giây chờ, rồi 2 giây chờ vô ích ở dòng Balance. Chạy chẩn
+đoán tay trên cùng terminal: **13/15** lần nhấp mở hộp thoại trong **0,27–0,75 s**; 2 lần còn lại đúng
+kiểu treo đó (cộng lần đóng thật là 3), và lần nhấp lại ngay sau một lần treo thì mở. Đã loại trừ: terminal không ở phía trước, MT5 nghỉ
+45 giây, bước chọn dòng. Chưa tìm ra cơ chế. Bản sửa: `_mo_dong` nhấp lại **một lần** khi message
+treo (không nhấp lại khi dòng trả lời ngay mà không mở gì), và ghi log thời gian từng lần nhấp vào
+`logs/clicker.log` — lần sau đo từ log chứ không phải chạy script tay.
+
 ### B-16 — `dry_probe()` chưa được nối vào canary
 
 **Đây là quyết định có chủ đích, ghi lại để không ai tưởng là quên.** Canary chạy mỗi giây, mà

@@ -44,8 +44,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
+from bridge.logging_setup import get_logger
 from clicker.ui import probe, tradetab, win32
 from clicker.ui.dialog import ClosePositionDialog, DialogError, NewOrderDialog
+
+log = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -230,6 +233,13 @@ class Mt5UiDriver:
     #: gấp nhiều lần. Phải nhỏ vì **mỗi dòng không phải vị thế sẽ tiêu đúng ngần này** — danh sách
     #: có cả dòng tổng kết Balance, và nó không mở hộp thoại nào.
     PROBE_CLOSE_SEC = 2.0
+    #: Số lần nhấp lại một dòng khi cú double-click **bị treo hết hạn** mà không mở hộp thoại nào
+    #: (xem `_mo_dong`). Một lần là đủ theo đo đạc; nhiều hơn chỉ kéo dài phép dò khi terminal treo
+    #: thật, mà lúc đó Bridge còn đường rơi về EA.
+    NHAP_LAI_KHI_TREO = 1
+    #: Chờ hộp thoại sau một cú nhấp **bị treo** trước khi nhấp lại. Ngắn vì message đã chặn đủ 2
+    #: giây: hộp thoại nếu mở thì đã mở rồi — đo trên VPS, chờ thêm 3 giây cũng không thấy gì.
+    CHO_SAU_KHI_TREO_SEC = 0.5
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
@@ -337,11 +347,7 @@ class Mt5UiDriver:
                 sot.cancel()
                 sot.wait_closed()
 
-            # Không đọc giá trị trả về như một điều kiện tiên quyết: `SendMessage` của cú
-            # double-click mở một hộp thoại **modal**, nên nó có thể hết hạn chờ trong khi hộp
-            # thoại vẫn mở ra bình thường. Bằng chứng duy nhất là hộp thoại có xuất hiện hay không.
-            tradetab.mo_hop_thoai_dong(list_hwnd, row)
-            hop = ClosePositionDialog.cho_mo(pid, self.PROBE_CLOSE_SEC)
+            hop = self._mo_dong(pid, list_hwnd, row)
             if hop is None:
                 # Dòng này không mở hộp thoại nào. Bình thường: danh sách có cả dòng tổng kết
                 # Balance. Đi tiếp chứ không coi là lỗi.
@@ -389,6 +395,41 @@ class Mt5UiDriver:
             f"Khong con vi the {request.position_id} trong {so_dong} dong (gap: {da_gap})",
             clicked=False,
         )
+
+    def _mo_dong(self, pid: int, list_hwnd: int, row: int) -> ClosePositionDialog | None:
+        """Mở hộp thoại đóng cho một dòng, **nhấp lại một lần** nếu cú nhấp đầu bị treo.
+
+        Đo trên VPS ngày 2026-09-11 (Connext-Demo): thỉnh thoảng cú double-click làm
+        `SendMessageTimeout` **chặn đúng hết hạn 2 giây** mà không có hộp thoại nào; nhấp lại ngay
+        thì mở trong khoảng 0,4 giây. Lần đóng thật đầu tiên trên VPS hỏng đúng kiểu đó — dò hết
+        danh sách không mở được gì, trả `rejected`, Bridge rơi về EA và deal đóng mang `EXPERT`.
+        Laptop chưa từng gặp. Chưa tìm ra cơ chế: đã loại trừ focus, MT5 nghỉ lâu, bước chọn dòng.
+
+        Chỉ nhấp lại khi **message bị treo** (`mo_hop_thoai_dong` trả `False`). Dòng tổng kết Balance
+        trả `True` ngay mà không mở gì — nhấp lại nó chỉ tốn thời gian. Nhấp lại là an toàn: mở rồi
+        huỷ hộp thoại không đặt lệnh nào (D-30).
+
+        Không coi giá trị trả về là bằng chứng: `SendMessage` của cú double-click mở một hộp thoại
+        **modal**, nên nó có thể hết hạn trong khi hộp thoại vẫn mở ra. Bằng chứng duy nhất là hộp
+        thoại có xuất hiện hay không — giá trị trả về chỉ quyết định **có đáng nhấp lại** không.
+        """
+        so_lan = 1 + self.NHAP_LAI_KHI_TREO
+        for lan in range(1, so_lan + 1):
+            if lan > 1:
+                sot = ClosePositionDialog.find(pid)
+                if sot is not None:
+                    sot.cancel()
+                    sot.wait_closed()
+            bat_dau = time.monotonic()
+            gui = tradetab.mo_hop_thoai_dong(list_hwnd, row)
+            cho = (self.CHO_SAU_KHI_TREO_SEC if not gui and lan < so_lan
+                   else self.PROBE_CLOSE_SEC)
+            hop = ClosePositionDialog.cho_mo(pid, cho)
+            log.info("Do dong %d lan %d: gui=%s, hop thoai %s sau %.2fs", row, lan, gui,
+                     "MO" if hop is not None else "KHONG mo", time.monotonic() - bat_dau)
+            if hop is not None or gui:
+                return hop
+        return None
 
     def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest) -> Outcome:
         """Điền volume, **đọc lại cả ticket lẫn volume**, rồi mới bấm.

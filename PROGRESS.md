@@ -2614,3 +2614,37 @@ và `accept_all_safe` với một finding cũ lẫn một finding còn đúng (�
 cú pháp bằng `node --check`; chưa bấm thử trên trình duyệt.
 
 **658 test xanh.**
+
+### Chạy thử trên VPS — lệnh mở qua được, lệnh đóng rơi về EA
+
+*(2026-09-11, tối.)* Sau khi dọn sổ, đổi `CL-01` sang `copy_mode = SAME` theo yêu cầu người chủ dự
+án (ánh xạ `XAUUSD.s` có `copy_mode = NULL` nên kế thừa đúng). ctrlID hộp thoại đóng trên terminal
+Client của VPS khớp đo trên laptop; combo `10672` ẩn nhưng không bắt buộc — ticket lấy từ tiêu đề và
+nút Close.
+
+**Lần thử đầu không copy gì:** 4 lệnh Master bị bỏ qua với `CL-01: Algo Trading tat phia Client` —
+cổng thứ ba của đường mở chạy đúng thiết kế; Algo Trading được bật sau khi thử.
+
+**Lần thử hai: mở qua giao diện 0,8 s, nhưng đóng mất 6,5 s và rơi về EA** (deal đóng mang
+`EXPERT`, alert `CLOSE_FELL_BACK_TO_EA`). Tách từng chặng từ DB — Bridge gửi `CLOSE_UI` sau 95 ms,
+clicker mất 6,1 s rồi `rejected` "Khong dong nao trong 2 dong mo duoc hop thoai", EA đóng trong 264 ms.
+
+Bốn lượt chẩn đoán tay trên VPS (chỉ mở rồi huỷ hộp thoại, không đặt lệnh):
+
+- Cú double-click **thỉnh thoảng chặn đúng hết hạn 2 giây** mà không mở hộp thoại; dòng Balance thì
+  trả lời ngay. 13/15 lần nhấp chẩn đoán mở trong 0,27–0,75 s, 2 lần treo (cộng lần đóng thật là 3);
+  lần nhấp lại ngay sau một lần treo thì mở.
+- **Đã loại trừ:** terminal không ở phía trước (mở được cả khi PowerShell che), MT5 nghỉ 45 giây, bước
+  chọn dòng, ctrlID. Chưa tái hiện được theo ý muốn nên **chưa biết cơ chế**.
+
+**Sửa:** `Mt5UiDriver._mo_dong` nhấp lại đúng dòng đó **một lần** khi `mo_hop_thoai_dong` trả `False`
+(message treo) và không có hộp thoại; chờ 0,5 s thay vì 2 s trước khi nhấp lại. Dòng trả lời ngay mà
+không mở gì (Balance) **không** bị nhấp lại. Nhấp lại an toàn vì mở/huỷ hộp thoại không đặt lệnh
+(D-30). Mỗi lần nhấp ghi một dòng log thời gian vào `logs/clicker.log`. Ước tính một lần đóng gặp treo
+còn khoảng 3 giây thay vì 6,1 giây rồi rơi về EA — **chưa đo trên VPS**.
+
++3 test: nhấp lại đúng dòng vừa treo và đóng được; dòng trả lời ngay không bị nhấp lại; treo cả hai lần
+thì dừng sau một lần nhấp lại và trả `rejected` (không kết luận đã đóng). Hai test đầu và cuối **đỏ
+trên code cũ**; test giữa là hàng rào cho chính bản sửa. BACKLOG B-15 cập nhật số đo VPS.
+
+**661 test xanh.**

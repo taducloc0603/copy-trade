@@ -354,6 +354,68 @@ def test_dong_khong_mo_hop_thoai_thi_di_tiep_chu_khong_phai_loi(
     assert "dong 0 khong mo hop thoai" in nhat_ky
 
 
+# VPS 2026-09-11: cu double-click doi khi chan het han 2 giay ma khong mo hop thoai nao; nhap lai
+# ngay thi mo. Dau hieu phan biet voi dong Balance: `mo_hop_thoai_dong` tra False (treo) thay vi
+# True (tra loi ngay, khong mo gi).
+
+def _gia_lap_treo(monkeypatch: pytest.MonkeyPatch, so_lan_treo: dict[int, int],
+                  tickets: list[int | None]) -> tuple[list[int], list[float]]:
+    """`so_lan_treo[row]` = bao nhieu cu nhap dau tien vao dong do bi treo."""
+    _gia_lap_tim(monkeypatch, tickets)
+    da_mo: list[int] = []
+    cho: list[float] = []
+    trang_thai = {"dong": -1, "treo": False}
+
+    def mo(_list_hwnd: int, row: int) -> bool:
+        da_mo.append(row)
+        trang_thai["dong"] = row
+        trang_thai["treo"] = da_mo.count(row) <= so_lan_treo.get(row, 0)
+        return not trang_thai["treo"]
+
+    def cho_mo(cls: Any, _pid: int, timeout_sec: float = 2.0) -> Any:
+        cho.append(timeout_sec)
+        row = trang_thai["dong"]
+        if trang_thai["treo"] or tickets[row] is None:
+            return None
+        return HopThoaiDongGia(ticket=tickets[row])
+
+    monkeypatch.setattr(driver_mod.tradetab, "mo_hop_thoai_dong", mo)
+    monkeypatch.setattr(driver_mod.ClosePositionDialog, "cho_mo", classmethod(cho_mo))
+    return da_mo, cho
+
+
+def test_nhap_dup_bi_treo_thi_nhap_lai_dung_dong_do(driver: Mt5UiDriver,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Truoc ban sua: dong 0 treo, do sang dong Balance, `rejected`, Bridge roi ve EA (EXPERT)."""
+    da_mo, cho = _gia_lap_treo(monkeypatch, {0: 1}, [TICKET, None])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok" and driver._bam.da_bam == [4242]
+    assert da_mo == [0, 0], "Phai nhap lai DUNG dong vua treo, khong nhay sang dong khac"
+    assert cho[0] < driver.PROBE_CLOSE_SEC, "Sau cu nhap bi treo khong duoc cho lau vo ich"
+
+
+def test_dong_tra_loi_ngay_ma_khong_mo_gi_thi_KHONG_nhap_lai(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dong Balance: message tra ve ngay, khong hop thoai. Nhap lai no chi ton them 2 giay."""
+    da_mo, _ = _gia_lap_treo(monkeypatch, {}, [None, TICKET])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok"
+    assert da_mo == [0, 1]
+
+
+def test_treo_ca_hai_lan_thi_khong_nhap_them_va_khong_ket_luan_da_dong(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Terminal treo that: dung sau MOT lan nhap lai, tra `rejected` de Bridge con duong EA."""
+    da_mo, _ = _gia_lap_treo(monkeypatch, {0: 5}, [TICKET, None])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "rejected" and kq.clicked is False
+    assert driver._bam.da_bam == []
+    assert da_mo == [0, 0, 1], "Chi duoc nhap lai MOT lan moi dong"
+
+
 def test_quet_het_ma_khong_thay_thi_la_already_closed_chu_khong_phai_loi(
         driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
     """Quet het danh sach ma khong co vi the do nghia la NO DA DONG ROI (FR-18).
