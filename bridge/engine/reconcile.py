@@ -503,6 +503,14 @@ class Reconciler:
         hanh_dong = (f["suggested_action"] or "").split(":")[0]
         pair = self.db.get_pair(f["pair_id"]) if f["pair_id"] else None
 
+        if pair is not None and (luc_do := self._trang_thai_luc_phat_hien(f, pair)) is not None:
+            # Finding là ảnh chụp; hành động của nó chỉ đúng với tình trạng lúc chụp. Không trả
+            # `resolution` về gì cả: người vận hành vẫn phải nhìn và Bỏ qua kèm ghi chú.
+            log.warning("Tu choi finding %s (%s): cap %s luc phat hien la %s, nay la %s. "
+                        "Finding cu -- xu ly bang Bo qua.", finding_id, f["suggested_action"],
+                        pair["pair_id"], luc_do, pair["status"])
+            return False
+
         if hanh_dong == "CLOSE_CLIENT" and pair is not None:
             await self.closing.close_pair_now(pair, "BOT")
         elif hanh_dong == "MARK_CLOSED" and pair is not None:
@@ -527,6 +535,26 @@ class Reconciler:
         self.db.resolve_finding(finding_id, "ACCEPTED")
         log.info("Finding %s da ap dung: %s", finding_id, f["suggested_action"])
         return True
+
+    @staticmethod
+    def _trang_thai_luc_phat_hien(f: sqlite3.Row, pair: sqlite3.Row) -> str | None:
+        """Trạng thái cặp lúc finding được tạo, **nếu nó khác bây giờ**; ngược lại `None`.
+
+        VPS 2026-09-11: một `ACK_LOST -> REBIND_BY_TAG` sinh lúc cặp còn `PENDING_OPEN`, 17 giây
+        sau cặp tự đóng theo đường thường, finding nằm chờ ba ngày — và chấp nhận nó đã ghi cặp
+        `CLOSED` thành `OPEN`. Với `CLOSE_CLIENT` cùng lỗ đó là gửi lệnh đóng thật theo ảnh chụp cũ.
+
+        Không đọc được trạng thái lúc chụp (finding không gắn cặp, bằng chứng thiếu `db.status`)
+        thì trả `None` — giữ hành vi cũ thay vì chặn mọi thứ.
+        """
+        try:
+            bang_chung = json.loads(f["evidence_json"] or "{}")
+            luc_do = (bang_chung.get("db") or {}).get("status")
+        except (ValueError, AttributeError):
+            return None
+        if luc_do and luc_do != pair["status"]:
+            return str(luc_do)
+        return None
 
     def skip_finding(self, finding_id: int, note: str) -> bool:
         """Bỏ qua một finding — và **tạo một alert tồn tại**. Bỏ qua không có nghĩa là quên."""

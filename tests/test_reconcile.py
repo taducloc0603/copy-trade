@@ -304,6 +304,67 @@ async def test_accept_master_closed_offline_thi_dong_client(env: Env) -> None:
     assert lenh[0]["target_agent_id"] == CLIENT_AGENT
 
 
+# -- finding cũ: tình trạng cặp đã đổi kể từ lúc phát hiện -----------------------------------
+#
+# VPS 2026-09-11: finding `ACK_LOST -> REBIND_BY_TAG` sinh lúc cặp còn `PENDING_OPEN`, 17 giây
+# sau cặp tự đóng theo đường thường, và finding nằm chờ 3 ngày. Chấp nhận nó đã ghi cặp `CLOSED`
+# thành `OPEN` gắn vào một vị thế không còn tồn tại: `accept_finding` làm theo ảnh chụp cũ mà
+# không nhìn lại hiện tại. Cùng lỗ đó với `CLOSE_CLIENT` là gửi lệnh đóng thật.
+
+def _dong_cap(env: Env, pair_id: str) -> None:
+    """Cặp tự đóng theo đường thường, sau khi finding đã sinh và trước khi có người bấm."""
+    env.db.mark_pair_closed(pair_id, close_source="MASTER", close_time_client=to_iso(utc_now()),
+                            master_da_dong=True)
+
+
+async def test_accept_rebind_khi_cap_da_dong_thi_tu_choi(env: Env) -> None:
+    pair_id = env.tao_cap(900001, None, status="PENDING_OPEN", the="CBabc1234567")
+    env.vi_the_master(900001)
+    env.vi_the_client(800009, comment="CBabc1234567")
+    run_id = await env.processor.reconciler.run("TEST")
+    f = env.findings(run_id, "ACK_LOST")[0]
+    assert f["suggested_action"] == "REBIND_BY_TAG"
+
+    _dong_cap(env, pair_id)
+
+    assert not await env.processor.reconciler.accept_finding(f["id"])
+    cap = env.db.get_pair(pair_id)
+    assert cap["status"] == "CLOSED", "Cap da dong KHONG duoc bi mo lai trong so"
+    assert cap["client_position_id"] is None
+    assert env.db.get_finding(f["id"])["resolution"] == "PENDING", \
+        "Tu choi thi finding van cho nguoi xu ly (Bo qua), khong tu danh dau da giai quyet"
+
+
+async def test_accept_close_client_khi_cap_da_dong_thi_khong_gui_lenh(env: Env) -> None:
+    pair_id = env.tao_cap(900001, 800001)
+    env.vi_the_client(800001)
+    run_id = await env.processor.reconciler.run("TEST")
+    f = env.findings(run_id, "MASTER_CLOSED_OFFLINE")[0]
+    assert f["suggested_action"] == "CLOSE_CLIENT"
+
+    _dong_cap(env, pair_id)
+
+    assert not await env.processor.reconciler.accept_finding(f["id"])
+    await asyncio.sleep(0.2)
+    assert not env.db.query_all(
+        "SELECT 1 FROM command WHERE type IN ('CLOSE', 'CLOSE_PARTIAL', 'CLOSE_UI', "
+        "'CLOSE_UI_PARTIAL')"), "Finding cu tuyet doi khong duoc gui lenh dong that"
+
+
+async def test_accept_all_safe_bo_qua_finding_cu(env: Env) -> None:
+    cu = env.tao_cap(900001, 800001)             # ca hai deu mat -> BOTH_CLOSED
+    con_dung = env.tao_cap(900002, 800002)       # ca hai deu mat -> BOTH_CLOSED
+    run_id = await env.processor.reconciler.run("TEST")
+    assert len(env.findings(run_id, "BOTH_CLOSED")) == 2
+
+    _dong_cap(env, cu)
+
+    assert await env.processor.reconciler.accept_all_safe(run_id) == 1
+    con = env.db.list_findings(run_id=run_id, resolution="PENDING")
+    assert [r["pair_id"] for r in con] == [cu]
+    assert env.db.get_pair(con_dung)["status"] == "CLOSED"
+
+
 # -- 8.5 chính sách mở bù ---------------------------------------------------------------------
 
 async def test_offline_reopen_policy_NONE_thi_khong_mo_bu(env: Env) -> None:

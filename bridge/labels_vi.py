@@ -126,6 +126,8 @@ UI = {
     "evidence_master": "Master thực tế",
     "evidence_client": "Client thực tế",
     "btn_accept": "Chấp nhận",
+    "accept_refused": ("Không áp dụng được. Thường là vì tình trạng cặp đã đổi kể từ lúc phát "
+                       "hiện (finding cũ). Xem lại bằng chứng, hoặc Bỏ qua kèm ghi chú."),
     "btn_accept_all_safe": "Chấp nhận tất cả mục an toàn",
     "btn_skip": "Bỏ qua",
     "skip_note_prompt": "Lý do bỏ qua (sẽ để lại một cảnh báo tồn tại):",

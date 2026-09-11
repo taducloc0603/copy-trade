@@ -163,7 +163,10 @@ function veNhom(el, nhan, ds, choPhepHangLoat) {
     const nutOk = document.createElement("button");
     nutOk.textContent = UI.btn_accept;
     nutOk.onclick = async () => {
-      await goi("/api/findings/" + f.id + "/accept", { method: "POST" });
+      // Bridge tu choi finding cu (tinh trang cap da doi). Im lang o day thi nguoi bam tuong da
+      // xong, trong khi finding van nam nguyen do.
+      const r = await goi("/api/findings/" + f.id + "/accept", { method: "POST" });
+      if (!r.data.ok) window.alert(UI.accept_refused);
       taiSaiLech();
     };
     // Bo qua la hanh dong CHO TUNG DONG, va moi dong bi bo qua de lai mot alert ton tai.

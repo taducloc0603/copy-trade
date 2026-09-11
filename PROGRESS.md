@@ -2578,3 +2578,33 @@ RUNBOOK: sửa câu sai về `service-err.log` — nó là **toàn bộ output c
 MB), không phải chỉ lỗi.
 
 **655 test xanh.**
+
+#### Finding cũ mở lại được một cặp đã đóng
+
+Sau khi dọn trên dashboard, lệnh đếm `xac-nhan-alert` lúc 17:41 hiện một `RECONCILE_FINDINGS`
+**mới** (17:41:01) — vòng đối chiếu vừa sinh finding, trong khi nếu dọn đúng thì không còn gì để sinh.
+Giả thuyết mạnh nhất: finding #3 `ACK_LOST → REBIND_BY_TAG` đã bị chấp nhận (bấm nhầm, hoặc qua nút
+"Chấp nhận tất cả mục an toàn"). Chưa xác nhận trên VPS lúc viết mục này.
+
+Dù thao tác là gì, đọc code thấy đây là **lỗi thật**:
+
+- `accept_finding` làm theo `suggested_action` **mà không so tình trạng hiện tại** với lúc finding
+  được tạo. Finding là ảnh chụp; cái #3 chụp lúc cặp 000013 còn `PENDING_OPEN`, 17 giây sau cặp tự
+  đóng theo đường thường, và ảnh chụp nằm chờ ba ngày.
+- `mark_pair_open` ghi `status = 'OPEN'` không điều kiện, nên chấp nhận nó ghi cặp `CLOSED` thành
+  `OPEN` gắn vào vị thế không còn tồn tại.
+- Cùng lỗ đó với `MASTER_CLOSED_OFFLINE → CLOSE_CLIENT` là **gửi lệnh đóng thật** theo ảnh chụp cũ.
+  Lần này không có tiền nào bị đụng chỉ vì hai terminal đều 0 vị thế.
+- Dashboard **bỏ qua kết quả** của nút Chấp nhận: kể cả khi Bridge từ chối, người bấm không thấy gì.
+
+**Sửa:** `accept_finding` so `evidence_json.db.status` với trạng thái hiện tại của cặp; khác thì
+không làm gì, **không** đổi `resolution` (người vận hành vẫn phải Bỏ qua kèm ghi chú), log WARNING, trả
+`False`. Finding không gắn cặp hoặc bằng chứng thiếu `db.status` giữ hành vi cũ. `accept_all_safe` tự
+bỏ qua finding cũ vì chỉ đếm lần trả `True`. `app.js` đọc `ok` và báo bằng nhãn mới `accept_refused`.
+
++3 test — cả ba **đỏ trên code cũ** trước khi sửa: `REBIND_BY_TAG` trên cặp đã đóng (cặp phải vẫn
+`CLOSED`, finding vẫn `PENDING`), `CLOSE_CLIENT` trên cặp đã đóng (không command đóng nào được tạo),
+và `accept_all_safe` với một finding cũ lẫn một finding còn đúng (đúng 1 được áp dụng). `app.js` kiểm
+cú pháp bằng `node --check`; chưa bấm thử trên trình duyệt.
+
+**658 test xanh.**
