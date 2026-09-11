@@ -292,6 +292,23 @@ cảnh báo đỏ nhắc biên dịch lại và **gắn lại EA**.
 
 Đường lùi được in ra cuối: `git -C C:\CopyBridge checkout <commit-cũ>` rồi chạy lại.
 
+> **Cập nhật lên bản có đường ĐÓNG qua giao diện (migration `004`).** Client đã có sẵn **giữ
+> `close_route = EA`** — nâng cấp không tự đổi hành vi của Client nào đang chạy. Sau khi cập nhật
+> xong, bật bằng tay rồi xem lại:
+>
+> ```powershell
+> cd C:\CopyBridge
+> .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI
+> .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01
+> ```
+>
+> Hai điều kiện vận hành mới trên terminal Client: Toolbox **luôn bật** và **đứng ở tab Trade**
+> (B-14). Nếu MT5 trên VPS khác build với lúc đo (MT5 tự cập nhật), đo lại ctrlID bằng
+> `python -m clicker.ui.dump` trước khi tin đường đóng — xem `RUNBOOK.md` mục 5a.
+>
+> Migration này dựng lại bảng `command` và là **một chiều**: lùi bản phải phục hồi từ bản sao lưu
+> và xoá cả `-wal` lẫn `-shm` (mục 9.8 của bản hướng dẫn HTML).
+
 Script **không tự `stash`, không tự `reset --hard`**. `git pull` hỏng vì có sửa cục bộ thì nó dừng
 và in `git status` cho bạn xử lý.
 

@@ -460,6 +460,33 @@ class CloseFlow:
             return
         self.db.update_pair(pair["pair_id"], client_current_volume=float(volume_after))
 
+        # Vị thế Client đã HẾT: event này là bằng chứng lệnh đóng đã xong, mạnh hơn ack của clicker.
+        #
+        # Đúng doctrine D-23 — *"event của EA là nguồn sự thật; ack của clicker là thông tin phụ"* —
+        # mà đường MỞ đã áp từ phase 6b: bộ tương quan mở đánh cặp `OPEN` theo event, bất kể ack.
+        # Đường ĐÓNG trước đây vẫn chờ ack mới đánh `CLOSED`, nên khi clicker bấm xong mà hộp thoại
+        # đóng chậm hơn hạn chờ (ack `unknown`, đã quan sát thật 2026-09-11 ở đường mở), cặp **kẹt
+        # `CLOSING`** tới vòng đối chiếu kế tiếp — trong khi Bridge đang cầm sẵn bằng chứng đã đóng.
+        #
+        # `mark_pair_closed` idempotent, nên ack `ok` về sau (hoặc về trước) cũng không làm hỏng gì.
+        if float(volume_after) > 0:
+            return
+        hien_tai = self.db.get_pair(pair["pair_id"])
+        if hien_tai is None or hien_tai["status"] in TERMINAL_STATUSES:
+            return
+        ack_unknown = (hien_tai["error_message"] or "") == "CLOSE_ACK_UNKNOWN"
+        self.db.mark_pair_closed(pair["pair_id"],
+                                 close_source=hien_tai["close_source"] or "MASTER",
+                                 close_time_client=event["received_at"])
+        if ack_unknown:
+            # Alert CRITICAL `CLOSE_ACK_UNKNOWN` đã nói "chờ đối chiếu". Nói rõ là đã giải, để người
+            # vận hành không đi đối chiếu tay một thứ đã tự khép lại.
+            self._alert("INFO", "CLOSE_ACK_UNKNOWN_DA_GIAI",
+                        f"Cap {pair['pair_id']}: ack dong la 'unknown' nhung event cua EA xac nhan vi "
+                        f"the {pair['client_position_id']} da dong het. Cap da CLOSED, khong can "
+                        "doi chieu tay.",
+                        pair_id=pair["pair_id"])
+
     def _ghi_reason_dong(self, pair: sqlite3.Row, event: sqlite3.Row,
                          lenh: sqlite3.Row | None) -> None:
         """Ghi `DEAL_REASON` của deal đóng, và báo động nếu nó không phải `CLIENT`.

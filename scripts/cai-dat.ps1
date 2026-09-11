@@ -528,7 +528,7 @@ function in_buoc_tiep() {
     dung dat tren dong lenh -- dong lenh cua tien trinh thi may nao cung doc duoc.
 
  2. Tao dong client -- THIEU BUOC NAY LA anh-xa-symbol BAO 'Khong co client':
-      $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI
+      $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI --close-route UI
 
  3. Dang ky dich vu va tac vu. PHAI LAM TRUOC BUOC 4: day la thu khoi dong Bridge,
     va EA gan len chart khi chua ai nghe cong 8787 se khong bao gio len ONLINE.

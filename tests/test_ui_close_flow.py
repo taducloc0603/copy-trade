@@ -667,3 +667,43 @@ async def test_event_xep_hang_lau_van_duoc_nhan_cha(env_cascade: Env) -> None:
 
     assert env_cascade.commands("CLOSE") == [], "Event den tu lau van phai duoc nhan cha"
     assert env_cascade.alerts("CASCADE_STARTED") == []
+
+
+async def test_ack_unknown_nhung_event_bao_da_dong_thi_cap_thanh_CLOSED(env: Env) -> None:
+    """Clicker bam xong nhung hop thoai dong cham hon han cho -> ack `unknown`.
+
+    Event cua EA van ve va bao vi the da HET. Do la bang chung dong da xong, manh hon ack (D-23:
+    event la nguon su that, ack cua clicker la thong tin phu). Truoc ban sua, cap KET `CLOSING` toi
+    vong doi chieu ke tiep va sinh mot finding can nguoi bam -- trong khi Bridge dang cam san bang
+    chung.
+    """
+    pair_id = await env.master_open(5090)
+    pos = _client_pos(env, pair_id)
+    env.clicker.next_status = "unknown"
+    await env.master_close(5090)
+    await _wait_until(lambda: env.commands("CLOSE_UI")[0]["status"] == "TIMEOUT", timeout=3.0)
+    assert env.db.get_pair(pair_id)["status"] == "CLOSING"
+
+    await env.client_close(pos)
+
+    pair = env.db.get_pair(pair_id)
+    assert pair["status"] == "CLOSED"
+    assert pair["client_current_volume"] == 0
+    assert env.alerts("CLOSE_ACK_UNKNOWN_DA_GIAI"), "Phai noi ro alert CRITICAL truoc do da duoc giai"
+    assert env.commands("CLOSE") == [], "Khong duoc gui them lenh nao"
+
+
+async def test_event_dong_bot_con_volume_thi_KHONG_danh_CLOSED(env: Env) -> None:
+    """Chi event bao vi the HET (volume_after = 0) moi duoc dong cap. Con volume thi van dang mo."""
+    pair_id = await env.master_open(5091, volume=1.0)
+    pos = _client_pos(env, pair_id)
+    await env.master_close(5091, volume_after=0.5)
+    await _wait_until(lambda: env.commands("CLOSE_UI_PARTIAL")[0]["status"] == "ACK_OK",
+                      timeout=3.0)
+
+    await env.client_close(pos, volume_after=0.25, volume_delta=0.25)
+
+    pair = env.db.get_pair(pair_id)
+    assert pair["status"] == "PARTIALLY_CLOSED"
+    assert pair["client_current_volume"] == pytest.approx(0.25)
+    assert env.alerts("CLOSE_ACK_UNKNOWN_DA_GIAI") == []

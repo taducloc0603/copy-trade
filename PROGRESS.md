@@ -2465,3 +2465,38 @@ của người chủ dự án, nguyên vẹn suốt hai phiên.
 **Còn nợ, không làm được ở laptop:** B-08 (phiên RDP ngắt), B-02/TEST-19 (mất điện), B-03 (24 giờ).
 Và một món nhỏ: hai cặp `OPEN_FAILED` từ diễn tập 2026-09-05 làm ô "cần can thiệp" đỏ vĩnh viễn —
 xem B-18.
+
+### Rà lại lần cuối trước VPS — một lỗ ở Bridge, và hai chỗ trong script cài đặt
+
+*(2026-09-11.)*
+
+**Lỗ ở Bridge.** Lệnh `CLOSE_UI` trả `unknown` — clicker bấm xong nhưng hộp thoại đóng chậm hơn
+hạn chờ, đã quan sát thật ở đường mở cùng ngày — để cặp **kẹt `CLOSING`** tới vòng đối chiếu kế
+tiếp, kèm alert CRITICAL và một finding cần người bấm. Trong khi đó event đóng của EA **đã về và đã
+được nhận cha**: Bridge đang cầm sẵn bằng chứng đóng xong mà không dùng.
+
+Sửa theo đúng doctrine D-23 mà đường mở đã áp từ phase 6b — *"event của EA là nguồn sự thật; ack
+của clicker là thông tin phụ"*: event báo vị thế hết thì đánh cặp `CLOSED`, kèm alert INFO
+`CLOSE_ACK_UNKNOWN_DA_GIAI` để người vận hành không đi đối chiếu tay một thứ đã tự khép lại.
+`mark_pair_closed` idempotent nên thứ tự ack/event không quan trọng. +2 test, trong đó một test
+khẳng định event **còn volume** thì **không** đóng cặp.
+
+**Script cài đặt — không có test Python nào chạm tới, nên chỉ đọc mới thấy:**
+
+- `tro-ly.ps1` hỏi *"Tạo client (open_route = UI)?"*, nhưng `them-client` nay cho `close_route`
+  theo `open_route` — người vận hành đồng ý mà **không được nói là đường ĐÓNG cũng đổi**. Sửa lời
+  giải thích, câu hỏi, và truyền `--close-route UI` **tường minh** thay vì dựa vào mặc định ngầm.
+- Với bản cài có sẵn, migration để Client ở `close_route = EA`, còn trợ lý bỏ qua bước client đã
+  tồn tại — nên **không ai biết** đường đóng vẫn đi qua EA. Trợ lý giờ cảnh báo khi thấy
+  `close_route=EA`.
+- `cai-dat.ps1` in gợi ý `them-client` — thêm `--close-route UI` cho tường minh.
+- `docs/CAI-DAT-VPS.md` mục 9 — bước bật `close_route` sau khi nâng cấp, điều kiện tab Trade, và
+  nhắc đo lại ctrlID nếu MT5 trên VPS khác build.
+
+**Đã kiểm, không có vấn đề:** mọi chỗ so sánh loại lệnh đóng dùng đúng hằng số; cả ba nơi gọi
+`_gui_lenh_dong` xử lý `None`; 40 khoá `UI.*` trong `app.js` đều có nhãn; `close_route` hiện trên
+dashboard qua `/api/config` (chạy thật); `cai-dat.ps1 -CapNhat` sao lưu **trước** `git pull` bằng
+venv **cũ**, nên bản sao lưu là trước-004 — không dính lỗi sao lưu đã sửa ở RUNBOOK; không script
+nào parse đầu ra `kiem-reason` hay dòng `cau-hinh-client` theo định dạng cũ.
+
+**649 test xanh.**

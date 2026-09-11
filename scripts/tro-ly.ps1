@@ -422,21 +422,31 @@ function buoc_client() {
     buoc_moi "Cau hinh client"
     giai_thich @(
         "Tao dong cau hinh nghiep vu phia Client: copy nguoc hay cung chieu, he so volume,",
-        "va duong mo lenh (UI = qua giao dien MT5, can clicker).",
+        "va duong mo lenh va dong lenh (UI = qua giao dien MT5, can clicker).",
+        "Ca MO lan DONG deu di UI de deal phia Client mang DEAL_REASON = CLIENT (D-21, D-21b).",
         "THIEU DONG NAY thi buoc anh xa symbol se bao `"Khong co client`" va khong di tiep duoc."
     )
     $kq = admin @('cau-hinh-client', $script:IdClientAcc)
     if ($kq.ma -eq 0) {
         bo_qua "$($script:IdClientAcc) da ton tai"
         $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
+        # Ban cai cu nang cap qua migration 004 giu close_route = EA (nang cap khong tu doi hanh
+        # vi). Buoc nay bo qua client da co, nen neu khong noi ra o day thi khong ai biet la duong
+        # DONG van dang di qua EA.
+        if (($kq.ra -join ' ') -match 'close_route=EA') {
+            canh ("close_route = EA: lenh DONG phia Client van di qua OrderSend cua EA, deal dong " +
+                  "se mang DEAL_REASON = EXPERT. Bat duong giao dien bang: " +
+                  "bridge.admin cau-hinh-client $($script:IdClientAcc) --close-route UI")
+        }
         return
     }
-    if (-not (hoi_co_khong "Tao client $($script:IdClientAcc) (open_route = UI, qua clicker)?")) {
+    if (-not (hoi_co_khong "Tao client $($script:IdClientAcc) (open_route = UI va close_route = UI, qua clicker)?")) {
         canh "bo qua -- THIEU DONG NAY LA anh-xa-symbol SE BAO 'Khong co client'"
         return
     }
     $ma = admin_in @('them-client', $script:IdClientAcc, '--agent', $script:IdClient,
-                     '--clicker-agent', $script:IdClicker, '--open-route', 'UI')
+                     '--clicker-agent', $script:IdClicker, '--open-route', 'UI',
+                     '--close-route', 'UI')
     if ($ma -ne 0) { throw "them-client that bai." }
     ok "da tao $($script:IdClientAcc)"
 }
