@@ -433,18 +433,21 @@ async def test_ack_already_closed_la_binh_thuong_khong_phai_loi(env: Env) -> Non
     assert env.alerts("CLOSE_FAILED") == []
 
 
-async def test_ack_ok_cua_CLOSE_UI_PARTIAL_giu_dung_volume_con_lai(env: Env) -> None:
-    """Bỏ sót loại này ở nhánh ack nghĩa là đóng bớt bị ghi sổ như đóng hẳn."""
+async def test_ack_ok_cua_CLOSE_UI_PARTIAL_khong_ghi_so_nhu_dong_han(env: Env) -> None:
+    """Bo sot loai nay o nhanh ack nghia la dong bot bi ghi so nhu dong han.
+
+    Luu y ack cua clicker **khong** mang `executed_volume` — no khong biet san da khop bao nhieu.
+    Nen o thoi diem nay volume con lai CHUA biet; con so do do event cua EA mang ve (D-14), va
+    `test_dong_bot_qua_UI_cap_nhat_dung_volume_con_lai` kiem no.
+    """
     pair_id = await env.master_open(5042, volume=1.0)
     await env.master_close(5042, volume_after=0.5)
-    # Cho tan ACK chu khong chi cho trang thai: `PARTIALLY_CLOSED` duoc dat NGAY LUC GUI lenh,
-    # nen cho no la cho mot moc da qua truoc khi volume kip cap nhat.
     await _wait_until(lambda: env.commands("CLOSE_UI_PARTIAL")[0]["status"] == "ACK_OK",
                       timeout=3.0)
 
     pair = env.db.get_pair(pair_id)
-    assert pair["status"] == "PARTIALLY_CLOSED"
-    assert pair["client_current_volume"] == pytest.approx(0.25)
+    assert pair["status"] == "PARTIALLY_CLOSED", "Dong bot khong duoc thanh CLOSED"
+    assert pair["client_position_id"] is not None
 
 
 async def test_ack_rejected_thi_thu_lai_bang_duong_EA_chu_khong_bo_cuoc(env: Env) -> None:
@@ -504,3 +507,77 @@ async def test_khong_bao_gio_gui_CLOSE_tran_cho_clicker(env: Env) -> None:
     cho_clicker = [c for c in env.commands() if c["target_agent_id"] == CLICKER_AGENT]
     assert all(c["type"] in ("OPEN_UI", "CLOSE_UI", "CLOSE_UI_PARTIAL") for c in cho_clicker)
     assert env.clicker.closed, "Clicker phai thuc su nhan va xu ly lenh dong"
+
+
+async def test_dong_bot_qua_UI_cap_nhat_dung_volume_con_lai(env: Env) -> None:
+    """Lo hong quan sat duoc o phien nghiem thu 2026-09-10 (cap PAIR-20260910-000003).
+
+    Ack cua clicker khong mang `executed_volume` — no chi biet minh da go gi vao o volume, khong
+    biet san da khop bao nhieu. Nen phep tru o `_sau_dong_bot` tru di 0 va `client_current_volume`
+    DUNG YEN: so sach noi 0.04 trong khi terminal con 0.03.
+
+    Khong phai loi hien thi. Lan dong bot KE TIEP lay ty le tren con so sai do, tuc la dong sai
+    khoi luong bang tien that.
+    """
+    pair_id = await env.master_open(5050, volume=1.0)
+    pos = _client_pos(env, pair_id)
+    await env.master_close(5050, volume_after=0.5)
+    await _wait_until(lambda: env.commands("CLOSE_UI_PARTIAL")[0]["status"] == "ACK_OK",
+                      timeout=3.0)
+
+    # EA bao volume con lai bang con so TUYET DOI, khong phai delta (D-14).
+    await env.client_close(pos, volume_after=0.25, volume_delta=0.25)
+
+    assert env.db.get_pair(pair_id)["client_current_volume"] == pytest.approx(0.25)
+
+
+async def test_thu_tu_ack_va_event_khong_anh_huong_ket_qua(env: Env) -> None:
+    """`volume_after` la con so tuyet doi nen gan vao la idempotent.
+
+    Thiet ke khong duoc phu thuoc vao viec ack ve truoc hay event ve truoc — do la bai hoc D-23
+    da ghi cho duong mo, va no ap y nguyen o day.
+    """
+    pair_id = await env.master_open(5051, volume=1.0)
+    pos = _client_pos(env, pair_id)
+    await env.master_close(5051, volume_after=0.5)
+
+    # Event ve TRUOC khi ack kip xu ly.
+    await env.client_close(pos, volume_after=0.25, volume_delta=0.25)
+    await _wait_until(lambda: env.commands("CLOSE_UI_PARTIAL")[0]["status"] == "ACK_OK",
+                      timeout=3.0)
+
+    assert env.db.get_pair(pair_id)["client_current_volume"] == pytest.approx(0.25)
+
+
+async def test_dong_khan_cap_cho_theo_SO_LENH_chu_khong_phai_10_giay_co_dinh(env: Env) -> None:
+    """Han cho phai co gian theo so lenh, vi thang do da doi.
+
+    10 giay co dinh duoc chon khi moi lenh dong di qua OrderSend va mat ~300 ms. Duong giao dien
+    mat 5,1-5,9 giay moi lenh va clicker xu ly TUAN TU, nen 10 giay chi con du cho mot toi hai
+    cap. Tu cap thu ba tro di, dong khan cap se het han cho roi di dong Master TRONG KHI lenh
+    dong Client van dang bay — ca nhom mat hedge theo dung chieu ma D-10 ton tai de ngan.
+    """
+    from bridge.engine import closing as mod
+
+    han: list[float | None] = []
+    goc = mod.CloseFlow._cho_lenh_xong
+
+    async def ghi(self, command_ids, han_sec=None):  # type: ignore[no-untyped-def]
+        if han_sec is None and command_ids:
+            han_sec = min(10.0 + mod.EMERGENCY_WAIT_PER_CLOSE_SEC * len(command_ids),
+                          mod.EMERGENCY_WAIT_MAX_SEC)
+        han.append(han_sec)
+        return await goc(self, command_ids, han_sec=0.01)
+
+    mod.CloseFlow._cho_lenh_xong = ghi  # type: ignore[method-assign]
+    try:
+        for pid in (5060, 5061, 5062):
+            await env.master_open(pid)
+        env.db.set_config("run_mode", "EMERGENCY")
+        await env.processor.check_emergency()
+    finally:
+        mod.CloseFlow._cho_lenh_xong = goc  # type: ignore[method-assign]
+
+    assert han and han[0] is not None
+    assert han[0] > 10.0, f"Han cho phai co gian theo so lenh, nhan duoc {han[0]}"
+    assert han[0] <= mod.EMERGENCY_WAIT_MAX_SEC

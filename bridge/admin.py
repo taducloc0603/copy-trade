@@ -129,16 +129,32 @@ def lenh_kiem_reason(db: Database, _args: argparse.Namespace) -> int:
         "SELECT COUNT(*) n FROM pair WHERE client_open_reason IS NOT NULL")["n"]
     dong = db.query_one(
         "SELECT COUNT(*) n FROM pair WHERE client_close_reason IS NOT NULL")["n"]
-    if not vi_pham:
-        print(f"TEST-23 DAT: {tong}/{tong} cap dung kenh "
-              f"({mo} deal mo, {dong} deal dong, tat ca DEAL_REASON_CLIENT (0)).")
-        return 0
-    print(f"TEST-23 KHONG DAT: {len(vi_pham)}/{tong} cap sai kenh:", file=sys.stderr)
-    for r in vi_pham:
+    def _in(r: dict, dich) -> None:
         print(f"  {r['pair_id']}  position={r['client_position_id']}  "
               f"mo={r['client_open_reason']} dong={r['client_close_reason']}  "
-              f"-> sai o {r['cot']}", file=sys.stderr)
-    return 1
+              f"-> sai o {r['cot']}", file=dich)
+
+    da_ro = [r for r in vi_pham if r["da_giai_thich"]]
+    chua_ro = [r for r in vi_pham if not r["da_giai_thich"]]
+
+    if not chua_ro:
+        print(f"TEST-23 DAT: {tong - len(da_ro)}/{tong} cap dung kenh "
+              f"({mo} deal mo, {dong} deal dong).")
+    else:
+        print(f"TEST-23 KHONG DAT: {len(chua_ro)}/{tong} cap sai kenh khong giai thich duoc:",
+              file=sys.stderr)
+        for r in chua_ro:
+            _in(r, sys.stderr)
+
+    if da_ro:
+        # In ra chu khong giau di: day van la deal that su da di sai kenh, va nguoi van hanh can
+        # biet con bao nhieu. Chi khac o cho no KHONG tinh la that bai — xem `ops._da_giai_thich`.
+        print(f"\n{len(da_ro)} cap sai kenh nhung DA CO GIAI THICH "
+              f"(roi ve duong EA khi clicker hong, co alert CLOSE_FELL_BACK_TO_EA):")
+        for r in da_ro:
+            _in(r, sys.stdout)
+
+    return 1 if chua_ro else 0
 
 
 def lenh_tinh_hinh(db: Database, _args: argparse.Namespace, db_path: Path) -> int:

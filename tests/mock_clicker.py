@@ -143,8 +143,7 @@ class MockClicker(MockAgent):
         position_id = int(payload["position_id"])
         if self.open_positions is not None and position_id not in self.open_positions:
             return self._finish(command_id, ack(
-                "already_closed", retmsg=f"Khong con vi the {position_id} trong danh sach",
-                executed_volume=0.0))
+                "already_closed", retmsg=f"Khong con vi the {position_id} trong danh sach"))
 
         status = self._next_status()
         if status == "rejected":
@@ -157,7 +156,14 @@ class MockClicker(MockAgent):
             return self._finish(command_id, ack("unknown", retmsg="Khong doc duoc ket qua"))
         if self.open_positions is not None and loai == "CLOSE_UI":
             self.open_positions.discard(position_id)
-        return self._finish(command_id, ack("ok", executed_volume=payload.get("volume")))
+        # KHONG bao `executed_volume`, va day la diem giong voi ban that quan trong nhat cua ca
+        # mock nay. Clicker chi biet no da GO gi vao o volume, khong biet san da KHOP bao nhieu.
+        #
+        # Ban dau mock tra ve `payload["volume"]` o day — tuc la gioi hon do that — va chinh vi
+        # the ca bo test khong thay duoc lo hong sau: `client_current_volume` dung yen sau moi lan
+        # dong bot vi phep tru o `_sau_dong_bot` tru di 0. Lo do chi lo ra khi chay tren terminal
+        # that (2026-09-10). Mot mock lam duoc nhieu hon ban that thi no khong con la mock nua.
+        return self._finish(command_id, ack("ok"))
 
     def _finish(self, command_id: str, ack: dict[str, Any]) -> dict[str, Any]:
         self.journal[command_id]["ack"] = dict(ack)

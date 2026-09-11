@@ -26,6 +26,7 @@ from bridge.ops import (
     don_log_cu,
     khoi_phuc_thu,
     kiem_chung_ban_sao_luu,
+    kiem_reason_client,
     sao_luu,
     thu_hoi_token,
 )
@@ -647,3 +648,61 @@ def test_tat_anh_xa(seeded: Database, monkeypatch, tmp_path) -> None:
 
     assert admin.main(["anh-xa-symbol", CLIENT_ID, "XAUUSD", "--tat"]) == 0
     assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD")["enabled"] == 0
+
+
+# -- kiem-reason: tach "sai kenh" voi "sai kenh nhung da co giai thich" -------------------------
+
+def _pair_bat_ky(db: Database) -> str:
+    return db.create_pending_pair(
+        MASTER_POSITION_ID, client_id=CLIENT_ID, copy_mode="OPPOSITE",
+        master_initial_volume=1.0, effective_multiplier=1.0)
+
+
+def _cap_sai_kenh(db: Database, pair_id: str, *, mo: int, dong: int | None,
+                  error_message: str | None = None) -> None:
+    db.update_pair(pair_id, client_open_reason=mo, client_close_reason=dong,
+                   error_message=error_message)
+
+
+def test_deal_dong_EXPERT_sau_khi_roi_ve_EA_khong_tinh_la_that_bai(seeded: Database) -> None:
+    """Cu roi ve duong EA la hanh vi CO Y, co alert CRITICAL rieng.
+
+    Van phai liet ke ra — deal do that su da di sai kenh va nguoi van hanh can biet con bao nhieu.
+    Nhung khong duoc tinh la THAT BAI, vi `pair` giu gia tri ay VINH VIEN: gop chung thi sau mot
+    lan clicker hong, TEST-23 bao KHONG DAT mai mai, va mot tieu chi khong bao gio dat duoc la mot
+    tieu chi khong ai nhin nua. Quan sat duoc o phien nghiem thu 2026-09-10.
+    """
+    pid = _pair_bat_ky(seeded)
+    _cap_sai_kenh(seeded, pid, mo=0, dong=3, error_message="CLOSE_FELL_BACK_TO_EA")
+
+    vi_pham = kiem_reason_client(seeded)
+
+    assert len(vi_pham) == 1, "Van phai liet ke ra, khong duoc giau"
+    assert vi_pham[0]["da_giai_thich"] is True
+    assert vi_pham[0]["cot"] == "client_close_reason"
+
+
+def test_deal_dong_EXPERT_khong_ro_ly_do_van_la_that_bai(seeded: Database) -> None:
+    pid = _pair_bat_ky(seeded)
+    _cap_sai_kenh(seeded, pid, mo=0, dong=3, error_message=None)
+
+    vi_pham = kiem_reason_client(seeded)
+
+    assert len(vi_pham) == 1 and vi_pham[0]["da_giai_thich"] is False
+
+
+def test_deal_MO_sai_kenh_khong_bao_gio_duoc_giai_thich(seeded: Database) -> None:
+    """D-25 cam roi ve duong EA o duong MO, nen khong co ly do hop le nao cho mot deal mo EXPERT."""
+    pid = _pair_bat_ky(seeded)
+    _cap_sai_kenh(seeded, pid, mo=3, dong=3, error_message="CLOSE_FELL_BACK_TO_EA")
+
+    vi_pham = kiem_reason_client(seeded)
+
+    assert vi_pham[0]["da_giai_thich"] is False, "Sai ca hai ve thi khong giai thich duoc"
+
+
+def test_khong_co_gi_sai_thi_danh_sach_rong(seeded: Database) -> None:
+    pid = _pair_bat_ky(seeded)
+    _cap_sai_kenh(seeded, pid, mo=0, dong=0)
+
+    assert kiem_reason_client(seeded) == []

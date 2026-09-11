@@ -2303,3 +2303,82 @@ chạy migration **trước**, rồi mới sao lưu bản đã migrate. Bản sa
 Sửa: bước sao lưu trước migration dùng `sqlite3` trần với `VACUUM INTO`, không đi qua `Database`.
 `bridge.admin sao-luu` vẫn đúng cho sao lưu thường ngày — chỉ không dùng được ở đúng thời điểm cần
 giữ trạng thái *trước* khi schema đổi.
+
+### Nghiệm thu TEST-26/27/28 trên demo — và ba lỗi chỉ terminal thật mới lộ ra
+
+*(2026-09-10, tài khoản 538216 Master / 538217 Client, Connext-Demo, `BTCUSD.s`.)*
+
+Trước phiên này, **nút `Close #…` chưa từng được bấm một lần nào**. Mọi phép đo đều dừng lại trước
+cú bấm, nên toàn bộ `_commit_close` mới chỉ chạy với hộp thoại giả.
+
+Bố trí có chủ ý: giữ nguyên một vị thế **người dùng mở tay** (`72205853`) trong tab Trade suốt cả
+phiên. Nhờ vậy vị thế cần đóng không bao giờ nằm ở dòng 0, và nếu cơ chế đối chiếu ticket sai thì
+thứ bị đóng nhầm sẽ là lệnh của chính người dùng. Không có cách dựng lại tình huống ấy trung thực
+hơn.
+
+| Bài | Kết quả |
+|---|---|
+| **TEST-26** | Đóng hẳn qua giao diện: `client_close_reason = 0`, cặp đối chứng cùng symbol **không bị đụng**, lệnh tay `72205853` **còn nguyên**, không alert nào |
+| **TEST-27** | Đóng một phần: clicker gõ `0.01` vào ô volume của hộp thoại đóng, MT5 đóng **đúng `0.01`**, `reason = 0` |
+| **TEST-28** | Tắt clicker rồi cho Master đóng: rơi về `OrderSend`, vị thế Client **vẫn đóng được** trong 342 ms, alert CRITICAL `CLOSE_FELL_BACK_TO_EA`, `client_close_reason = 3`, **không** kèm `UI_CLOSE_REASON_MISMATCH` |
+
+**Ẩn số lớn nhất đã được trả lời:** bài học `WM_CHAR` **có** áp cho hộp thoại đóng. Cái bẫy
+`WM_SETTEXT` của phase 6b — đổi chữ hiển thị nhưng gửi đi volume của lệnh trước — **không** tái
+diễn. Đây là thứ mà trước phiên này mới chỉ là suy luận theo kiểu "hai hộp thoại dùng chung ctrlID
+`10333` nên chắc giống nhau".
+
+#### Lỗi 1 — `client_current_volume` đứng yên sau mỗi lần đóng bớt
+
+Terminal đóng **đúng** `0.01`, event của EA báo **đúng** `volume_after = 0.03`. Nhưng sổ sách vẫn
+ghi `0.04`.
+
+Nguyên nhân: `_sau_dong_bot` tính volume còn lại bằng **phép trừ** `executed_volume` từ ack — mà ack
+của clicker **không có** trường đó. Clicker chỉ biết nó đã *gõ* gì, không biết sàn đã *khớp* bao
+nhiêu; báo con số mình gõ như thể đó là con số đã khớp là nói điều mình không chứng minh được
+(D-24). Nên phép trừ trừ đi `0`.
+
+Hậu quả không phải hiển thị: lần đóng bớt **kế tiếp** lấy tỷ lệ trên con số sai đó. Đo được ngay
+trong phiên — lần đóng bớt thứ hai tính `0.01/0.03 × 0.04 = 0.0133`, làm tròn xuống ra `0.01` nên
+tình cờ vẫn đúng. Lệch to hơn một chút là đóng sai khối lượng bằng tiền thật.
+
+Sửa: lấy `volume_after` từ event, đúng tinh thần D-14 (*"volume_after do EA báo là con số được
+dùng. Không tính bằng phép trừ"*). Là con số **tuyệt đối** nên gán vào là idempotent, không phụ
+thuộc thứ tự đến của ack với event. Chỉ áp cho đường giao diện; đường EA giữ nguyên phép trừ đang
+chạy đúng.
+
+**Vì sao bộ test không thấy:** `MockClicker` **báo `executed_volume`**, còn clicker thật thì không.
+Mock giỏi hơn đồ thật, và cái nó che đi đúng là chỗ hỏng. Đã sửa mock cho khớp bản thật — và ngay
+lập tức một test cũ chuyển sang đỏ, vì nó vốn xanh nhờ lời nói dối ấy.
+
+#### Lỗi 2 — `kiem-reason` không bao giờ ĐẠT lại được sau một cú rơi về EA
+
+`pair` giữ `client_close_reason = 3` vĩnh viễn, nên sau **một** lần clicker hỏng, TEST-23 báo
+KHÔNG ĐẠT mãi mãi. Một tiêu chí không bao giờ đạt được là một tiêu chí không ai nhìn nữa.
+
+Sửa: tách "sai kênh **không giải thích được**" (thất bại, thoát khác 0) với "sai kênh **đã có giải
+thích**" — có `error_message = CLOSE_FELL_BACK_TO_EA` và alert CRITICAL kèm theo. Vẫn **liệt kê ra**
+chứ không giấu; chỉ khác ở chỗ không tính là thất bại. Deal **MỞ** sai kênh thì không bao giờ được
+giải thích, vì D-25 cấm rơi về đường EA ở đường mở.
+
+#### Lỗi 3 — đóng khẩn cấp chờ 10 giây cố định, mà thang đo đã đổi
+
+| Lệnh | Kênh | Độ trễ đo được |
+|---|---|---|
+| `CLOSE_UI` (đóng hẳn) | clicker | **5.122 ms** và **5.471 ms** |
+| `CLOSE_UI_PARTIAL` | clicker | **5.929 ms** và **5.847 ms** |
+| `CLOSE` (rơi về EA) | EA | **342 ms** |
+
+Đường giao diện chậm hơn đường EA khoảng **16 lần**, và clicker xử lý **tuần tự**. Hằng số
+`_cho_lenh_xong(han_sec = 10.0)` được chọn khi mọi lệnh đóng mất ~300 ms; giờ nó chỉ còn đủ cho một
+tới hai cặp. Từ cặp thứ ba, đóng khẩn cấp sẽ hết hạn chờ rồi đi đóng Master **trong khi lệnh đóng
+Client vẫn đang bay** — cả nhóm mất hedge theo đúng chiều D-10 tồn tại để ngăn.
+
+Sửa: hạn co giãn theo số lệnh (`10 + 8×n`), trần 120 giây. Trần là có chủ ý — `EMERGENCY` nghĩa là
+ra khỏi thị trường ngay, chạm trần thì thà lệch thứ tự còn hơn để cả hai bên nằm im.
+
+**645 test xanh (+7).** Trả máy: `run_mode = PAUSED`, Master 0 vị thế, 0 cặp chưa đóng, token
+clicker đã thu hồi và mục `[clicker]` đã xoá khỏi `config.toml`. Vị thế `72205853` của người dùng
+giữ nguyên như lúc bắt đầu.
+
+**Còn nợ:** đóng khẩn cấp nhiều cặp chưa đo lại thật (chỉ sửa hằng số và test bằng mock); hai file
+hướng dẫn HTML còn số cũ của đường EA.

@@ -471,8 +471,9 @@ phải ví dụ bịa ra.</p>
   <div class="than">
     <table>
       <tr><th>Bạn làm</th><td>Đóng vị thế Master (chuột phải → Close Position).</td></tr>
-      <tr><th>Kết quả</th><td>Client đóng lệnh đối ứng sau <strong>272 mili giây</strong>. Các cặp
-        khác <strong>không bị đụng tới</strong>, kể cả khi cùng symbol.</td></tr>
+      <tr><th>Kết quả</th><td>Client đóng lệnh đối ứng sau <strong>khoảng 5 giây</strong>. Các cặp
+        khác <strong>không bị đụng tới</strong>, kể cả khi cùng symbol — và cả lệnh bạn tự mở tay
+        cũng không bị đụng.</td></tr>
     </table>
   </div>
 </div>
@@ -485,9 +486,21 @@ phải ví dụ bịa ra.</p>
       <tr><th>Hệ thống làm gì</th><td>Tính tỷ lệ trên phần còn lại và đóng đúng phần tương ứng bên
         Client.</td></tr>
       <tr><th>Kết quả</th><td>Client cũng đóng <strong>0.01</strong>, sau
-        <strong>285 mili giây</strong>. Hai bên còn 0.01 mỗi bên.</td></tr>
+        <strong>khoảng 6 giây</strong>. Hai bên còn 0.01 mỗi bên.</td></tr>
     </table>
   </div>
+
+  <div class="hop lam">
+    <span class="nhan">Vì sao đóng lệnh mất vài giây, chứ không phải vài trăm mili giây</span>
+    <p>Vì lệnh đóng đi qua <strong>giao diện</strong> MetaTrader chứ không phải qua lập trình — đó là
+    cách duy nhất để sàn ghi nhận lệnh đóng là <strong>đặt bằng tay</strong>. Chương trình phải mở hộp
+    thoại đóng của từng vị thế, đọc số lệnh trên đó để chắc chắn đúng vị thế, rồi mới bấm. Đo ngày
+    2026-09-10: <strong>5,1–5,9 giây</strong> mỗi lệnh đóng.</p>
+    <p>Đổi lại là an toàn: mở nhầm vị thế thì chương trình <strong>huỷ hộp thoại</strong> rồi thử vị thế
+    khác — mở rồi huỷ thì không có lệnh nào được đặt. Đó cũng là lý do <strong>lệnh bạn tự mở tay
+    không bao giờ bị đóng nhầm</strong>, dù nó nằm ngay cạnh lệnh của bot trong danh sách.</p>
+  </div>
+
 </div>
 
 <div class="vd">

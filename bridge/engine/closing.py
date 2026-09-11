@@ -60,6 +60,15 @@ LOAI_DONG_QUA_UI = frozenset(LOAI_DONG_UI.values())
 #: đóng tay ngay sau đó.
 DEFAULT_UI_CLOSE_GRACE_MS = 5000
 
+#: Thời gian cộng thêm cho **mỗi** lệnh đóng Client khi đóng khẩn cấp chờ "Client trước, Master
+#: sau". Đo 2026-09-10: một lệnh đóng qua giao diện mất 5,1–5,9 giây và clicker xử lý tuần tự,
+#: nên 8 giây mỗi lệnh là có biên mà không quá rộng.
+EMERGENCY_WAIT_PER_CLOSE_SEC = 8.0
+
+#: Trần tuyệt đối. `EMERGENCY` nghĩa là ra khỏi thị trường ngay — chờ lâu hơn mức này thì thà
+#: đóng Master lệch thứ tự còn hơn để cả hai bên nằm im.
+EMERGENCY_WAIT_MAX_SEC = 120.0
+
 #: `DEAL_REASON_CLIENT`. Deal đóng phía Client phải mang giá trị này — đó là toàn bộ mục đích
 #: của việc chuyển đường đóng sang giao diện, và là thứ duy nhất chứng minh được nó đã đạt.
 DEAL_REASON_CLIENT = 0
@@ -315,6 +324,7 @@ class CloseFlow:
         lenh = self._ai_gay_ra(pair, event)
         self._ghi_reason_dong(pair, event, lenh)
         if lenh is not None:
+            self._ghi_volume_con_lai(pair, event, lenh)
             # Do chính bot đóng. Trạng thái đã xử lý ở đường ack.
             return "IGNORED", f"Do lenh {lenh['command_id']} gay ra, khong lan truyen", \
                 pair["pair_id"]
@@ -398,6 +408,35 @@ class CloseFlow:
         # thứ đọc nó sau này — bộ đối chiếu phase 8, dashboard, và người mở DB ra soi khi có sự cố.
         self.db.set_event_cause(event["event_id"], ung_vien[0]["command_id"])
         return ung_vien[0]
+
+    def _ghi_volume_con_lai(self, pair: sqlite3.Row, event: sqlite3.Row,
+                            lenh: sqlite3.Row) -> None:
+        """Ghi volume Client còn lại **từ event**, cho các lệnh đóng đi qua giao diện.
+
+        Đường EA lấy con số này bằng phép trừ ở `_sau_dong_bot`: `client_current_volume` trừ đi
+        `executed_volume` mà EA báo trong ack. Đường giao diện **không có `executed_volume`** —
+        clicker chỉ biết nó đã gõ gì vào ô volume, không biết sàn đã khớp bao nhiêu. Báo con số
+        mình gõ như thể đó là con số đã khớp là nói điều mình không chứng minh được (D-24).
+
+        Hậu quả của việc thiếu: phép trừ lấy `0`, nên `client_current_volume` **đứng yên** sau mỗi
+        lần đóng bớt. Sổ sách nói `0.04` trong khi terminal còn `0.03`. Và lần đóng bớt **kế tiếp**
+        lấy tỷ lệ trên con số sai đó — tức là đóng sai khối lượng, bằng tiền thật. Quan sát được ở
+        phiên nghiệm thu 2026-09-10, cặp `PAIR-20260910-000003`.
+
+        Cách đúng có sẵn ngay trong event: `volume_after` do EA đọc thẳng từ `POSITION_VOLUME`. Đó
+        là **con số tuyệt đối**, không phải delta — nên gán nó vào là idempotent và không phụ thuộc
+        thứ tự đến của ack với event, đúng tinh thần D-14: *"volume_after do EA báo là con số được
+        dùng. Không tính bằng phép trừ."*
+
+        Chỉ áp cho lệnh đi qua giao diện. Đường EA giữ nguyên phép trừ đang chạy đúng — sửa cả hai
+        cùng lúc là đổi hành vi của một đường không hỏng.
+        """
+        if lenh["type"] not in LOAI_DONG_QUA_UI:
+            return
+        volume_after = event["volume_after"]
+        if volume_after is None:
+            return
+        self.db.update_pair(pair["pair_id"], client_current_volume=float(volume_after))
 
     def _ghi_reason_dong(self, pair: sqlite3.Row, event: sqlite3.Row,
                          lenh: sqlite3.Row | None) -> None:
@@ -702,14 +741,32 @@ class CloseFlow:
         so_master = await self._dong_cac_master(pairs)
         return {"client": len(lenh_client), "master": so_master}
 
-    async def _cho_lenh_xong(self, command_ids: list[str], han_sec: float = 10.0) -> None:
-        """Chờ các lệnh rời khỏi hàng đợi, có hạn.
+    async def _cho_lenh_xong(self, command_ids: list[str], han_sec: float | None = None) -> None:
+        """Chờ các lệnh rời khỏi hàng đợi, có hạn **tính theo số lệnh**.
 
         Đây chính là chữ "trước" trong "Client trước, Master sau". Hết hạn thì vẫn đi tiếp: một
         Client không ack **không được** trở thành lý do để vị thế Master nằm lại mà không ai đóng.
+
+        ## Vì sao hạn phải co giãn, chứ không còn là 10 giây cố định
+
+        Con số 10 giây được chọn khi mọi lệnh đóng đi qua `OrderSend` và mất khoảng 300 ms — mười
+        giây khi ấy là dư cho hàng chục cặp.
+
+        Đường giao diện đổi hẳn thang đo: đo ngày 2026-09-10 trên demo, một lệnh đóng mất
+        **5,1–5,9 giây**, và clicker xử lý **tuần tự** (một lệnh tại một thời điểm, `link._gate`).
+        Nên 10 giây chỉ còn đủ cho một tới hai cặp. Từ cặp thứ ba trở đi, đóng khẩn cấp sẽ hết hạn
+        chờ rồi đi đóng Master **trong khi lệnh đóng Client vẫn đang bay** — tức là cả nhóm mất
+        hedge theo đúng chiều mà D-10 tồn tại để ngăn, chỉ khác là ở đường khẩn cấp.
+
+        Trần 120 giây là có chủ ý: `EMERGENCY` nghĩa là *ra khỏi thị trường ngay*, nên không được
+        chờ vô hạn. Chạm trần thì vẫn đóng Master và ghi WARNING — thà lệch thứ tự còn hơn để cả
+        hai bên nằm im.
         """
         if not command_ids:
             return
+        if han_sec is None:
+            han_sec = min(10.0 + EMERGENCY_WAIT_PER_CLOSE_SEC * len(command_ids),
+                          EMERGENCY_WAIT_MAX_SEC)
         het = asyncio.get_running_loop().time() + han_sec
         while asyncio.get_running_loop().time() < het:
             con = [c for c in command_ids

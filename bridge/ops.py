@@ -11,6 +11,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 from bridge.clock import utc_now, utc_now_iso
 from bridge.db.repo import Database
@@ -218,7 +219,7 @@ def kiem_reason_client(db: Database) -> list[dict[str, object]]:
     `PENDING_OPEN`) thì không có deal nào để mà sai kênh, và cặp chưa đóng thì chưa có deal đóng.
     """
     rows = db.query_all(
-        "SELECT pair_id, client_id, client_position_id, status, "
+        "SELECT pair_id, client_id, client_position_id, status, error_message, "
         "       client_open_reason, client_close_reason "
         "FROM pair WHERE (client_open_reason IS NOT NULL AND client_open_reason <> ?) "
         "           OR (client_close_reason IS NOT NULL AND client_close_reason <> ?) "
@@ -227,7 +228,29 @@ def kiem_reason_client(db: Database) -> list[dict[str, object]]:
     for r in rows:
         cot = [ten for ten in ("client_open_reason", "client_close_reason")
                if r[ten] is not None and r[ten] != REASON_CLIENT]
-        vi_pham.append({**dict(r), "cot": ", ".join(cot)})
-    if vi_pham:
-        log.error("TEST-23 KHONG DAT: %d cap co deal Client sai kenh", len(vi_pham))
+        vi_pham.append({**dict(r), "cot": ", ".join(cot),
+                        "da_giai_thich": _da_giai_thich(r, cot)})
+    chua_ro = [v for v in vi_pham if not v["da_giai_thich"]]
+    if chua_ro:
+        log.error("TEST-23 KHONG DAT: %d cap co deal Client sai kenh khong giai thich duoc",
+                  len(chua_ro))
     return vi_pham
+
+
+def _da_giai_thich(pair: Any, cot: list[str]) -> bool:
+    """Deal sai kênh này đã có lời giải thích kèm alert hay chưa.
+
+    Cú **rơi về đường EA** khi clicker hỏng là hành vi cố ý, có alert CRITICAL
+    `CLOSE_FELL_BACK_TO_EA` và có ghi vào `pair.error_message`. Deal đóng lần ấy mang `EXPERT`, và
+    đó là **sự thật phải báo cáo** — nên nó vẫn nằm trong danh sách chứ không bị giấu đi.
+
+    Nhưng nó không được tính là *thất bại*, và lý do rất thực tế: `pair` giữ giá trị ấy vĩnh viễn.
+    Gộp chung thì sau **một** lần clicker hỏng, TEST-23 sẽ báo KHÔNG ĐẠT mãi mãi — và một tiêu chí
+    không bao giờ đạt được là một tiêu chí không ai nhìn nữa. Quan sát được ở phiên nghiệm thu
+    2026-09-10, ngay lần chạy đầu sau TEST-28.
+
+    Chỉ giải thích được cho **vế đóng**. Một deal MỞ sai kênh thì không có đường rơi về nào hợp lệ
+    (D-25 cấm), nên nó luôn là thất bại.
+    """
+    return (cot == ["client_close_reason"]
+            and (pair["error_message"] or "") == "CLOSE_FELL_BACK_TO_EA")
