@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Kenh canh bao ngoai dang tat co chu dich, nen khong co gi tu bao cho ban biet chuyen da xay
-    ra. Day la thay the: mot lenh, chin muc kiem, ma thoat bang so muc hong.
+    ra. Day la thay the: mot lenh, muoi muc kiem, ma thoat bang so muc hong.
 
     Muc quan trong nhat la muc cuoi -- `bridge.admin tinh-hinh`. Tam muc trong deu xanh ma he
     thong van ngung copy la chuyen binh thuong: xem lai khoi canh bao in ra o cuoi.
@@ -118,6 +118,25 @@ if ($tienTrinh.Count -eq 0) {
     do_ "clicker KHONG chay (Bridge se co y khong copy lenh nao -- D-25)"
 } else {
     xanh ("clicker dang chay, PID " + (($tienTrinh | ForEach-Object { $_.ProcessId }) -join ', '))
+}
+
+# 4b. Code dang chay co cu hon code tren dia khong
+# Dang "trong van khoe" nguy hiem nhat: dich vu Running, clicker song, moi muc tren deu xanh, nhung
+# ca hai van la code TRUOC lan git pull gan nhat. Da xay ra that tren VPS 2026-09-11 sau mot lan
+# chay cai-dat.ps1 thieu -CapNhat. Moc so sanh la lan HEAD doi gan nhat (reflog), khong phai ngay
+# commit: commit cu co the duoc pull ve rat lau sau khi tien trinh da chay.
+$reflog = Join-Path $ThuMuc ".git\logs\HEAD"
+if (Test-Path $reflog) {
+    $doiCode = (Get-Item $reflog).LastWriteTime
+    $cu = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match '-m (bridge|clicker)(\s|$)' -and
+                           $_.CreationDate -lt $doiCode })
+    if ($cu.Count -gt 0) {
+        vang ("co $($cu.Count) tien trinh Bridge/clicker chay tu truoc lan cap nhat code luc " +
+              "$doiCode -- dang chay CODE CU. Chay scripts\cai-dat.ps1 -CapNhat")
+    } else {
+        xanh "Bridge va clicker deu chay code hien tai tren dia"
+    }
 }
 
 # 5. Hai terminal MT5

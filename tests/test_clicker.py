@@ -18,6 +18,7 @@ import pytest
 from bridge.clock import to_iso, utc_now
 from bridge.config import ConfigError
 from bridge.db.repo import Database
+from bridge.logging_setup import DEFAULT_LOG_FILENAME
 from bridge.protocol.auth import hash_token
 from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
@@ -287,6 +288,22 @@ def test_tham_so_bat_buoc(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_TOKEN, raising=False)
     monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
     assert main(["--dry-run"]) == 2
+
+
+def test_clicker_khong_ghi_chung_file_log_voi_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Một file log, một tiến trình.
+
+    Bridge và clicker cùng ghi `bridge.log` thì trên Windows lần xoay lúc nửa đêm hỏng và **cả
+    hai ngừng ghi log vĩnh viễn** — đã xảy ra thật trên VPS, 63 giờ không một dòng log.
+    """
+    goi: list[dict[str, object]] = []
+    monkeypatch.setattr("clicker.__main__.setup_logging", lambda **kw: goi.append(kw))
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+
+    assert main(["--dry-run"]) == 2
+    assert len(goi) == 1
+    assert goi[0].get("filename", DEFAULT_LOG_FILENAME) != DEFAULT_LOG_FILENAME
 
 
 def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:

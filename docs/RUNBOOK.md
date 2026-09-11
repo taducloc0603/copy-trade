@@ -154,8 +154,17 @@ Nó trả lời đúng một câu hỏi — *có gì cần làm không?* — và
 ngoài đang **tắt có chủ đích**, nên đây là cách duy nhất bạn biết chuyện đã xảy ra; xem
 `docs/KE-HOACH-CHAY-THAT.md` mục 1.2 để biết lịch kiểm.
 
-Log: `logs/bridge.log`, xoay vòng theo ngày, giữ 30 ngày, UTF-8. Có bộ lọc che token —
-`grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06: 0 dòng trên ~15.000 dòng log).
+Log: `logs/bridge.log` (Bridge) và `logs/clicker.log` (clicker), xoay vòng theo ngày, giữ 30
+ngày, UTF-8. Có bộ lọc che token — `grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06:
+0 dòng trên ~15.000 dòng log). Lỗi của chính dịch vụ (Python không khởi động được, traceback lúc
+xoay log) nằm ở `logs/service-err.log` do NSSM ghi.
+
+**Mỗi tiến trình một file log, không bao giờ dùng chung.** Trước 2026-09-11 clicker ghi vào
+chính `bridge.log`. Trên Windows, hai tiến trình chạy lâu cùng giữ một file mở thì lần xoay lúc
+nửa đêm không đổi tên được file (`WinError 32`), và vì lần xoay hỏng không dời mốc xoay kế tiếp nên
+mọi lần ghi sau đều thử lại và hỏng lại: **cả hai ngừng ghi log vĩnh viễn** trong khi vẫn chạy
+bình thường. Trên VPS nó làm `bridge.log` đứng im 63 giờ. `kiem-tra.ps1` mục 7 bắt được triệu
+chứng này ("log không đổi trong N phút").
 
 Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba thứ nhìn trước tiên:
 `run_mode`, canary của clicker, và số finding đối chiếu đang chờ.

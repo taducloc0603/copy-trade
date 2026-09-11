@@ -2500,3 +2500,35 @@ venv **cũ**, nên bản sao lưu là trước-004 — không dính lỗi sao l�
 nào parse đầu ra `kiem-reason` hay dòng `cau-hinh-client` theo định dạng cũ.
 
 **649 test xanh.**
+
+### Sự cố cập nhật trên VPS — code mới trên đĩa, code cũ trong bộ nhớ, log im 63 giờ
+
+*(2026-09-11.)*
+
+Người vận hành chạy `tro-ly.ps1` trên VPS và nhận `[ LOI ] tinh-hinh`. Bản thân cài đặt không hỏng
+— dòng đỏ chỉ là tồn đọng (1 cặp ORPHANED mà Master đã đóng, 5 sai lệch, 92 alert). Nhưng output
+lộ ra ba lỗi thật, không test Python nào chạm tới được:
+
+1. **Cập nhật bằng `cai-dat.ps1` chạy thường, không `-CapNhat`, trên bản đang chạy.** Script vẫn
+   `git pull` và vẫn chạy migration `004` (qua `bridge.admin liet-ke`), nhưng bỏ qua sao lưu, không
+   dừng dịch vụ, không bật lại gì. Bằng chứng: `run_mode = RUNNING` (Bridge khởi động lại thì luôn
+   `PAUSED` — D-15) và clicker chạy liên tục từ 09-08. **Sửa:** `cai-dat.ps1` từ chối chạy khi dịch
+   vụ Running mà thiếu `-CapNhat`; `kiem-tra.ps1` mục 4b cảnh báo khi tiến trình Bridge/clicker chạy
+   từ trước lần HEAD đổi gần nhất (reflog, không phải ngày commit).
+2. **`-CapNhat` cũng không nạp lại clicker** — nó là Scheduled Task, `Stop/Start-Service` không đụng
+   tới. Clicker cũ sẽ từ chối `CLOSE_UI`, mọi lệnh đóng rơi về EA kèm CRITICAL: nâng cấp không có
+   tác dụng mà không ai hay. Plan và tài liệu hôm trước bỏ sót. **Sửa:** `-CapNhat` dừng tiến trình
+   clicker cũ trước khi bật Bridge (Bridge đang dừng nên không lệnh nào đang bay), `chay-clicker.ps1`
+   tự bật lại bằng code mới, script chờ tối đa 45 giây xác nhận PID mới.
+3. **Bridge và clicker cùng ghi `logs/bridge.log`.** Trên Windows lần xoay lúc nửa đêm không đổi tên
+   được file đang bị tiến trình kia giữ (`WinError 32`), lần xoay hỏng không dời mốc xoay, nên mọi
+   lần ghi sau đều thử và hỏng lại: **cả hai ngừng ghi log vĩnh viễn**. `bridge.log` đứng im 63 giờ.
+   Laptop chưa bao giờ chạy qua nửa đêm nên chưa thấy. **Sửa:** clicker ghi `logs/clicker.log`,
+   +1 test khẳng định tên file khác `bridge.log`.
+
+Tài liệu: `CAI-DAT-VPS.md` mục 9, `RUNBOOK.md` phần log, `HUONG-DAN-CUNG-VPS-SCRIPT.html` (bảng bước
+cài, bảng mục kiểm, bảng 9.2). `cai-dat.ps1` lên bản `2026-09-11`.
+
+Việc trên VPS (người vận hành làm): chẩn đoán chỉ đọc → `cai-dat.ps1 -CapNhat` → xác nhận PID mới,
+`schema_version = 4` → `cau-hinh-client CL-01 --close-route UI` → dọn tồn đọng theo evidence → đo
+lại ctrlID → `RUNNING` → chạy thử demo → B-08.

@@ -57,7 +57,7 @@ $script:TongBuoc = 11
 # Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
 # Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
 # nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
-$script:PhienBan = "2026-09-08"
+$script:PhienBan = "2026-09-11"
 
 # So sanh khoa giua config.toml va config.example.toml. Viet bang Python chu khong phai
 # PowerShell vi PS 5.1 khong co bo doc TOML nao, va tomllib thi da nam san trong venv.
@@ -210,6 +210,23 @@ function bao_dam_git() {
     if (Get-Command git -ErrorAction SilentlyContinue) { ok ((git --version) -join ''); return $true }
     canh "Khong cai duoc git. Chuyen sang dung thu muc san co."
     return $false
+}
+
+# ---------------------------------------------------------------------------------------------
+# Chot chan: khong cai de len mot ban dang chay
+# ---------------------------------------------------------------------------------------------
+function chan_cai_de_len_ban_dang_chay() {
+    # Chay thuong (khong -CapNhat) tren ban cai DANG CHAY van git pull va van chay migration (qua
+    # `bridge.admin liet-ke`), nhung bo qua sao luu, khong dung dich vu va khong nap lai gi: code
+    # moi tren dia, code cu trong bo nho, migration chay ngay duoi mot Bridge dang RUNNING, khong
+    # co ban sao luu ngay truoc do. Da xay ra that tren VPS 2026-09-11, va kiem-tra.ps1 van xanh
+    # gan het. tro-ly.ps1 chi goi script nay khi chua co .venv + config.toml nen khong vuong chot.
+    if ($CapNhat) { return }
+    $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
+    if ($null -ne $dv -and $dv.Status -eq 'Running') {
+        throw ("Dich vu $TenDichVu dang chay -- day la ban cai dang hoat dong. Chay lai voi -CapNhat " +
+               "(sao luu, dung dich vu, cap nhat, nap lai clicker, bat lai dich vu).")
+    }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -462,6 +479,50 @@ function khoi_tao_va_kiem([string] $venvPy) {
 # ---------------------------------------------------------------------------------------------
 # B10. Ket thuc
 # ---------------------------------------------------------------------------------------------
+# Clicker la Scheduled Task, khong phai dich vu: Stop-Service/Start-Service khong dung toi no. Khong
+# nap lai o day thi Bridge moi chay cung clicker CU, ma clicker cu tu choi moi loai lenh no khong
+# biet (vi du CLOSE_UI) -- nang cap "xong" ma khong co tac dung, va khong ai hay.
+function tien_trinh_clicker() {
+    # Chi dung ProcessId. KHONG BAO GIO in CommandLine: clicker kieu cu co token trong do.
+    return @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+             Where-Object { $_.CommandLine -like '*-m clicker*' })
+}
+
+function dung_clicker_cu() {
+    $cu = @(tien_trinh_clicker)
+    if ($cu.Count -eq 0) {
+        canh "clicker khong chay, khong co gi de nap lai"
+        return
+    }
+    $pidCu = @($cu | ForEach-Object { [int] $_.ProcessId })
+    # Giet HET ca danh sach, ke ca tien trinh con cua launcher trong .venv: con sot mot tien trinh
+    # cu giu khoa SingleInstance thi clicker moi thoat ma 3 va chay-clicker.ps1 dung han vong lap.
+    foreach ($p in $pidCu) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+    $conSong = @(tien_trinh_clicker | Where-Object { $pidCu -contains [int] $_.ProcessId })
+    if ($conSong.Count -gt 0) {
+        canh ("KHONG dung duoc clicker cu, PID " + (($conSong | ForEach-Object { $_.ProcessId }) -join ', ') +
+              ". No van chay CODE CU. Dung tay trong Task Manager.")
+    } else {
+        ok ("da dung clicker cu, PID " + ($pidCu -join ', ') + " -- chay-clicker.ps1 se tu bat lai")
+    }
+    return $pidCu
+}
+
+function cho_clicker_moi([int[]] $pidCu) {
+    $han = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $han) {
+        $moi = @(tien_trinh_clicker | Where-Object { $pidCu -notcontains [int] $_.ProcessId })
+        if ($moi.Count -gt 0) {
+            ok ("clicker da bat lai bang code moi, PID " + (($moi | ForEach-Object { $_.ProcessId }) -join ', '))
+            return
+        }
+        Start-Sleep -Seconds 3
+    }
+    canh ("clicker chua bat lai sau 45 giay. Bat tay: " +
+          "Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName Clicker")
+}
+
 function sau_khi_cap_nhat([string] $commitCu) {
     buoc_moi "Ket thuc cap nhat"
     if (-not $CapNhat) { bo_qua "khong phai -CapNhat"; return }
@@ -491,6 +552,9 @@ function sau_khi_cap_nhat([string] $commitCu) {
         Write-Host "        Duong lui: git -C `"$ThuMuc`" checkout $commitCu" -ForegroundColor DarkGray
     }
 
+    # Nap lai clicker TRUOC khi bat Bridge: luc nay Bridge dang dung nen khong co lenh nao dang bay.
+    $pidCu = @(dung_clicker_cu)
+
     $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
     if ($null -ne $dv) {
         Start-Service $TenDichVu -ErrorAction Stop
@@ -498,6 +562,8 @@ function sau_khi_cap_nhat([string] $commitCu) {
     } else {
         bo_qua "chua dang ky dich vu (chay scripts\tao-dich-vu.ps1)"
     }
+
+    if ($pidCu.Count -gt 0) { cho_clicker_moi $pidCu }
 }
 
 function in_buoc_tiep() {
@@ -574,6 +640,8 @@ try {
     Write-Host " MT5 Copy Bridge -- cai dat (ban $script:PhienBan)" -ForegroundColor Cyan
     Write-Host " Thu muc dich: $ThuMuc" -ForegroundColor DarkGray
     if ($CapNhat) { Write-Host " Che do: CAP NHAT" -ForegroundColor Yellow }
+
+    chan_cai_de_len_ban_dang_chay
 
     $py    = bao_dam_python
     $coGit = bao_dam_git

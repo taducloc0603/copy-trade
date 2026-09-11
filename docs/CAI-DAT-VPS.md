@@ -287,8 +287,20 @@ C:\CopyBridge\scripts\cai-dat.ps1 -CapNhat
 ```
 
 Nó sao lưu database trước (`VACUUM INTO`, an toàn với WAL), ghi lại commit hiện tại, dừng dịch vụ,
-`git pull --ff-only`, cài lại gói, chạy bộ test, bật lại dịch vụ. Nếu `ea/` có thay đổi thì nó in
-cảnh báo đỏ nhắc biên dịch lại và **gắn lại EA**.
+`git pull --ff-only`, cài lại gói, chạy bộ test, **nạp lại clicker**, bật lại dịch vụ. Nếu `ea/` có
+thay đổi thì nó in cảnh báo đỏ nhắc biên dịch lại và **gắn lại EA**.
+
+> **Luôn có `-CapNhat` trên máy đã cài.** Chạy `cai-dat.ps1` không có nó trên một bản đang chạy
+> vẫn `git pull` và vẫn chạy migration, nhưng **không** sao lưu, **không** dừng dịch vụ và **không**
+> nạp lại gì — code mới nằm trên đĩa, Bridge và clicker vẫn chạy code cũ, migration chạy ngay dưới
+> một Bridge đang `RUNNING`. Đã xảy ra thật trên VPS 2026-09-11. Từ bản script `2026-09-11`,
+> `cai-dat.ps1` **từ chối** chạy khi dịch vụ đang Running mà thiếu `-CapNhat`, và `kiem-tra.ps1`
+> mục 4b cảnh báo khi tiến trình nào chạy từ trước lần đổi code gần nhất.
+>
+> Clicker là Scheduled Task chứ không phải dịch vụ, nên `-CapNhat` dừng tiến trình clicker cũ và
+> để `chay-clicker.ps1` tự bật lại bằng code mới (~10 giây), rồi chờ tối đa 45 giây xác nhận. Bản
+> script trước `2026-09-11` **không** làm việc này: clicker cũ nhận lệnh `CLOSE_UI` sẽ từ chối và
+> mọi lệnh đóng rơi về EA kèm alert CRITICAL.
 
 Đường lùi được in ra cuối: `git -C C:\CopyBridge checkout <commit-cũ>` rồi chạy lại.
 

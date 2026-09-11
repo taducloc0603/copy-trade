@@ -138,9 +138,18 @@ def build_link(args: argparse.Namespace) -> ClickerLink:
     )
 
 
+#: File log riêng của clicker, **không** được trùng `bridge.log` của Bridge.
+#:
+#: Hai tiến trình chạy lâu cùng giữ một file mở thì trên Windows lần xoay lúc nửa đêm không đổi
+#: tên được file (`WinError 32`). Lần xoay hỏng không cập nhật mốc xoay kế tiếp, nên mọi lần ghi
+#: sau đó lại thử xoay, lại hỏng — **cả hai tiến trình ngừng ghi log vĩnh viễn** mà vẫn chạy bình
+#: thường. Đã xảy ra thật trên VPS: `bridge.log` đứng im 63 giờ (2026-09-08 → 09-11).
+LOG_FILENAME = "clicker.log"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    setup_logging()
+    setup_logging(filename=LOG_FILENAME)
     bo_sung_tham_so(args)
 
     if not args.token:

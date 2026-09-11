@@ -208,7 +208,7 @@ C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
   <tr><td>7</td><td>Tạo <code>data/</code>, <code>logs/</code>, <code>data/backup/</code></td></tr>
   <tr><td>8</td><td>Tạo <code>config.toml</code> với mật khẩu dashboard ngẫu nhiên, siết quyền đọc file</td></tr>
   <tr><td>9</td><td>Khởi tạo database, chạy migration, kiểm import, chạy bộ test</td></tr>
-  <tr><td>10</td><td><em>(chỉ khi <code>-CapNhat</code>)</em> báo EA đã đổi, bật lại dịch vụ</td></tr>
+  <tr><td>10</td><td><em>(chỉ khi <code>-CapNhat</code>)</em> báo EA đã đổi, nạp lại clicker, bật lại dịch vụ</td></tr>
   <tr><td>11</td><td>In các bước tiếp theo và khối cảnh báo</td></tr>
 </table>
 
@@ -216,6 +216,10 @@ C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge</code></pre>
   <span class="nhan">Chạy lại bao nhiêu lần cũng được</span>
   <p>Mọi bước đã xong sẽ in <code>BO QUA</code> thay vì làm lại. Nhờ vậy chính script này cũng là
   bộ cập nhật — xem <a href="#cap-nhat">mục 9</a>.</p>
+  <p>Ngoại lệ: khi dịch vụ <code>CopyBridge</code> <strong>đang chạy</strong>, script từ chối chạy
+  nếu thiếu <code>-CapNhat</code>. Chạy thường trên bản đang hoạt động sẽ kéo code mới và chạy
+  migration mà không sao lưu, không dừng dịch vụ và không nạp lại gì — đã xảy ra thật trên VPS
+  ngày 2026-09-11.</p>
   <p>Script <strong>không bao giờ</strong> sửa <code>config.toml</code> đã tồn tại, không tự
   <code>git stash</code>, không tự <code>git reset --hard</code>.</p>
 </div>
@@ -496,16 +500,17 @@ sai lệch đang chờ xử lý.</p>
 <h3>Việc đầu tiên mỗi lần đăng nhập vào VPS</h3>
 <pre><code>C:\CopyBridge\scripts\kiem-tra.ps1</code></pre>
 
-<p>Chín mục kiểm, mã thoát bằng số mục hỏng:</p>
+<p>Mười mục kiểm, mã thoát bằng số mục hỏng:</p>
 <table>
   <tr><th>#</th><th>Kiểm gì</th></tr>
   <tr><td>1</td><td>Dịch vụ <code>CopyBridge</code> đang chạy và đặt ở chế độ tự khởi động</td></tr>
   <tr><td>2</td><td>Hai cổng 8787 và 8080 đang nghe</td></tr>
   <tr><td>3</td><td>Dashboard trả lời</td></tr>
   <tr><td>4</td><td>clicker còn sống <em>(chỉ in PID, không bao giờ in dòng lệnh)</em></td></tr>
+  <tr><td>4b</td><td>Bridge và clicker <strong>không</strong> chạy từ trước lần đổi code gần nhất — nếu có là đang chạy code cũ, chạy <code>cai-dat.ps1 -CapNhat</code></td></tr>
   <tr><td>5</td><td>Có đúng 2 terminal MT5</td></tr>
   <tr><td>6</td><td>Ba Scheduled Task và kết quả chạy gần nhất</td></tr>
-  <tr><td>7</td><td><code>logs\bridge.log</code> còn được ghi trong 15 phút qua</td></tr>
+  <tr><td>7</td><td><code>logs\bridge.log</code> còn được ghi trong 15 phút qua <em>(clicker ghi riêng <code>logs\clicker.log</code>)</em></td></tr>
   <tr><td>8</td><td>Đĩa còn ≥ 2 GB</td></tr>
   <tr><td>9</td><td><strong><code>bridge.admin tinh-hinh</code></strong> — có gì cần làm không</td></tr>
 </table>
@@ -516,7 +521,7 @@ sai lệch đang chờ xử lý.</p>
   chuyện đã xảy ra. Kênh Telegram có sẵn nhưng để trống: điền <code>telegram_token</code> và
   <code>telegram_chat_id</code> ở mục <code>[security]</code> trong <code>config.toml</code> thì alert
   mức ERROR/CRITICAL sẽ được gửi ra — nhưng nó <strong>chưa từng được kiểm chứng bằng tin
-  thật</strong>. Tám mục trên đều xanh mà hệ thống vẫn đang không copy lệnh là chuyện bình
+  thật</strong>. Chín mục trên đều xanh mà hệ thống vẫn đang không copy lệnh là chuyện bình
   thường.</p>
 </div>
 
@@ -577,7 +582,7 @@ trên dashboard trước, chờ các cặp đang mở đóng hết, rồi mới 
   <tr><td>7</td><td><strong>Chạy migration database</strong> (tự động)</td><td>Dừng</td></tr>
   <tr><td>8</td><td>Chạy bộ test</td><td>Dừng — <strong>đừng triển khai bản test đỏ</strong></td></tr>
   <tr><td>9</td><td>Báo nếu thư mục <code>ea/</code> có thay đổi</td><td>—</td></tr>
-  <tr><td>10</td><td>Bật lại dịch vụ, in đường lùi</td><td>—</td></tr>
+  <tr><td>10</td><td><strong>Nạp lại clicker</strong> (dừng tiến trình cũ, <code>chay-clicker.ps1</code> tự bật lại bằng code mới), bật lại dịch vụ, in đường lùi</td><td>Cảnh báo kèm lệnh bật tay tác vụ <code>Clicker</code></td></tr>
 </table>
 
 <p>Sau đó kiểm và bật lại copy:</p>
