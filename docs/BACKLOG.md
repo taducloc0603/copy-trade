@@ -177,6 +177,12 @@ Sửa: `send_double_click` gửi hết cả ba message rồi mới kết luận;
 cơ chế khác nhau thì một cái hỏng trên bản MT5 lạ vẫn còn cái kia. Giữ `WM_LBUTTONDBLCLK` ở kiểu chờ
 vì phép đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại.
 
+**Đo lại sau bản sửa đó (VPS, 2026-09-13): `CLOSE_UI` 0,77 giây**, log chỉ còn một dòng
+`Do dong 0 lan 1: gui=True, hop thoai MO sau 0.31s` — không còn lần nhấp lại nào. So với 5,1–5,5 giây
+của phép đo đầu: **nhanh gấp khoảng 7 lần**. Mục này coi như đã trả xong phần tốc độ; phần còn nợ là
+**vì sao `WM_LBUTTONDOWN` gửi kiểu chờ lại treo**, và nó chỉ còn là câu hỏi để hiểu, không còn là chi
+phí phải trả.
+
 ### B-16 — `dry_probe()` chưa được nối vào canary
 
 **Đây là quyết định có chủ đích, ghi lại để không ai tưởng là quên.** Canary chạy mỗi giây, mà

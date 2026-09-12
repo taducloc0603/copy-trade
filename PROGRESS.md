@@ -2725,7 +2725,14 @@ chỗ đó.
 gửi kiểu chờ — phép đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại.
 
 +3 test: không bỏ dở chuỗi khi `WM_LBUTTONDOWN` hết hạn; đường nhanh post đúng hai message rồi mới
-gửi double-click; lần nhấp đầu dùng đường nhanh, lần nhấp lại dùng đường cũ. Dự kiến `CLOSE_UI` còn
-**0,7–0,9 giây**; **chưa đo lại**.
+gửi double-click; lần nhấp đầu dùng đường nhanh, lần nhấp lại dùng đường cũ.
+
+**Đo lại trên VPS (2026-09-13): `CLOSE_UI` 0,77 giây**, log chỉ còn `Do dong 0 lan 1: gui=True, hop
+thoai MO sau 0.31s` — không còn lần nhấp lại. `kiem-reason` ĐẠT với 12 deal đóng, chỉ còn cặp
+`PAIR-20260911-000001` cũ đã có giải thích.
+
+Chuỗi cả ba bản tối ưu, đo trên cùng một VPS: **5,1–5,5 giây → 3,2–4,5 → 1,45–1,65 → 0,77 giây**, tức
+nhanh gấp khoảng 7 lần so với lúc nghiệm thu đường đóng. Còn nợ đúng một câu hỏi, và nó không còn tốn
+thời gian nữa: vì sao `WM_LBUTTONDOWN` gửi kiểu chờ bị MT5 giữ lại.
 
 **668 test xanh.**
