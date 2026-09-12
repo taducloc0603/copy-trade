@@ -46,7 +46,14 @@ from typing import Protocol
 
 from bridge.logging_setup import get_logger
 from clicker.ui import probe, tradetab, win32
-from clicker.ui.dialog import ClosePositionDialog, DialogError, NewOrderDialog
+from clicker.ui.dialog import (
+    ClosePositionDialog,
+    DialogError,
+    HopThoaiDongSoBo,
+    NewOrderDialog,
+    cho_so_bo,
+    tim_so_bo,
+)
 
 log = get_logger(__name__)
 
@@ -250,6 +257,9 @@ class Mt5UiDriver:
         self.on_before_click = on_before_click
         self.settle_sec = settle_sec
         self.close_timeout_sec = close_timeout_sec
+        #: Dòng của lần đóng trúng gần nhất. Chỉ là **thứ tự dò**, không phải kết luận — xem
+        #: `_thu_tu_dong`.
+        self._dong_gan_nhat: int | None = None
 
     # -- mở lệnh ---------------------------------------------------------------------------
 
@@ -338,33 +348,35 @@ class Mt5UiDriver:
 
         da_gap: list[int | None] = []
         mo_duoc_it_nhat_mot = False
-        for row in range(so_dong):
+        for row in self._thu_tu_dong(so_dong):
             # Hộp thoại sót lại từ vòng trước — kể cả một cái mở **chậm hơn** thời gian chờ. MT5
             # lúc đó đang ở vòng lặp modal và cú double-click kế tiếp sẽ không đi tới đâu cả, nên
             # bỏ qua bước này là để cả phần còn lại của vòng lặp dò trong vô vọng.
-            sot = ClosePositionDialog.find(pid)
+            sot = tim_so_bo(pid)
             if sot is not None:
                 sot.cancel()
                 sot.wait_closed()
 
-            hop = self._mo_dong(pid, list_hwnd, row)
-            if hop is None:
+            so_bo = self._mo_dong(pid, list_hwnd, row)
+            if so_bo is None:
                 # Dòng này không mở hộp thoại nào. Bình thường: danh sách có cả dòng tổng kết
                 # Balance. Đi tiếp chứ không coi là lỗi.
                 continue
             mo_duoc_it_nhat_mot = True
-            try:
-                ticket = hop.read_back().ticket()
-            except DialogError as exc:
-                hop.cancel()
-                hop.wait_closed()
-                return Outcome("rejected", f"Hop thoai dong khong dung hinh dang: {exc}",
-                               clicked=False)
-            da_gap.append(ticket)
-            if ticket == request.position_id:
-                return self._commit_close(hop, request)
-            hop.cancel()
-            hop.wait_closed()
+            da_gap.append(so_bo.ticket)
+            if so_bo.ticket != request.position_id:
+                # Loại bằng đúng một lần đọc tiêu đề, **không** đọc 55 control của hộp thoại này.
+                so_bo.cancel()
+                so_bo.wait_closed()
+                continue
+
+            hop = ClosePositionDialog.tu_hwnd(so_bo.hwnd)
+            if hop is None:
+                so_bo.cancel()
+                so_bo.wait_closed()
+                return Outcome("rejected", "Hop thoai dong khong dung hinh dang", clicked=False)
+            self._dong_gan_nhat = row
+            return self._commit_close(hop, request)
 
         if not mo_duoc_it_nhat_mot:
             # **Không một dòng nào mở được hộp thoại.** Không được kết luận "vị thế đã đóng" từ
@@ -396,7 +408,40 @@ class Mt5UiDriver:
             clicked=False,
         )
 
-    def _mo_dong(self, pid: int, list_hwnd: int, row: int) -> ClosePositionDialog | None:
+    def _thu_tu_dong(self, so_dong: int) -> list[int]:
+        """Thứ tự dò: dòng đóng trúng lần trước đứng đầu, rồi tới các dòng còn lại theo thứ tự.
+
+        Danh sách Trade thường giữ nguyên hình dạng giữa hai lần đóng, nên dòng trúng lần trước là
+        phỏng đoán tốt nhất — mà mỗi dòng dò trượt tốn một lần mở/huỷ hộp thoại, còn dòng không mở gì
+        (dòng tổng kết Balance) tốn trọn `PROBE_CLOSE_SEC`.
+
+        Đây **chỉ là thứ tự**, không phải kết luận: dòng nào mở ra cũng bị đọc ngược ticket rồi mới
+        bấm, nên đoán sai chỉ tốn thêm thời gian chứ không đóng nhầm vị thế.
+        """
+        thu_tu = list(range(so_dong))
+        dau = self._dong_gan_nhat
+        if dau is not None and 0 <= dau < so_dong:
+            thu_tu.remove(dau)
+            thu_tu.insert(0, dau)
+        return thu_tu
+
+    def _so_bo_du_phong(self, pid: int) -> HopThoaiDongSoBo | None:
+        """Đường dự phòng khi tiêu đề không nhận ra được: quét đầy đủ control **một lần**.
+
+        Tiêu đề `Position: #<ticket>` đo được trên Connext-Demo, nhưng nó là chuỗi của MT5 chứ không
+        phải hợp đồng. Sàn khác đặt tiêu đề khác thì phép dò nhanh mù hẳn — và mù ở đây nghĩa là
+        `rejected`, tức mất đường đóng qua giao diện mà không ai hiểu vì sao.
+        """
+        day_du = ClosePositionDialog.find(pid)
+        if day_du is None:
+            return None
+        try:
+            ticket = day_du.read_back().ticket()
+        except DialogError:
+            ticket = None
+        return HopThoaiDongSoBo(hwnd=day_du.hwnd, ticket=ticket)
+
+    def _mo_dong(self, pid: int, list_hwnd: int, row: int) -> HopThoaiDongSoBo | None:
         """Mở hộp thoại đóng cho một dòng, **nhấp lại một lần** nếu cú nhấp đầu bị treo.
 
         Đo trên VPS ngày 2026-09-11 (Connext-Demo): thỉnh thoảng cú double-click làm
@@ -416,7 +461,7 @@ class Mt5UiDriver:
         so_lan = 1 + self.NHAP_LAI_KHI_TREO
         for lan in range(1, so_lan + 1):
             if lan > 1:
-                sot = ClosePositionDialog.find(pid)
+                sot = tim_so_bo(pid)
                 if sot is not None:
                     sot.cancel()
                     sot.wait_closed()
@@ -424,11 +469,11 @@ class Mt5UiDriver:
             gui = tradetab.mo_hop_thoai_dong(list_hwnd, row)
             cho = (self.CHO_SAU_KHI_TREO_SEC if not gui and lan < so_lan
                    else self.PROBE_CLOSE_SEC)
-            hop = ClosePositionDialog.cho_mo(pid, cho)
+            so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)
             log.info("Do dong %d lan %d: gui=%s, hop thoai %s sau %.2fs", row, lan, gui,
-                     "MO" if hop is not None else "KHONG mo", time.monotonic() - bat_dau)
-            if hop is not None or gui:
-                return hop
+                     "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)
+            if so_bo is not None or gui:
+                return so_bo
         return None
 
     def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest) -> Outcome:

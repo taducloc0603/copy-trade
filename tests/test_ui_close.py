@@ -288,6 +288,25 @@ def test_ghi_nhat_ky_chay_TRUOC_cu_bam(driver: Mt5UiDriver) -> None:
 # close() — phép tìm có kiểm chứng
 # ---------------------------------------------------------------------------------------------
 
+#: hwnd giả của hộp thoại mở từ dòng `i` = `HWND_GOC + i`.
+HWND_GOC = 9000
+
+
+@dataclass
+class SoBoGia:
+    """Hộp thoại nhận ra bằng tiêu đề: chỉ hwnd và ticket, chưa đọc control nào."""
+
+    hwnd: int
+    ticket: int | None
+    nhat_ky: list[str] = field(default_factory=list)
+
+    def cancel(self) -> None:
+        self.nhat_ky.append(f"huy dong {self.hwnd - HWND_GOC}")
+
+    def wait_closed(self, timeout_sec: float = 2.0) -> bool:
+        return True
+
+
 def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
                  hop_theo_dong: dict[int, HopThoaiDongGia] | None = None) -> list[str]:
     """Dựng một danh sách giả: `tickets[i]` là ticket mà dòng `i` mở ra, `None` = không mở."""
@@ -300,6 +319,8 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
     monkeypatch.setattr(driver_mod.win32, "get_process_id", lambda _h: 4242)
     monkeypatch.setattr(driver_mod.tradetab, "tim_danh_sach", lambda _h: 777)
     monkeypatch.setattr(driver_mod.tradetab, "so_dong", lambda _h: len(tickets))
+    monkeypatch.setattr(driver_mod, "tim_so_bo", lambda _pid: None)
+    # Duong du phong (quet day du) phai im trong moi test dung helper nay, tru test kiem chinh no.
     monkeypatch.setattr(driver_mod.ClosePositionDialog, "find",
                         classmethod(lambda cls, _pid: None))
 
@@ -310,17 +331,25 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
         nhat_ky.append(f"mo dong {row}")
         return True
 
-    def cho_mo(cls: Any, _pid: int, timeout_sec: float = 2.0) -> Any:
+    def cho_so_bo(_pid: int, timeout_sec: float = 2.0) -> Any:
+        """Nhan ra hop thoai bang TIEU DE: chi co hwnd va ticket, chua doc control nao."""
         row = trang_thai["dong"]
         if tickets[row] is None:
             nhat_ky.append(f"dong {row} khong mo hop thoai")
             return None
+        return SoBoGia(hwnd=HWND_GOC + row, ticket=tickets[row], nhat_ky=nhat_ky)
+
+    def tu_hwnd(cls: Any, hwnd: int) -> Any:
+        """Chi duoc goi cho dong DA KHOP ticket — doc day du ~55 control that la o buoc nay."""
+        row = hwnd - HWND_GOC
+        nhat_ky.append(f"doc control dong {row}")
         hop = hop_theo_dong.get(row) or HopThoaiDongGia(ticket=tickets[row])
         hop_theo_dong[row] = hop
         return hop
 
     monkeypatch.setattr(driver_mod.tradetab, "mo_hop_thoai_dong", mo)
-    monkeypatch.setattr(driver_mod.ClosePositionDialog, "cho_mo", classmethod(cho_mo))
+    monkeypatch.setattr(driver_mod, "cho_so_bo", cho_so_bo)
+    monkeypatch.setattr(driver_mod.ClosePositionDialog, "tu_hwnd", classmethod(tu_hwnd))
     return nhat_ky
 
 
@@ -330,17 +359,19 @@ def test_tim_thay_o_dong_dau_thi_dung_lai(driver: Mt5UiDriver,
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "ok"
-    assert nhat_ky == ["mo dong 0"], "Tim thay roi thi khong duoc do tiep"
+    assert nhat_ky == ["mo dong 0", "doc control dong 0"], \
+        "Tim thay roi thi khong duoc do tiep, va chi doc control cua DUNG dong da khop"
 
 
 def test_do_tiep_khi_dong_dau_la_vi_the_khac(driver: Mt5UiDriver,
                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    hop = {0: HopThoaiDongGia(ticket=111)}
-    _gia_lap_tim(monkeypatch, [111, TICKET], hop)
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET])
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "ok"
-    assert hop[0].ghi_lai == ["cancel"], "Do truot phai HUY, tuyet doi khong bam"
+    assert "huy dong 0" in nhat_ky, "Do truot phai HUY, tuyet doi khong bam"
+    assert "doc control dong 0" not in nhat_ky, \
+        "Loai mot dong chi can ticket o tieu de, khong duoc doc 55 control cua no"
     assert driver._bam.da_bam == [4242], "Chi duoc bam dung mot lan, o dong dung"
 
 
@@ -372,15 +403,15 @@ def _gia_lap_treo(monkeypatch: pytest.MonkeyPatch, so_lan_treo: dict[int, int],
         trang_thai["treo"] = da_mo.count(row) <= so_lan_treo.get(row, 0)
         return not trang_thai["treo"]
 
-    def cho_mo(cls: Any, _pid: int, timeout_sec: float = 2.0) -> Any:
+    def cho_so_bo(_pid: int, timeout_sec: float = 2.0) -> Any:
         cho.append(timeout_sec)
         row = trang_thai["dong"]
         if trang_thai["treo"] or tickets[row] is None:
             return None
-        return HopThoaiDongGia(ticket=tickets[row])
+        return SoBoGia(hwnd=HWND_GOC + row, ticket=tickets[row])
 
     monkeypatch.setattr(driver_mod.tradetab, "mo_hop_thoai_dong", mo)
-    monkeypatch.setattr(driver_mod.ClosePositionDialog, "cho_mo", classmethod(cho_mo))
+    monkeypatch.setattr(driver_mod, "cho_so_bo", cho_so_bo)
     return da_mo, cho
 
 
@@ -416,6 +447,48 @@ def test_treo_ca_hai_lan_thi_khong_nhap_them_va_khong_ket_luan_da_dong(
     assert da_mo == [0, 0, 1], "Chi duoc nhap lai MOT lan moi dong"
 
 
+# Toi uu 2026-09-12: do bang TIEU DE (khong doc control), va nho dong trung lan truoc.
+
+def test_nho_dong_trung_lan_truoc_de_do_truoc(driver: Mt5UiDriver,
+                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """Moi dong do truot ton mot lan mo/huy hop thoai — dong trung lan truoc dang duoc thu truoc."""
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET])
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+    assert nhat_ky[0] == "mo dong 0"
+
+    nhat_ky.clear()
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+    assert nhat_ky[0] == "mo dong 1", "Lan sau phai do dong da trung truoc tien"
+    assert "mo dong 0" not in nhat_ky
+
+
+def test_doan_sai_dong_thi_van_do_tiep_va_dong_dung_ticket(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nho dong chi la THU TU. Doan sai chi ton them thoi gian, khong bao gio dong nham."""
+    driver._dong_gan_nhat = 1
+    nhat_ky = _gia_lap_tim(monkeypatch, [TICKET, 111])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok" and driver._bam.da_bam == [4242]
+    assert nhat_ky[0] == "mo dong 1" and "huy dong 1" in nhat_ky
+    assert "doc control dong 0" in nhat_ky
+
+
+def test_tieu_de_khong_nhan_ra_thi_van_tim_duoc_bang_duong_du_phong(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ban MT5 dat tieu de khac thi phep do nhanh mu han — va mu o day la mat duong dong qua UI."""
+    _gia_lap_tim(monkeypatch, [TICKET])
+    monkeypatch.setattr(driver_mod, "cho_so_bo", lambda _pid, timeout_sec=2.0: None)
+    day_du = HopThoaiDongGia(ticket=TICKET)
+    day_du.hwnd = HWND_GOC  # type: ignore[attr-defined]
+    monkeypatch.setattr(driver_mod.ClosePositionDialog, "find",
+                        classmethod(lambda cls, _pid: day_du))
+
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok" and driver._bam.da_bam == [4242]
+
+
 def test_quet_het_ma_khong_thay_thi_la_already_closed_chu_khong_phai_loi(
         driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
     """Quet het danh sach ma khong co vi the do nghia la NO DA DONG ROI (FR-18).
@@ -423,13 +496,12 @@ def test_quet_het_ma_khong_thay_thi_la_already_closed_chu_khong_phai_loi(
     Tra `rejected` o day se khien Bridge cho cap sang ORPHANED kem alert CRITICAL — tuc la bao
     dong cho dung thu dang le phai xay ra.
     """
-    hop = {0: HopThoaiDongGia(ticket=111), 1: HopThoaiDongGia(ticket=222)}
-    _gia_lap_tim(monkeypatch, [111, 222], hop)
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, 222])
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "already_closed" and kq.clicked is False
     assert driver._bam.da_bam == []
-    assert all(h.ghi_lai == ["cancel"] for h in hop.values())
+    assert "huy dong 0" in nhat_ky and "huy dong 1" in nhat_ky
     assert "111" in kq.reason and "222" in kq.reason
 
 
@@ -489,20 +561,15 @@ def test_hop_thoai_sot_lai_duoc_huy_truoc_moi_dong(
     Khong huy no thi moi dong sau deu do trong vo vong, va ket qua se la mot ket luan sai ve
     trang thai cua vi the.
     """
-    sot = HopThoaiDongGia(ticket=999)
     da_huy: list[int] = []
-    monkeypatch.setattr(driver_mod.ClosePositionDialog, "find",
-                        classmethod(lambda cls, _pid: sot if not da_huy else None))
-    goc_cancel = sot.cancel
-
-    def cancel() -> None:
-        da_huy.append(1)
-        goc_cancel()
-
-    sot.cancel = cancel  # type: ignore[method-assign]
     _gia_lap_tim(monkeypatch, [TICKET])
-    monkeypatch.setattr(driver_mod.ClosePositionDialog, "find",
-                        classmethod(lambda cls, _pid: sot if not da_huy else None))
+
+    class SotGia(SoBoGia):
+        def cancel(self) -> None:
+            da_huy.append(1)
+
+    sot = SotGia(hwnd=HWND_GOC + 99, ticket=999)
+    monkeypatch.setattr(driver_mod, "tim_so_bo", lambda _pid: sot if not da_huy else None)
 
     kq = driver.close(CloseRequest(position_id=TICKET))
 

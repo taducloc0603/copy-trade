@@ -131,6 +131,16 @@ kiểu treo đó (cộng lần đóng thật là 3), và lần nhấp lại ngay
 treo (không nhấp lại khi dòng trả lời ngay mà không mở gì), và ghi log thời gian từng lần nhấp vào
 `logs/clicker.log` — lần sau đo từ log chứ không phải chạy script tay.
 
+**Tối ưu 2026-09-12 — bỏ phần đắt nhất của phép dò.** `_map_controls` đọc `WM_GETTEXT` của ~55
+control, mỗi lời gọi là một `SendMessage` **liên tiến trình** vào đúng luồng giao diện MT5 đang bận,
+và phép tìm trả cái giá đó cho **mọi** dòng nó mở ra chỉ để loại. Nhưng loại một dòng chỉ cần ticket,
+mà ticket nằm trong tiêu đề `Position: #<ticket>` — `GetWindowTextW` đọc từ cache của hệ điều hành,
+không chặn. Nay vòng dò dùng `dialog.HopThoaiDongSoBo` (chỉ tiêu đề); chỉ dòng **đã khớp ticket** mới
+`ClosePositionDialog.tu_hwnd()` đọc đủ control, và `_commit_close` vẫn kiểm ticket từ cả ba nguồn
+trước khi bấm (D-30 không đổi). Thêm `_thu_tu_dong`: dòng đóng trúng lần trước được dò trước — chỉ là
+thứ tự, đoán sai vẫn đọc ngược kiểm chứng. Giữ đường dự phòng quét đầy đủ cho bản MT5 đặt tiêu đề
+khác. **Chưa đo trên VPS** sau tối ưu.
+
 ### B-16 — `dry_probe()` chưa được nối vào canary
 
 **Đây là quyết định có chủ đích, ghi lại để không ai tưởng là quên.** Canary chạy mỗi giây, mà

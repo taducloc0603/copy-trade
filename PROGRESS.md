@@ -2648,3 +2648,28 @@ thì dừng sau một lần nhấp lại và trả `rejected` (không kết lu�
 trên code cũ**; test giữa là hàng rào cho chính bản sửa. BACKLOG B-15 cập nhật số đo VPS.
 
 **661 test xanh.**
+
+### Phép dò đóng lệnh: bỏ 55 lệnh đọc chặn cho mỗi dòng chỉ để loại
+
+*(2026-09-12.)* Người chủ dự án báo đóng ở Master mất 5–10 giây Client mới đóng, và muốn nhanh nhất
+có thể. Đọc lại đường dò: `_map_controls` đọc `WM_GETTEXT` của ~55 control (đo trên VPS), mỗi lời gọi
+là một `SendMessage` **liên tiến trình** vào đúng luồng giao diện MT5 đang bận mở hộp thoại. Phép tìm
+mở rồi huỷ hộp thoại ở **từng dòng**, nên trả cái giá đó cho cả những dòng chỉ để loại.
+
+Nhưng muốn loại một dòng thì chỉ cần ticket, mà ticket có sẵn trong tiêu đề `Position: #<ticket>`, và
+`GetWindowTextW` đọc từ cache của hệ điều hành — **không chặn**. Nên:
+
+- `dialog.HopThoaiDongSoBo` + `tim_so_bo`/`cho_so_bo`: nhận ra hộp thoại **chỉ bằng tiêu đề**.
+- `ClosePositionDialog.tu_hwnd()`: đọc đầy đủ control, **chỉ** cho dòng đã khớp ticket. `_commit_close`
+  vẫn kiểm ticket từ cả ba nguồn trước khi bấm — D-30 không đổi.
+- `Mt5UiDriver._thu_tu_dong`: dòng đóng trúng lần trước được dò trước. Chỉ là **thứ tự**; đoán sai chỉ
+  tốn thêm thời gian vì mọi dòng mở ra đều bị đọc ngược kiểm chứng.
+- Giữ `_so_bo_du_phong`: quét đầy đủ một lần khi tiêu đề không nhận ra được. Tiêu đề là chuỗi của MT5
+  chứ không phải hợp đồng; sàn khác đặt khác thì phép dò nhanh mù hẳn, mà mù ở đây là mất đường đóng
+  qua giao diện.
+
++3 test (loại dòng không được đọc control của nó; nhớ dòng trúng lần trước; đoán sai vẫn đóng đúng
+ticket; tiêu đề lạ vẫn tìm ra bằng đường dự phòng). Hai test cũ đổi cách khẳng định theo API mới, giữ
+nguyên điều được khẳng định. **Chưa đo lại trên VPS** — mục tiêu `CLOSE_UI` dưới 1,5 giây.
+
+**664 test xanh.**

@@ -121,6 +121,61 @@ def _quet(pid: int) -> list[tuple[int, dict[int, win32.ControlInfo]]]:
     return ket_qua
 
 
+def _cho_cua_so_dong(hwnd: int, timeout_sec: float = 2.0) -> bool:
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if not (win32.is_window(hwnd) and win32.is_visible(hwnd)):
+            return True
+        time.sleep(POLL_SEC)
+    return False
+
+
+@dataclass(frozen=True)
+class HopThoaiDongSoBo:
+    """Hộp thoại ĐÓNG nhận ra **chỉ bằng tiêu đề cửa sổ**, chưa đọc control nào.
+
+    Vì sao lớp này tồn tại, và nó là lý do đường đóng nhanh lên: `_map_controls` đọc `WM_GETTEXT`
+    của ~55 control, mỗi lời gọi là một `SendMessage` **liên tiến trình** vào đúng luồng giao diện
+    MT5 đang bận. Phép tìm mở rồi huỷ hộp thoại ở **từng dòng**, nên trả cái giá đó cho cả những
+    dòng chỉ để loại là lãng phí — muốn loại một dòng thì chỉ cần ticket, mà ticket nằm sẵn trong
+    tiêu đề `Position: #<ticket>` và `GetWindowTextW` đọc từ cache của hệ điều hành, không chặn.
+
+    Chỉ dùng để **loại** một dòng. Dòng khớp thì `ClosePositionDialog.tu_hwnd()` đọc đầy đủ control,
+    và `_commit_close` vẫn kiểm ticket lại từ cả ba nguồn trước khi bấm — D-30 không đổi.
+    """
+
+    hwnd: int
+    ticket: int | None
+
+    def cancel(self) -> None:
+        win32.post_close(self.hwnd)
+
+    def wait_closed(self, timeout_sec: float = 2.0) -> bool:
+        return _cho_cua_so_dong(self.hwnd, timeout_sec)
+
+
+def tim_so_bo(pid: int) -> HopThoaiDongSoBo | None:
+    """Hộp thoại đóng đang hiện của đúng tiến trình đó, nhận ra bằng tiêu đề. Không đọc control."""
+    for hwnd in win32.enum_top_level(win32.DIALOG_CLASS):
+        if win32.get_process_id(hwnd) != pid or not win32.is_visible(hwnd):
+            continue
+        tieu_de = win32.get_window_text(hwnd)
+        if tieu_de.startswith(POSITION_TITLE_PREFIX):
+            return HopThoaiDongSoBo(hwnd=hwnd, ticket=doc_ticket(tieu_de))
+    return None
+
+
+def cho_so_bo(pid: int, timeout_sec: float = OPEN_TIMEOUT_SEC) -> HopThoaiDongSoBo | None:
+    """Chờ hộp thoại đóng xuất hiện, nhận ra bằng tiêu đề."""
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        found = tim_so_bo(pid)
+        if found is not None:
+            return found
+        time.sleep(POLL_SEC)
+    return None
+
+
 @dataclass(frozen=True)
 class DialogState:
     """Những gì hộp thoại đang thực sự hiển thị. Nguồn duy nhất cho việc đọc lại."""
@@ -306,6 +361,20 @@ class ClosePositionDialog(_HopThoai):
             if la_che_do_dong(hwnd, controls):
                 return cls(hwnd=hwnd, controls=controls)
         return None
+
+    @classmethod
+    def tu_hwnd(cls, hwnd: int) -> ClosePositionDialog | None:
+        """Đọc đầy đủ control của một hộp thoại **đã biết hwnd**, thường là từ `HopThoaiDongSoBo`.
+
+        `None` khi nó không đúng hình dạng hộp thoại lệnh, hoặc không ở chế độ đóng — chỗ gọi phải
+        coi đó là lý do từ chối, không phải lý do đoán.
+        """
+        controls = _map_controls(hwnd)
+        if not all(ctrl_id in controls for ctrl_id in SIGNATURE):
+            return None
+        if not la_che_do_dong(hwnd, controls):
+            return None
+        return cls(hwnd=hwnd, controls=controls)
 
     @classmethod
     def cho_mo(cls, pid: int, timeout_sec: float = OPEN_TIMEOUT_SEC) -> ClosePositionDialog | None:
