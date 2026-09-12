@@ -2699,3 +2699,9 @@ Vẫn chưa biết **vì sao** cú nhấp đầu treo. Nghi MT5 vào vòng lặp
 chưa đo được — ghi ở B-15 để không ai tưởng đã hiểu.
 
 **665 test xanh.**
+
+Đo lại trên VPS ngay sau đó: **`CLOSE_UI` 1,45–1,65 giây, `CLOSE_UI_PARTIAL` 1,89 giây**, cú nhấp
+treo còn 0,77 giây. So với 3,2–4,5 giây trước bản này, và 5,1–5,5 giây của lần đo đầu trên laptop.
+Không lần nào rơi về EA. Phần còn lại chủ yếu vẫn là cú nhấp đầu bị treo (~0,8 giây); muốn bỏ hẳn thì
+phải tìm ra cơ chế, không hạ hạn chờ tiếp được nữa — 0,6 giây đã gần sát 0,27–0,38 giây của một cú
+nhấp thành công.

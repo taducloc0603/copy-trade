@@ -150,7 +150,15 @@ chạy tay mới thấy thưa. Chưa biết cơ chế; nghi MT5 vào một vòng
 Hạ giá phải trả mà không cần biết cơ chế: thêm `win32.CLICK_TIMEOUT_MS = 600` cho **riêng** ba
 message chuột (hạn chờ 2 giây vẫn giữ cho các message đọc), và `CHO_SAU_KHI_TREO_SEC` 0,5 → 0,15 vì
 cú nhấp treo không bao giờ mở hộp thoại. Hạ được vì giá trị trả về của ba message ấy **không phải
-bằng chứng**. Dự kiến còn ~1,5 giây; **chưa đo**.
+bằng chứng**.
+
+**Đo lại sau hai bản tối ưu (VPS, 2026-09-12):** `CLOSE_UI` **1,45–1,65 giây**, `CLOSE_UI_PARTIAL`
+**1,89 giây** — từ 3,2–4,5 giây, và từ 5,1–5,5 giây của lần đo đầu trên laptop. Cú nhấp treo còn
+**0,77 giây** thay vì 2,53. Không lần nào rơi về EA.
+
+Phần còn lại, nếu muốn đi tiếp: ~0,8 giây vẫn là **cú nhấp đầu tiên bị treo rồi nhấp lại**. Bỏ hẳn
+được nó thì mỗi lệnh đóng còn khoảng 0,7 giây — nhưng phải tìm ra vì sao MT5 treo, chứ không hạ hạn
+chờ tiếp: hạ nữa là chạm vào 0,27–0,38 giây của một cú nhấp **thành công**.
 
 ### B-16 — `dry_probe()` chưa được nối vào canary
 
