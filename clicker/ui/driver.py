@@ -469,7 +469,9 @@ class Mt5UiDriver:
                     sot.cancel()
                     sot.wait_closed()
             bat_dau = time.monotonic()
-            gui = tradetab.mo_hop_thoai_dong(list_hwnd, row)
+            # Lần đầu dùng cách gửi không treo; lần nhấp lại dùng đường cũ đã đo kỹ. Hai cơ chế
+            # khác nhau, nên một cái hỏng trên bản MT5 lạ thì cái kia vẫn còn.
+            gui = tradetab.mo_hop_thoai_dong(list_hwnd, row, nhanh=(lan == 1))
             cho = (self.CHO_SAU_KHI_TREO_SEC if not gui and lan < so_lan
                    else self.PROBE_CLOSE_SEC)
             so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)

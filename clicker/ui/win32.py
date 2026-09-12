@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import time
 from ctypes import wintypes
 from dataclasses import dataclass
 
@@ -66,6 +67,12 @@ SMTO_ABORTIFHUNG = 0x0002
 #: thoại có hiện ra hay không (xem `send_double_click`). Hết hạn sớm chỉ làm chỗ gọi biết sớm hơn là
 #: nên nhấp lại. 600 ms vẫn dư gấp đôi cho một cú nhấp thành công (đo 0,25–0,35 giây).
 CLICK_TIMEOUT_MS = 600
+
+#: Chờ giữa hai message `PostMessage` của cú nhấn/nhả và message double-click gửi kiểu chờ.
+#: `PostMessage` chỉ xếp message vào hàng đợi, còn message gửi kiểu chờ **chen lên trước** hàng đợi
+#: đó — nên không có nhịp nghỉ này thì double-click có thể tới trước cú nhấn/nhả. Đo 60 ms là đủ
+#: trên VPS (3/3 lần mở được hộp thoại, kể cả lần đầu).
+POST_SETTLE_SEC = 0.06
 
 
 class Win32Unavailable(RuntimeError):
@@ -612,11 +619,38 @@ def send_double_click(hwnd: int, x: int, y: int) -> bool:
     Đúng loại bẫy khó thấy nhất: bản thiếu vẫn chạy trên **dòng đầu tiên**, tức là chạy trên đúng
     trường hợp mà người ta thử tay. Không gửi `WM_LBUTTONUP` cuối cùng vì lúc đó MT5 đã ở trong
     vòng lặp modal của hộp thoại, và message ấy chỉ tổ chờ hết hạn.
+
+    **Không bỏ dở chuỗi khi một message hết hạn**, và đây là một lỗi đã sửa chứ không phải lựa chọn:
+    bản cũ `return False` ngay khi `WM_LBUTTONDOWN` hết hạn, nên `WM_LBUTTONUP` và `WM_LBUTTONDBLCLK`
+    **không bao giờ được gửi** — cú nhấp đầu của **mọi** lệnh đóng trên VPS hỏng đúng vì thế. Đo
+    2026-09-12: gửi tiếp cả chuỗi thì hộp thoại **vẫn mở** dù `WM_LBUTTONDOWN` đã treo hết hạn.
     """
     lparam = ((y & 0xFFFF) << 16) | (x & 0xFFFF)
-    if _send_timeout(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS) is None:
-        return False
-    if _send_timeout(hwnd, WM_LBUTTONUP, 0, lparam, CLICK_TIMEOUT_MS) is None:
-        return False
+    xuong = _send_timeout(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS)
+    _send_timeout(hwnd, WM_LBUTTONUP, 0, lparam, CLICK_TIMEOUT_MS)
+    nhap_dup = _send_timeout(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS)
+    return xuong is not None and nhap_dup is not None
+
+
+def post_then_double_click(hwnd: int, x: int, y: int) -> bool:
+    """Nhấn/nhả bằng `PostMessage`, rồi double-click bằng `SendMessageTimeout`.
+
+    Đường **mặc định** của phép dò từ 2026-09-12, và lý do là một phép đo trên VPS: gửi
+    `WM_LBUTTONDOWN` kiểu **chờ** làm MT5 giữ message tới đúng hết hạn (0,61 giây) ở cú nhấp đầu của
+    mỗi lệnh đóng — nghi MT5 vào vòng lặp bắt kéo-thả chờ chuột thật, nhưng chưa đo được. Gửi kiểu
+    **không chờ** thì không treo lần nào: 3/3 lần hộp thoại mở trong 0,20–0,34 giây, kể cả lần đầu.
+
+    Double-click vẫn gửi kiểu **chờ**: đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại, và
+    thay nó bằng `PostMessage` là đổi một thứ đã đo lấy một thứ chưa đo.
+
+    Giá trị trả về **không phải bằng chứng** đã mở được hộp thoại — như cả `send_double_click`.
+    """
+    api = user32()
+    lparam = ((y & 0xFFFF) << 16) | (x & 0xFFFF)
+    api.PostMessageW(wintypes.HWND(hwnd), WM_LBUTTONDOWN,
+                     wintypes.WPARAM(MK_LBUTTON), wintypes.LPARAM(lparam))
+    api.PostMessageW(wintypes.HWND(hwnd), WM_LBUTTONUP,
+                     wintypes.WPARAM(0), wintypes.LPARAM(lparam))
+    time.sleep(POST_SETTLE_SEC)
     return _send_timeout(
         hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS) is not None

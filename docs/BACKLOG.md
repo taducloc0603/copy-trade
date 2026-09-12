@@ -156,9 +156,26 @@ bằng chứng**.
 **1,89 giây** — từ 3,2–4,5 giây, và từ 5,1–5,5 giây của lần đo đầu trên laptop. Cú nhấp treo còn
 **0,77 giây** thay vì 2,53. Không lần nào rơi về EA.
 
-Phần còn lại, nếu muốn đi tiếp: ~0,8 giây vẫn là **cú nhấp đầu tiên bị treo rồi nhấp lại**. Bỏ hẳn
-được nó thì mỗi lệnh đóng còn khoảng 0,7 giây — nhưng phải tìm ra vì sao MT5 treo, chứ không hạ hạn
-chờ tiếp: hạ nữa là chạm vào 0,27–0,38 giây của một cú nhấp **thành công**.
+**Tìm ra chỗ treo, và một lỗi nằm sau nó (VPS, 2026-09-12).** Đo năm kiểu gửi message, mỗi kiểu 3
+lần, mỗi lần tái tạo đúng điều kiện của clicker thật (vừa mở rồi huỷ hộp thoại New Order xong):
+
+| Kiểu gửi | Lần đầu | Lần 2–3 |
+|---|---|---|
+| Cả ba message gửi **kiểu chờ** (bản cũ) | `WM_LBUTTONDOWN` **treo hết hạn 0,61 s**, hộp thoại **vẫn mở** sau 0,95 s | 0,28–0,30 s |
+| Nhấn/nhả **kiểu không chờ** + double-click kiểu chờ | mở 0,34 s | 0,27–0,28 s |
+| Chỉ double-click | mở 0,25 s | 0,20 s |
+| Cả ba **kiểu không chờ** | mở 0,23 s | 0,22–0,25 s |
+
+Hai kết luận. Thứ nhất, message treo là `WM_LBUTTONDOWN`, chỉ ở cú nhấp đầu — nghi MT5 vào vòng lặp
+bắt kéo-thả chờ chuột thật, **chưa đo được**. Thứ hai, và đây mới là lỗi: `send_double_click` **bỏ dở
+cả chuỗi** khi một message hết hạn (`return False` ngay), nên `WM_LBUTTONUP` và `WM_LBUTTONDBLCLK`
+**không bao giờ được gửi**. Vì thế cú nhấp đầu của **mọi** lệnh đóng trên VPS không mở được gì, trong
+khi cùng cú nhấp ấy ở script chẩn đoán (gửi tiếp cả chuỗi) thì mở được.
+
+Sửa: `send_double_click` gửi hết cả ba message rồi mới kết luận; thêm `post_then_double_click`
+(nhấn/nhả kiểu không chờ) làm đường **mặc định** của lần nhấp đầu, giữ đường cũ cho lần nhấp lại — hai
+cơ chế khác nhau thì một cái hỏng trên bản MT5 lạ vẫn còn cái kia. Giữ `WM_LBUTTONDBLCLK` ở kiểu chờ
+vì phép đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại.
 
 ### B-16 — `dry_probe()` chưa được nối vào canary
 

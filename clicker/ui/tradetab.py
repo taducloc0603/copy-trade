@@ -82,7 +82,7 @@ def so_dong(list_hwnd: int) -> int | None:
     return win32.listview_item_count(list_hwnd)
 
 
-def mo_hop_thoai_dong(list_hwnd: int, row: int) -> bool:
+def mo_hop_thoai_dong(list_hwnd: int, row: int, nhanh: bool = True) -> bool:
     """Mở hộp thoại đóng cho dòng thứ `row`. Trả về việc message có gửi được hay không.
 
     **Không** trả về "đã mở đúng vị thế" — nó không biết điều đó, và không thể biết. Chỗ gọi phải
@@ -105,4 +105,9 @@ def mo_hop_thoai_dong(list_hwnd: int, row: int) -> bool:
         return False
 
     y = (rect[1] + rect[3]) // 2
-    return win32.send_double_click(list_hwnd, CLICK_X, y)
+    # `nhanh` (mặc định): nhấn/nhả gửi kiểu KHÔNG chờ rồi double-click gửi kiểu chờ. Đo trên VPS
+    # 2026-09-12: gửi `WM_LBUTTONDOWN` kiểu chờ treo hết hạn ở cú nhấp đầu của **mọi** lệnh đóng,
+    # bản post thì không treo lần nào. `nhanh=False` giữ đường cũ đã đo kỹ từ 2026-09-10, dùng cho
+    # lần thử thứ hai — hai cơ chế khác nhau thì một cái hỏng trên bản MT5 lạ vẫn còn cái kia.
+    bam = win32.post_then_double_click if nhanh else win32.send_double_click
+    return bam(list_hwnd, CLICK_X, y)

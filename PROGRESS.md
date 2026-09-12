@@ -2705,3 +2705,27 @@ treo còn 0,77 giây. So với 3,2–4,5 giây trước bản này, và 5,1–5,
 Không lần nào rơi về EA. Phần còn lại chủ yếu vẫn là cú nhấp đầu bị treo (~0,8 giây); muốn bỏ hẳn thì
 phải tìm ra cơ chế, không hạ hạn chờ tiếp được nữa — 0,6 giây đã gần sát 0,27–0,38 giây của một cú
 nhấp thành công.
+
+### Chỗ treo là `WM_LBUTTONDOWN` — và cú nhấp đầu hỏng vì code bỏ dở chuỗi
+
+*(2026-09-12, đo trên VPS.)* Năm kiểu gửi message, mỗi kiểu 3 lần, mỗi lần tái tạo đúng điều kiện của
+clicker thật (vừa mở rồi huỷ hộp thoại New Order xong):
+
+- Bản cũ: `WM_LBUTTONDOWN` **treo hết hạn 0,61 s** ở lần đầu — nhưng hộp thoại **vẫn mở** sau 0,95 s.
+- Nhấn/nhả **kiểu không chờ** rồi double-click kiểu chờ: mở trong **0,20–0,34 s**, không treo lần nào.
+
+Điều thứ nhất lộ ra lỗi thật: `send_double_click` **bỏ dở cả chuỗi** khi một message hết hạn — bản cũ
+`return False` ngay sau `WM_LBUTTONDOWN`, nên `WM_LBUTTONUP` và `WM_LBUTTONDBLCLK` **không bao giờ
+được gửi**. Đó là lý do cú nhấp đầu của **mọi** lệnh đóng trên VPS không mở được gì, còn script chẩn
+đoán (luôn gửi tiếp cả chuỗi) thì mở được. Một lỗi trốn được ba ngày vì hai bên đo khác nhau đúng ở
+chỗ đó.
+
+**Sửa:** gửi hết cả ba message rồi mới kết luận; thêm `win32.post_then_double_click` làm đường mặc
+định cho lần nhấp đầu; giữ đường cũ cho lần nhấp lại (hai cơ chế khác nhau). `WM_LBUTTONDBLCLK` vẫn
+gửi kiểu chờ — phép đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại.
+
++3 test: không bỏ dở chuỗi khi `WM_LBUTTONDOWN` hết hạn; đường nhanh post đúng hai message rồi mới
+gửi double-click; lần nhấp đầu dùng đường nhanh, lần nhấp lại dùng đường cũ. Dự kiến `CLOSE_UI` còn
+**0,7–0,9 giây**; **chưa đo lại**.
+
+**668 test xanh.**

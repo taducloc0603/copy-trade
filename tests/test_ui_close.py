@@ -327,7 +327,7 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
 
     trang_thai = {"dong": -1}
 
-    def mo(_list_hwnd: int, row: int) -> bool:
+    def mo(_list_hwnd: int, row: int, nhanh: bool = True) -> bool:
         trang_thai["dong"] = row
         nhat_ky.append(f"mo dong {row}")
         return True
@@ -398,7 +398,7 @@ def _gia_lap_treo(monkeypatch: pytest.MonkeyPatch, so_lan_treo: dict[int, int],
     cho: list[float] = []
     trang_thai = {"dong": -1, "treo": False}
 
-    def mo(_list_hwnd: int, row: int) -> bool:
+    def mo(_list_hwnd: int, row: int, nhanh: bool = True) -> bool:
         da_mo.append(row)
         trang_thai["dong"] = row
         trang_thai["treo"] = da_mo.count(row) <= so_lan_treo.get(row, 0)
@@ -473,6 +473,66 @@ def test_doan_sai_dong_thi_van_do_tiep_va_dong_dung_ticket(
     assert kq.status == "ok" and driver._bam.da_bam == [4242]
     assert nhat_ky[0] == "mo dong 1" and "huy dong 1" in nhat_ky
     assert "doc control dong 0" in nhat_ky
+
+
+def test_khong_bo_do_chuoi_khi_DOWN_het_han(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Loi that tren VPS: DOWN het han thi ban cu bo do, nen UP va DBLCLK KHONG BAO GIO duoc gui.
+
+    Do 2026-09-12: gui tiep ca chuoi thi hop thoai VAN MO du DOWN da treo het han.
+    """
+    da_gui: list[int] = []
+
+    def gia(hwnd: int, msg: int, wparam: int, lparam: int,
+            timeout_ms: int = win32_mod.SEND_TIMEOUT_MS) -> int | None:
+        da_gui.append(msg)
+        return None if msg == win32_mod.WM_LBUTTONDOWN else 0
+
+    monkeypatch.setattr(win32_mod, "_send_timeout", gia)
+
+    assert win32_mod.send_double_click(1, 100, 30) is False
+    assert da_gui == [win32_mod.WM_LBUTTONDOWN, win32_mod.WM_LBUTTONUP,
+                      win32_mod.WM_LBUTTONDBLCLK]
+
+
+def test_nhap_nhanh_post_DOWN_UP_roi_send_DBLCLK(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DOWN gui kieu CHO treo het han o cu nhap dau moi lenh dong; gui kieu khong cho thi khong."""
+    da_post: list[int] = []
+    da_send: list[tuple[int, int]] = []
+
+    class ApiGia:
+        def PostMessageW(self, hwnd: Any, msg: int, wparam: Any, lparam: Any) -> int:
+            da_post.append(msg)
+            return 1
+
+    def gui(hwnd: int, msg: int, wparam: int, lparam: int,
+            timeout_ms: int = win32_mod.SEND_TIMEOUT_MS) -> int:
+        da_send.append((msg, timeout_ms))
+        return 0
+
+    monkeypatch.setattr(win32_mod, "user32", ApiGia)
+    monkeypatch.setattr(win32_mod, "_send_timeout", gui)
+    monkeypatch.setattr(win32_mod, "POST_SETTLE_SEC", 0)
+
+    assert win32_mod.post_then_double_click(1, 100, 30)
+    assert da_post == [win32_mod.WM_LBUTTONDOWN, win32_mod.WM_LBUTTONUP]
+    assert da_send == [(win32_mod.WM_LBUTTONDBLCLK, win32_mod.CLICK_TIMEOUT_MS)]
+
+
+def test_lan_dau_nhap_kieu_khong_treo_lan_hai_dung_duong_cu(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hai co che khac nhau: mot cai hong tren ban MT5 la thi cai kia van con."""
+    _gia_lap_treo(monkeypatch, {0: 1}, [TICKET])
+    goc = driver_mod.tradetab.mo_hop_thoai_dong
+    kieu: list[bool] = []
+
+    def mo(list_hwnd: int, row: int, nhanh: bool = True) -> bool:
+        kieu.append(nhanh)
+        return goc(list_hwnd, row)
+
+    monkeypatch.setattr(driver_mod.tradetab, "mo_hop_thoai_dong", mo)
+
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+    assert kieu == [True, False]
 
 
 def test_ba_message_chuot_dung_han_cho_ngan(monkeypatch: pytest.MonkeyPatch) -> None:
