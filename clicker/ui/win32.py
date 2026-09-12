@@ -56,6 +56,17 @@ MENU_NEW_ORDER = 32848
 SEND_TIMEOUT_MS = 2000
 SMTO_ABORTIFHUNG = 0x0002
 
+#: Hạn chờ riêng cho ba message chuột của `send_double_click`, ngắn hơn hẳn `SEND_TIMEOUT_MS`.
+#:
+#: Đo trên VPS 2026-09-12, 6/6 lần đóng: cú nhấp **đầu tiên** của mỗi lần đóng treo tới đúng hết hạn
+#: 2 giây rồi không mở hộp thoại nào; cú nhấp lại ngay sau đó mở trong 0,28–1,17 giây. Hai giây ấy
+#: là tiền vô ích trả cho **mỗi** lệnh đóng.
+#:
+#: Hạ được vì giá trị trả về của ba message này **không phải bằng chứng**: bằng chứng duy nhất là hộp
+#: thoại có hiện ra hay không (xem `send_double_click`). Hết hạn sớm chỉ làm chỗ gọi biết sớm hơn là
+#: nên nhấp lại. 600 ms vẫn dư gấp đôi cho một cú nhấp thành công (đo 0,25–0,35 giây).
+CLICK_TIMEOUT_MS = 600
+
 
 class Win32Unavailable(RuntimeError):
     """Không chạy trên Windows, hoặc không nạp được `user32.dll`."""
@@ -387,12 +398,13 @@ def kernel32() -> ctypes.WinDLL:
     return _kernel32
 
 
-def _send_timeout(hwnd: int, msg: int, wparam: int, lparam: int) -> int | None:
+def _send_timeout(hwnd: int, msg: int, wparam: int, lparam: int,
+                  timeout_ms: int = SEND_TIMEOUT_MS) -> int | None:
     """`SendMessageTimeoutW` trần. `None` nghĩa là control không trả lời (hoặc đang treo)."""
     result = ctypes.c_size_t()
     ok = user32().SendMessageTimeoutW(
         wintypes.HWND(hwnd), msg, ctypes.c_size_t(wparam), ctypes.c_void_p(lparam),
-        SMTO_ABORTIFHUNG, SEND_TIMEOUT_MS, ctypes.byref(result),
+        SMTO_ABORTIFHUNG, timeout_ms, ctypes.byref(result),
     )
     return int(result.value) if ok else None
 
@@ -602,8 +614,9 @@ def send_double_click(hwnd: int, x: int, y: int) -> bool:
     vòng lặp modal của hộp thoại, và message ấy chỉ tổ chờ hết hạn.
     """
     lparam = ((y & 0xFFFF) << 16) | (x & 0xFFFF)
-    if _send_timeout(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam) is None:
+    if _send_timeout(hwnd, WM_LBUTTONDOWN, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS) is None:
         return False
-    if _send_timeout(hwnd, WM_LBUTTONUP, 0, lparam) is None:
+    if _send_timeout(hwnd, WM_LBUTTONUP, 0, lparam, CLICK_TIMEOUT_MS) is None:
         return False
-    return _send_timeout(hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lparam) is not None
+    return _send_timeout(
+        hwnd, WM_LBUTTONDBLCLK, MK_LBUTTON, lparam, CLICK_TIMEOUT_MS) is not None

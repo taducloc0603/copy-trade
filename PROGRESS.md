@@ -2673,3 +2673,29 @@ ticket; tiêu đề lạ vẫn tìm ra bằng đường dự phòng). Hai test c
 nguyên điều được khẳng định. **Chưa đo lại trên VPS** — mục tiêu `CLOSE_UI` dưới 1,5 giây.
 
 **664 test xanh.**
+
+### Đo lại trên VPS: cú nhấp đầu của **mỗi** lần đóng treo đủ 2 giây
+
+*(2026-09-12, sau khi cập nhật.)* Sáu lần đóng liên tiếp trên demo (ETHUSD.s): `CLOSE_UI`
+**3,2–4,5 giây**, không lần nào rơi về EA, `kiem-reason` ĐẠT. Nhưng log `Do dong` cho thấy **6/6**
+lần đều cùng một hình dạng:
+
+```
+Do dong 0 lan 1: gui=False, hop thoai KHONG mo sau 2.53s
+Do dong 0 lan 2: gui=True,  hop thoai MO sau 0.28s
+```
+
+Nên "thỉnh thoảng treo" hôm qua thật ra là **luôn treo** trong ngữ cảnh clicker thật — chạy tay mới
+thấy thưa. 2,53 giây đó = 2,0 giây hạn chờ message chuột + 0,5 giây chờ trước khi nhấp lại, và nó
+cộng vào **mỗi** lệnh đóng.
+
+**Sửa mà không cần biết cơ chế:** `win32.CLICK_TIMEOUT_MS = 600` cho **riêng** ba message chuột
+(`_send_timeout` nay nhận hạn chờ; các message đọc vẫn 2 giây), và `CHO_SAU_KHI_TREO_SEC` 0,5 → 0,15
+vì cú nhấp treo không bao giờ mở hộp thoại. Hạ được vì giá trị trả về của ba message ấy **không phải
+bằng chứng** — bằng chứng duy nhất là hộp thoại có hiện ra hay không. +1 test giữ hai hằng số này
+đúng vai. Dự kiến `CLOSE_UI` còn ~1,5 giây; **chưa đo lại**.
+
+Vẫn chưa biết **vì sao** cú nhấp đầu treo. Nghi MT5 vào vòng lặp bắt kéo-thả chờ chuột thật, nhưng
+chưa đo được — ghi ở B-15 để không ai tưởng đã hiểu.
+
+**665 test xanh.**

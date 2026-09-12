@@ -139,7 +139,18 @@ không chặn. Nay vòng dò dùng `dialog.HopThoaiDongSoBo` (chỉ tiêu đề)
 `ClosePositionDialog.tu_hwnd()` đọc đủ control, và `_commit_close` vẫn kiểm ticket từ cả ba nguồn
 trước khi bấm (D-30 không đổi). Thêm `_thu_tu_dong`: dòng đóng trúng lần trước được dò trước — chỉ là
 thứ tự, đoán sai vẫn đọc ngược kiểm chứng. Giữ đường dự phòng quét đầy đủ cho bản MT5 đặt tiêu đề
-khác. **Chưa đo trên VPS** sau tối ưu.
+khác.
+
+**Đo lại trên VPS sau tối ưu đó: `CLOSE_UI` còn 3,2–4,5 giây, và 6/6 lần đóng đều mất 2,5 giây ở
+cùng một chỗ.** Log `Do dong` cho thấy cú nhấp **đầu tiên của mỗi lần đóng** treo tới đúng hết hạn
+`SEND_TIMEOUT_MS` = 2 giây rồi **không** mở hộp thoại; cú nhấp lại mở trong 0,28–1,17 giây. Tức là
+hiện tượng "thỉnh thoảng treo" hôm 09-11 thật ra là **luôn treo** trong ngữ cảnh clicker thật, chỉ
+chạy tay mới thấy thưa. Chưa biết cơ chế; nghi MT5 vào một vòng lặp bắt kéo-thả chờ chuột thật.
+
+Hạ giá phải trả mà không cần biết cơ chế: thêm `win32.CLICK_TIMEOUT_MS = 600` cho **riêng** ba
+message chuột (hạn chờ 2 giây vẫn giữ cho các message đọc), và `CHO_SAU_KHI_TREO_SEC` 0,5 → 0,15 vì
+cú nhấp treo không bao giờ mở hộp thoại. Hạ được vì giá trị trả về của ba message ấy **không phải
+bằng chứng**. Dự kiến còn ~1,5 giây; **chưa đo**.
 
 ### B-16 — `dry_probe()` chưa được nối vào canary
 

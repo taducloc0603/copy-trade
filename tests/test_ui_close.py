@@ -19,6 +19,7 @@ import pytest
 
 from clicker.ui import dialog as dialog_mod
 from clicker.ui import driver as driver_mod
+from clicker.ui import win32 as win32_mod
 from clicker.ui.dialog import CloseState, DialogError, doc_ticket, la_che_do_dong
 from clicker.ui.driver import CloseRequest, Mt5UiDriver, Outcome
 from clicker.ui.win32 import ControlInfo
@@ -472,6 +473,26 @@ def test_doan_sai_dong_thi_van_do_tiep_va_dong_dung_ticket(
     assert kq.status == "ok" and driver._bam.da_bam == [4242]
     assert nhat_ky[0] == "mo dong 1" and "huy dong 1" in nhat_ky
     assert "doc control dong 0" in nhat_ky
+
+
+def test_ba_message_chuot_dung_han_cho_ngan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """2 giây × mỗi lệnh đóng là tiền vô ích: cú nhấp treo không bao giờ mở hộp thoại.
+
+    Hạ được hạn chờ vì giá trị trả về của ba message này không phải bằng chứng — bằng chứng duy
+    nhất là hộp thoại có hiện ra hay không.
+    """
+    han: list[int] = []
+
+    def gia(hwnd: int, msg: int, wparam: int, lparam: int,
+            timeout_ms: int = win32_mod.SEND_TIMEOUT_MS) -> int:
+        han.append(timeout_ms)
+        return 0
+
+    monkeypatch.setattr(win32_mod, "_send_timeout", gia)
+
+    assert win32_mod.send_double_click(1, 100, 30)
+    assert han == [win32_mod.CLICK_TIMEOUT_MS] * 3
+    assert win32_mod.CLICK_TIMEOUT_MS < win32_mod.SEND_TIMEOUT_MS
 
 
 def test_tieu_de_khong_nhan_ra_thi_van_tim_duoc_bang_duong_du_phong(

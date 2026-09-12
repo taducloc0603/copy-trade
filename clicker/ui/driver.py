@@ -244,9 +244,12 @@ class Mt5UiDriver:
     #: (xem `_mo_dong`). Một lần là đủ theo đo đạc; nhiều hơn chỉ kéo dài phép dò khi terminal treo
     #: thật, mà lúc đó Bridge còn đường rơi về EA.
     NHAP_LAI_KHI_TREO = 1
-    #: Chờ hộp thoại sau một cú nhấp **bị treo** trước khi nhấp lại. Ngắn vì message đã chặn đủ 2
-    #: giây: hộp thoại nếu mở thì đã mở rồi — đo trên VPS, chờ thêm 3 giây cũng không thấy gì.
-    CHO_SAU_KHI_TREO_SEC = 0.5
+    #: Chờ hộp thoại sau một cú nhấp **bị treo** trước khi nhấp lại.
+    #:
+    #: Đo trên VPS 2026-09-12, 6/6 lần đóng: cú nhấp treo **không bao giờ** mở hộp thoại, kể cả khi
+    #: chờ thêm 3 giây; cú nhấp lại thì mở. Nên khoảng chờ này chỉ để chắc chắn, không phải để hy
+    #: vọng — giữ ngắn, vì nó cộng vào **mỗi** lệnh đóng.
+    CHO_SAU_KHI_TREO_SEC = 0.15
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
