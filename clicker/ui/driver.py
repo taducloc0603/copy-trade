@@ -331,10 +331,12 @@ class Mt5UiDriver:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         pid = win32.get_process_id(health.hwnd)
 
+        bat_dau = time.monotonic()
         try:
             list_hwnd = tradetab.tim_danh_sach(health.hwnd)
         except tradetab.TradeTabError as exc:
             return Outcome("rejected", str(exc), clicked=False)
+        log.info("Tim danh sach Trade: %.2fs", time.monotonic() - bat_dau)
 
         # Hộp thoại còn sót — từ lần trước, hoặc do người vận hành mở. Phải huỷ: MT5 đang ở vòng
         # lặp modal thì cú double-click kế tiếp không đi tới đâu cả.
@@ -373,7 +375,10 @@ class Mt5UiDriver:
                 so_bo.wait_closed()
                 continue
 
+            doc_tu = time.monotonic()
             hop = ClosePositionDialog.tu_hwnd(so_bo.hwnd)
+            log.info("Doc control hop thoai dong (dong %d): %.2fs", row,
+                     time.monotonic() - doc_tu)
             if hop is None:
                 so_bo.cancel()
                 so_bo.wait_closed()

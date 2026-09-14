@@ -207,16 +207,28 @@ def enum_top_level(class_name: str | None = None) -> list[int]:
     return found
 
 
-def enum_children(parent: int) -> list[ControlInfo]:
-    """Toàn bộ control con của một cửa sổ, kèm `ctrl_id` — khoá để nhận ra từng ô."""
+def enum_children(parent: int, doc_chu: frozenset[int] | None = None) -> list[ControlInfo]:
+    """Toàn bộ control con của một cửa sổ, kèm `ctrl_id` — khoá để nhận ra từng ô.
+
+    `doc_chu` là tập `ctrl_id` **cần đọc chữ**; control ngoài tập trả `text = ""`. `None` nghĩa là
+    đọc hết, và đó là thứ `dump.py` cần — nó là công cụ khảo sát, mất chữ là mất tác dụng.
+
+    Vì sao có tham số này: `ctrl_id`, class và `visible` đọc bằng API rẻ và **không chặn**, còn chữ
+    thì phải `SendMessageTimeout(WM_GETTEXT)` **liên tiến trình** vào đúng luồng giao diện MT5 đang
+    bận. Hai chỗ gọi nóng trả giá đó cho hàng chục control mà gần như không dùng tới kết quả:
+    `tradetab.tim_danh_sach` quét ~90 control của cả cửa sổ terminal và chỉ lọc theo `ctrl_id` với
+    class; `dialog._map_controls` quét ~55 control của hộp thoại nhưng chỉ ba ctrlID cần chữ.
+    """
     api = user32()
     found: list[ControlInfo] = []
 
     def callback(hwnd: int, _param: int) -> bool:
         handle = int(hwnd)
-        found.append(ControlInfo(hwnd=handle, ctrl_id=get_ctrl_id(handle),
+        ctrl_id = get_ctrl_id(handle)
+        can_chu = doc_chu is None or ctrl_id in doc_chu
+        found.append(ControlInfo(hwnd=handle, ctrl_id=ctrl_id,
                                  class_name=get_class_name(handle),
-                                 text=get_control_text(handle),
+                                 text=get_control_text(handle) if can_chu else "",
                                  visible=is_visible(handle)))
         return True
 

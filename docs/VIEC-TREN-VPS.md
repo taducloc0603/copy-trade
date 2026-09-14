@@ -82,6 +82,17 @@ for r in c.execute("SELECT type, target_agent_id, status, "
 `CLOSE_UI` phía Client phải vẫn quanh **0,8 giây**. Hai clicker chạy song song, mỗi cái một khoá và
 một terminal, nên về lý thuyết không giành nhau — nhưng đó là lý thuyết, chưa đo.
 
+Lần này log có thêm hai dòng để biết cắt được bao nhiêu từ bản bỏ đọc chữ thừa (2026-09-14):
+
+```powershell
+Select-String -Path logs\clicker.log -Pattern 'Tim danh sach Trade|Doc control hop thoai|Do dong' |
+  Select-Object -Last 15 | Out-Host
+```
+
+Ghi số **thật** vào `docs/BACKLOG.md` B-15. Nếu hai dòng đó chỉ vài chục mili giây thì nói thẳng là
+mức cắt không đáng kể: phần còn lại của 0,77 giây là MT5 dựng hộp thoại (~0,3 giây), và chỗ đó chỉ
+cắt được bằng cách không mở hộp thoại nào — đường menu chuột phải, **chưa ai đo**.
+
 ## 6. Qua một đêm
 
 Sáng hôm sau kiểm **cả ba** file log đều có bản đã xoay kèm ngày. Đây là bằng chứng duy nhất cho

@@ -55,7 +55,10 @@ def tim_danh_sach(terminal_hwnd: int) -> int:
     `visible`, và cái đang hiện là danh sách của tab khác (Journal, History…). Bấm vào đó không
     mở hộp thoại nào — nhưng cũng không được lặng lẽ thử.
     """
-    ung_vien = [c for c in win32.enum_children(terminal_hwnd)
+    # `doc_chu=frozenset()`: hàm này lọc theo `ctrl_id` và class, **không** đụng tới chữ. Đọc chữ
+    # của cả ~90 control trong cửa sổ terminal là hàng chục lệnh `SendMessage` liên tiến trình mỗi
+    # lệnh đóng, trả giá cho một thứ không ai dùng.
+    ung_vien = [c for c in win32.enum_children(terminal_hwnd, doc_chu=frozenset())
                 if c.ctrl_id == CTRL_TRADE_LIST and c.class_name == win32.LISTVIEW_CLASS]
     if not ung_vien:
         raise TradeTabError(

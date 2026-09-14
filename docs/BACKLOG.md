@@ -177,6 +177,14 @@ Sửa: `send_double_click` gửi hết cả ba message rồi mới kết luận;
 cơ chế khác nhau thì một cái hỏng trên bản MT5 lạ vẫn còn cái kia. Giữ `WM_LBUTTONDBLCLK` ở kiểu chờ
 vì phép đo 2026-09-10 cho thấy đó là message thực sự mở hộp thoại.
 
+**Cắt tiếp phần đọc chữ không ai dùng (2026-09-14, chưa đo trên VPS).** `win32.enum_children` đọc
+`WM_GETTEXT` của **mọi** control con, mà mỗi lời gọi là `SendMessageTimeout` liên tiến trình. Hai chỗ
+quét nóng trả giá đó gần như vô ích: `tradetab.tim_danh_sach` quét ~90 control của cả cửa sổ terminal
+nhưng chỉ lọc theo `ctrl_id` và class; `dialog._map_controls` quét ~55 control của hộp thoại nhưng chỉ
+ba ctrlID cần chữ (`10410`, `10408`, `10409` — để phân biệt bản đang hiện với bản ẩn). Nay
+`enum_children` nhận `doc_chu`; `dump.py` giữ mặc định đọc hết vì nó là công cụ khảo sát. Thêm hai
+dòng log thời gian để **đo** phần tìm danh sách và phần đọc control.
+
 **Đo lại sau bản sửa đó (VPS, 2026-09-13): `CLOSE_UI` 0,77 giây**, log chỉ còn một dòng
 `Do dong 0 lan 1: gui=True, hop thoai MO sau 0.31s` — không còn lần nhấp lại nào. So với 5,1–5,5 giây
 của phép đo đầu: **nhanh gấp khoảng 7 lần**. Mục này coi như đã trả xong phần tốc độ; phần còn nợ là

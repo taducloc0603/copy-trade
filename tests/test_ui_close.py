@@ -19,6 +19,7 @@ import pytest
 
 from clicker.ui import dialog as dialog_mod
 from clicker.ui import driver as driver_mod
+from clicker.ui import tradetab as tradetab_mod
 from clicker.ui import win32 as win32_mod
 from clicker.ui.dialog import CloseState, DialogError, doc_ticket, la_che_do_dong
 from clicker.ui.driver import CloseRequest, Mt5UiDriver, Outcome
@@ -473,6 +474,64 @@ def test_doan_sai_dong_thi_van_do_tiep_va_dong_dung_ticket(
     assert kq.status == "ok" and driver._bam.da_bam == [4242]
     assert nhat_ky[0] == "mo dong 1" and "huy dong 1" in nhat_ky
     assert "doc control dong 0" in nhat_ky
+
+
+# Doc chu cua mot control la SendMessage LIEN TIEN TRINH vao luong giao dien MT5 dang ban. Hai cho
+# quet nong tra cai gia do cho hang chuc control ma gan nhu khong dung toi ket qua.
+
+def test_enum_children_chi_doc_chu_cua_ctrl_id_duoc_chi_dinh(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    class ApiGia:
+        def EnumChildWindows(self, parent: Any, proc: Any, param: Any) -> int:
+            for h in (11, 22):
+                proc(h, 0)
+            return 1
+
+    da_doc: list[int] = []
+    monkeypatch.setattr(win32_mod, "user32", ApiGia)
+    monkeypatch.setattr(win32_mod, "get_ctrl_id", lambda h: h)
+    monkeypatch.setattr(win32_mod, "get_class_name", lambda h: "Button")
+    monkeypatch.setattr(win32_mod, "is_visible", lambda h: True)
+    monkeypatch.setattr(win32_mod, "get_control_text",
+                        lambda h: (da_doc.append(h), f"chu-{h}")[1])
+
+    ds = win32_mod.enum_children(1, doc_chu=frozenset({22}))
+    assert da_doc == [22], "Chi duoc doc chu cua ctrl_id trong tap"
+    assert [c.text for c in ds] == ["", "chu-22"]
+
+    da_doc.clear()
+    win32_mod.enum_children(1)
+    assert da_doc == [11, 22], "None = doc het, vi dump.py la cong cu khao sat"
+
+
+def test_tim_danh_sach_khong_doc_chu_cua_control_nao(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hàm này lọc theo ctrl_id và class. Đọc chữ ~90 control của cửa sổ terminal là tiền vứt đi."""
+    ghi: dict[str, Any] = {}
+
+    def gia(parent: int, doc_chu: Any = None) -> list[ControlInfo]:
+        ghi["doc_chu"] = doc_chu
+        return [ControlInfo(hwnd=7, ctrl_id=tradetab_mod.CTRL_TRADE_LIST,
+                            class_name=win32_mod.LISTVIEW_CLASS, text="", visible=True)]
+
+    monkeypatch.setattr(tradetab_mod.win32, "enum_children", gia)
+
+    assert tradetab_mod.tim_danh_sach(1) == 7
+    assert ghi["doc_chu"] == frozenset()
+
+
+def test_map_controls_chi_doc_chu_ba_nut_can_phan_biet_ban_an(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Chỉ `10410`, `10408`, `10409` cần chữ — để phân biệt bản đang hiện với bản ẩn cùng ctrlID."""
+    ghi: dict[str, Any] = {}
+
+    def gia(parent: int, doc_chu: Any = None) -> list[ControlInfo]:
+        ghi["doc_chu"] = doc_chu
+        return []
+
+    monkeypatch.setattr(dialog_mod.win32, "enum_children", gia)
+    dialog_mod._map_controls(1)
+
+    assert ghi["doc_chu"] == {dialog_mod.CTRL_CLOSE, dialog_mod.CTRL_BUY, dialog_mod.CTRL_SELL}
 
 
 def test_khong_bo_do_chuoi_khi_DOWN_het_han(monkeypatch: pytest.MonkeyPatch) -> None:

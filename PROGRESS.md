@@ -2740,6 +2740,24 @@ hai script PowerShell parse 0 lỗi.
 **Chưa làm:** đo ctrlID trên terminal Master của VPS (bước 1 của plan 12), TEST-30 trên demo, và
 hiển thị `master_close_route` trên dashboard.
 
+#### "Giữ hộp thoại đóng mở sẵn" — vì sao không làm được, và chỗ thật sự cắt được
+
+*(2026-09-14.)* Đề xuất: mở hộp thoại đóng rồi **để nguyên**, lần sau khỏi mở lại. Không làm được, và
+ghi lại đây để lần sau không ai đề xuất lại mà không biết lý do:
+
+1. Hộp thoại đóng **gắn với đúng một vị thế** (tiêu đề `Position: #<ticket>`); combo `10672` chỉ hiện
+   vị thế hiện tại và không chọn sang vị thế khác được. Lần đóng sau là ticket khác.
+2. Nó là **modal**: đang mở thì cú nhấp đúp kế tiếp không đi tới đâu, và hộp thoại New Order cũng
+   không bật lên được — tức là chặn cả đường mở. Đó đúng là trạng thái mà bản sửa 09-11 phải chống.
+
+**Nhưng trực giác "đang tốn thời gian vô ích" thì đúng, chỉ sai chỗ.** `win32.enum_children` đọc chữ
+của **mọi** control con bằng `SendMessage` liên tiến trình; `tim_danh_sach` trả giá đó cho ~90 control
+của cả cửa sổ terminal mà chỉ cần `ctrl_id` với class, còn `_map_controls` trả cho ~55 control của hộp
+thoại mà chỉ ba ctrlID cần chữ. Nay `enum_children` nhận `doc_chu`; `dump.py` giữ nguyên đọc hết.
+Thêm hai dòng log thời gian để đo thật thay vì đoán — B-15 đã một lần đoán sai chỗ.
+
++3 test, cả ba **đỏ trên code cũ**. **687 test xanh.** Mức cắt **chưa đo trên VPS**.
+
 #### Hai clicker suýt ghi chung một file log
 
 Cùng cái bẫy đã làm `bridge.log` đứng im 63 giờ hôm 09-11: cả hai clicker đều đặt

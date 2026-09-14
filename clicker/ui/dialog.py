@@ -59,6 +59,14 @@ POSITION_TITLE_PREFIX = "Position: #"
 #: chế độ MỞ với chế độ ĐÓNG; việc đó là của `la_che_do_dong()`.
 SIGNATURE = (CTRL_VOLUME, CTRL_COMMENT, CTRL_BUY, CTRL_SELL)
 
+#: Những control **cần đọc chữ** khi quét hộp thoại. Chỉ ba cái, và đều vì cùng một lý do: phân
+#: biệt bản đang hiện với **bản ẩn** cùng ctrlID (`la_che_do_dong`, `button()`).
+#:
+#: Số còn lại — khoảng 50 control — không ai đọc chữ, mà mỗi lần đọc là một `SendMessage` liên
+#: tiến trình vào luồng giao diện MT5 đang bận. `read_back()` đọc thẳng theo `hwnd` nên không phụ
+#: thuộc bước quét này.
+CTRL_CAN_CHU = frozenset({CTRL_CLOSE, CTRL_BUY, CTRL_SELL})
+
 OPEN_TIMEOUT_SEC = 5.0
 POLL_SEC = 0.05
 
@@ -87,7 +95,7 @@ def _map_controls(dialog_hwnd: int) -> dict[int, win32.ControlInfo]:
     lọc `visible` vừa đối chiếu text ở `button()`. 10410 cũng có bản ẩn y hệt.
     """
     mapped: dict[int, win32.ControlInfo] = {}
-    for control in win32.enum_children(dialog_hwnd):
+    for control in win32.enum_children(dialog_hwnd, doc_chu=CTRL_CAN_CHU):
         if control.visible and control.ctrl_id > 0:
             mapped.setdefault(control.ctrl_id, control)
     return mapped
