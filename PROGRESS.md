@@ -2740,6 +2740,21 @@ hai script PowerShell parse 0 lỗi.
 **Chưa làm:** đo ctrlID trên terminal Master của VPS (bước 1 của plan 12), TEST-30 trên demo, và
 hiển thị `master_close_route` trên dashboard.
 
+#### Hai clicker suýt ghi chung một file log
+
+Cùng cái bẫy đã làm `bridge.log` đứng im 63 giờ hôm 09-11: cả hai clicker đều đặt
+`setup_logging(filename="clicker.log")`. Hai tiến trình chạy lâu giữ chung một file thì lần xoay lúc
+nửa đêm hỏng và **cả hai ngừng ghi log vĩnh viễn** trong khi vẫn chạy bình thường. Sửa:
+`ten_log_theo_muc()` — `clicker.log` và `clicker_master.log`. +1 test khẳng định hai mục cho ra hai
+tên file khác nhau. Nhật ký lệnh (`data/*.ndjson`) đã tách từ trước vì cùng lý do.
+
+#### Việc trên VPS gom vào `docs/VIEC-TREN-VPS.md`
+
+Người chủ dự án làm tiếp vài việc nữa rồi mới lên VPS test một lượt, nên mọi thứ cần chạy trên đó
+nằm ở một danh sách đang mở thay vì trong trí nhớ: cập nhật, **đo ctrlID trên terminal Master** (cổng
+chặn của phase 12), bật đường đóng Master, TEST-30, đo lại tốc độ, và kiểm ba file log xoay được sau
+một đêm. Xong mục nào thì xoá mục đó và ghi kết quả vào đây.
+
 #### Token của clicker thứ hai: bỏ phần thủ công, giữ nguyên token
 
 Người chủ dự án thấy việc "phải có token cho clicker" là thừa. Token thì **không bỏ được** — Bridge

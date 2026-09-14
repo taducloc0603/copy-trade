@@ -153,6 +153,16 @@ def build_link(args: argparse.Namespace) -> ClickerLink:
 LOG_FILENAME = "clicker.log"
 
 
+def ten_log_theo_muc(muc: str) -> str:
+    """Mỗi clicker một file log, đúng lý do đã tách `clicker.log` khỏi `bridge.log`.
+
+    Hai tiến trình chạy lâu cùng giữ một file thì lần xoay lúc nửa đêm hỏng và **cả hai ngừng ghi
+    log vĩnh viễn** trong khi vẫn chạy bình thường. Từ phase 12 có hai clicker, nên cái bẫy ấy
+    quay lại nguyên vẹn nếu cả hai cùng ghi `clicker.log`.
+    """
+    return LOG_FILENAME if muc == "clicker" else f"{muc}.log"
+
+
 def nhat_ky_theo_muc(args: argparse.Namespace) -> str:
     """Mỗi clicker một file nhật ký. Dùng chung là **mất lệnh trong im lặng**.
 
@@ -167,7 +177,7 @@ def nhat_ky_theo_muc(args: argparse.Namespace) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    setup_logging(filename=LOG_FILENAME)
+    setup_logging(filename=ten_log_theo_muc(args.muc))
     bo_sung_tham_so(args)
     args.journal = nhat_ky_theo_muc(args)
 

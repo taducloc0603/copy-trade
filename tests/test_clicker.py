@@ -306,6 +306,18 @@ def test_clicker_khong_ghi_chung_file_log_voi_bridge(monkeypatch: pytest.MonkeyP
     assert goi[0].get("filename", DEFAULT_LOG_FILENAME) != DEFAULT_LOG_FILENAME
 
 
+def test_hai_clicker_khong_ghi_chung_mot_file_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Phase 12 co HAI clicker. Chung file log la lai dung cai bay da lam bridge.log im 63 gio."""
+    goi: list[dict[str, object]] = []
+    monkeypatch.setattr("clicker.__main__.setup_logging", lambda **kw: goi.append(kw))
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+
+    assert main(["--dry-run"]) == 2
+    assert main(["--dry-run", "--muc", "clicker_master"]) == 2
+    assert goi[0]["filename"] != goi[1]["filename"]
+    assert goi[1]["filename"] == "clicker_master.log"
+
+
 def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:
     """F-03: gửi mỗi 5 giây với hạn 5 giây là biên bằng 0, và clicker OFFLINE = ngừng copy (D-25).
 
