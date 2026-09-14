@@ -39,7 +39,7 @@ $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
 $script:PhienBan = "2026-09-08"
-$script:TongBuoc = 12
+$script:TongBuoc = 13
 $script:BuocHienTai = 0
 
 function buoc_moi([string] $ten) {
@@ -153,7 +153,7 @@ function tach_token([string[]] $dong) {
 # ---------------------------------------------------------------------------------------------
 # Ghi khoa vao muc [clicker] cua config.toml, giu nguyen phan con lai
 # ---------------------------------------------------------------------------------------------
-function dat_khoa_clicker([hashtable] $khoa) {
+function dat_khoa_clicker([hashtable] $khoa, [string] $Muc = "clicker") {
     $cfg = Join-Path $ThuMuc "config.toml"
     if (-not (Test-Path $cfg)) { throw "Khong thay $cfg." }
     $dong = [System.IO.File]::ReadAllLines($cfg)
@@ -162,7 +162,7 @@ function dat_khoa_clicker([hashtable] $khoa) {
 
     for ($i = 0; $i -lt $dong.Count; $i++) {
         $d = $dong[$i].Trim()
-        if ($d -match '^\[(.+)\]$') { $trongMuc = ($Matches[1] -eq 'clicker'); continue }
+        if ($d -match '^\[(.+)\]$') { $trongMuc = ($Matches[1] -eq $Muc); continue }
         if (-not $trongMuc) { continue }
         foreach ($k in @($khoa.Keys)) {
             if ($d -match "^$k\s*=") {
@@ -173,7 +173,7 @@ function dat_khoa_clicker([hashtable] $khoa) {
     }
     $thieu = @(@($khoa.Keys) | Where-Object { -not $daDat.ContainsKey($_) })
     if ($thieu.Count -gt 0) {
-        $dong = @($dong) + @("", "[clicker]") + @($thieu | ForEach-Object { "$_ = " + $khoa[$_] })
+        $dong = @($dong) + @("", "[$Muc]") + @($thieu | ForEach-Object { "$_ = " + $khoa[$_] })
     }
 
     # PHAI la UTF-8 KHONG BOM: bridge/config.py mo file o che do nhi phan roi dua cho tomllib, va
@@ -291,6 +291,23 @@ function buoc_thong_so() {
 
     Write-Host ""
     giai_thich @(
+        "DONG LENH PHIA MASTER QUA GIAO DIEN (D-21c) -- tuy chon, mac dinh KHONG.",
+        "Bat khi ben kiem tra nhin CA tai khoan Master: deal DONG tren Master se mang",
+        "DEAL_REASON = CLIENT thay vi EXPERT.",
+        "Cai gia: them MOT tien trinh clicker nua lai terminal MASTER, va tu do terminal",
+        "Master phai LUON mo Toolbox o tab Trade -- y het dieu kien ben Client.",
+        "Khong bat thi lenh dong Master di OrderSend cua EA nhu cu.",
+        "Token cua clicker nay cung duoc ghi THANG vao config.toml, khong hien ra man hinh."
+    )
+    $script:BatDongMaster = hoi_co_khong "Bat duong DONG phia Master qua giao dien?" $false
+    if ($script:BatDongMaster) {
+        $script:IdClickerMaster = hoi_chuoi "Ten agent Clicker Master" "AG-CLICKER-MASTER"
+        $script:TieuDeMaster = hoi_chuoi "Mau tieu de cua so terminal Master" `
+                                         ([string] $script:LoginMaster)
+    }
+
+    Write-Host ""
+    giai_thich @(
         "MA CLIENT -- ma cua dong cau hinh NGHIEP VU phia Client: copy nguoc hay cung chieu, he",
         "so volume, duong mo lenh. Khac voi ten agent (la ket noi). Ban se go lai ma nay trong",
         "cac lenh anh-xa-symbol va cau-hinh-client. Cu Enter.",
@@ -366,6 +383,14 @@ function buoc_agent() {
     $script:TokenMaster  = tao_agent $script:IdMaster  'MASTER'  $script:LoginMaster
     $script:TokenClient  = tao_agent $script:IdClient  'CLIENT'  $script:LoginClient
     $script:TokenClicker = tao_agent $script:IdClicker 'CLICKER' $script:LoginClient
+    # Clicker thu hai lai terminal MASTER. Danh tinh rieng la bat buoc chu khong phai thu tuc:
+    # Bridge tim agent BANG token, va `server.connections[agent_id]` chi giu mot ket noi -- dung
+    # chung token thi clicker vao sau thay cho clicker vao truoc, va mot lenh dong danh cho Client
+    # se duoc bam tren terminal Master.
+    if ($script:BatDongMaster) {
+        $script:TokenClickerMaster = tao_agent $script:IdClickerMaster 'CLICKER' `
+                                               $script:LoginMaster
+    }
 }
 
 function buoc_token() {
@@ -389,6 +414,16 @@ function buoc_token() {
         ok "token cua $($script:IdClicker) da ghi vao config.toml (khong hien ra man hinh)"
     } else {
         bo_qua "khong co token clicker moi"
+    }
+
+    if ($script:TokenClickerMaster) {
+        dat_khoa_clicker @{
+            token          = (nhay $script:TokenClickerMaster)
+            account_login  = "$($script:LoginMaster)"
+            terminal_title = (nhay $script:TieuDeMaster)
+        } "clicker_master"
+        $script:TokenClickerMaster = $null
+        ok "token cua $($script:IdClickerMaster) da ghi vao config.toml (khong hien ra man hinh)"
     }
 
     # Hai token con lai BUOC PHAI hien ra: chung duoc go vao tham so EA trong giao dien MT5,
@@ -449,6 +484,28 @@ function buoc_client() {
                      '--close-route', 'UI')
     if ($ma -ne 0) { throw "them-client that bai." }
     ok "da tao $($script:IdClientAcc)"
+}
+
+# ---------------------------------------------------------------------------------------------
+# B6. Bien dich EA
+# ---------------------------------------------------------------------------------------------
+function buoc_dong_master() {
+    buoc_moi "Duong DONG phia Master"
+    if (-not $script:BatDongMaster) {
+        bo_qua "khong bat -- lenh dong Master di OrderSend cua EA nhu cu"
+        return
+    }
+    giai_thich @(
+        "Bat `master_close_route = UI`: lenh dong vi the Master di qua giao dien, do clicker",
+        "thu hai bam. Deal dong tren Master se mang DEAL_REASON = CLIENT.",
+        "Clicker hong thi lenh VAN roi ve OrderSend cua EA kem alert CRITICAL -- khong dong",
+        "duoc thi khong an toan, nen o day co duong lui (D-28)."
+    )
+    $ma = admin_in @('cau-hinh-master', '--clicker-agent', $script:IdClickerMaster,
+                     '--close-route', 'UI')
+    if ($ma -ne 0) { canh "cau-hinh-master tra ve $ma"; return }
+    ok "master_close_route = UI, clicker $($script:IdClickerMaster)"
+    canh "Terminal MASTER tu nay phai LUON mo Toolbox o tab Trade, y het terminal Client."
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -633,8 +690,13 @@ function buoc_dich_vu() {
     if (-not (hoi_co_khong "Dang ky dich vu Windows va ba Scheduled Task?")) {
         bo_qua "nguoi dung tu choi"; return
     }
+    $doiSoMaster = @()
+    if ($script:BatDongMaster) {
+        $doiSoMaster = @('-AccountLoginMaster', "$($script:LoginMaster)",
+                         '-TerminalTitleMaster', $script:TieuDeMaster)
+    }
     & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu -AccountLogin $script:LoginClient `
-           -TerminalTitle $script:TieuDe
+           -TerminalTitle $script:TieuDe @doiSoMaster
     if ($LASTEXITCODE -ne 0) { canh "tao-dich-vu.ps1 tra ve $LASTEXITCODE" }
     else { ok "da dang ky" }
 }
@@ -698,12 +760,15 @@ try {
     $script:TokenMaster = $null
     $script:TokenClient = $null
     $script:TokenClicker = $null
+    $script:TokenClickerMaster = $null
+    $script:BatDongMaster = $false
 
     buoc_nen
     buoc_thong_so
     buoc_agent
     buoc_token
     buoc_client
+    buoc_dong_master
     # Dang ky dich vu PHAI di truoc phan EA. `tao-dich-vu.ps1` la thu duy nhat khoi dong Bridge
     # (`cai-dat.ps1` chi Start-Service khi -CapNhat), nen neu de buoc nay xuong duoi thi EA gan
     # xong se goi vao mot cong khong ai nghe, buoc cho ONLINE luon het gio, va anh xa symbol luon
@@ -733,4 +798,5 @@ try {
     $script:TokenMaster = $null
     $script:TokenClient = $null
     $script:TokenClicker = $null
+    $script:TokenClickerMaster = $null
 }

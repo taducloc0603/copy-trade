@@ -137,6 +137,13 @@ món nợ đó đã một lần làm mất token của clicker.
 > `data/clicker_master_commands.ndjson` — dùng chung nhật ký là mất lệnh trong im lặng. Terminal
 > **Master** từ đó phải luôn mở Toolbox ở tab **Trade**, y như Client. Đăng ký tác vụ:
 > `scripts\tao-dich-vu.ps1 -AccountLoginMaster <so-tk> -TerminalTitleMaster "<tieu-de>"`.
+>
+> **Không phải chạm vào token.** `scripts\tro-ly.ps1` hỏi một câu ở bước thông số, rồi tự tạo agent,
+> **ghi token thẳng vào `[clicker_master]`** và đăng ký tác vụ — token của cả hai clicker không bao
+> giờ hiện ra màn hình, không bao giờ đi qua dòng lệnh. Token vẫn cần vì Bridge **tìm agent bằng
+> token**: nó là danh tính, không phải thủ tục. Dùng chung một token cho hai clicker thì
+> `server.connections[agent_id]` chỉ giữ một kết nối, và lệnh đóng dành cho Client sẽ được bấm trên
+> terminal Master.
 
 **Token thô chỉ hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc
 lại. `thu-hoi` không xoá dòng agent (sẽ mất lịch sử); nó đặt hash thành giá trị không token nào

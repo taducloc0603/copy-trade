@@ -2740,6 +2740,25 @@ hai script PowerShell parse 0 lỗi.
 **Chưa làm:** đo ctrlID trên terminal Master của VPS (bước 1 của plan 12), TEST-30 trên demo, và
 hiển thị `master_close_route` trên dashboard.
 
+#### Token của clicker thứ hai: bỏ phần thủ công, giữ nguyên token
+
+Người chủ dự án thấy việc "phải có token cho clicker" là thừa. Token thì **không bỏ được** — Bridge
+tìm agent **bằng token** (`server.py:265`), rồi mới đối chiếu `role` và `account_login`. Hai hệ quả
+cụ thể nếu bỏ: dùng chung một danh tính thì `server.connections[agent_id]` chỉ giữ **một** kết nối
+nên clicker vào sau thay chỗ clicker vào trước — lệnh đóng dành cho Client bị bấm trên terminal
+Master; còn cho nối không token thì bất kỳ tiến trình nào trên VPS cũng đóng vai clicker được, nuốt
+lệnh đóng hoặc báo canary xanh trong khi giao diện đã chết.
+
+**Phần thủ công thì thừa thật, và đã bỏ.** `tro-ly.ps1` vốn đã ghi token clicker thứ nhất thẳng vào
+`config.toml` (`tach_token` + `dat_khoa_clicker`); nay `dat_khoa_clicker` nhận tên mục, trợ lý hỏi
+thêm một câu ở bước thông số (mặc định **KHÔNG**), rồi tự tạo agent, ghi `[clicker_master]`, truyền
+`-AccountLoginMaster` cho `tao-dich-vu.ps1`, và chạy `cau-hinh-master --close-route UI`. Token của cả
+hai clicker **không bao giờ hiện ra màn hình**, và cả hai đều được xoá khỏi biến phiên ở `finally`.
+
+Kiểm bằng cách trích hàm ra khỏi script bằng AST rồi chạy thật trên một `config.toml` tạm: mục
+`[clicker]` cũ **nguyên vẹn**, `[clicker_master]` được thêm đủ ba khoá, gọi lần hai **thay** giá trị
+chứ không nhân đôi, file không BOM và `tomllib` đọc được cả hai mục.
+
 ### Chỗ treo là `WM_LBUTTONDOWN` — và cú nhấp đầu hỏng vì code bỏ dở chuỗi
 
 *(2026-09-12, đo trên VPS.)* Năm kiểu gửi message, mỗi kiểu 3 lần, mỗi lần tái tạo đúng điều kiện của

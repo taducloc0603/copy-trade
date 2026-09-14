@@ -172,6 +172,31 @@ ra `DEAL_REASON_CLIENT` (D-21), nên nó bắt buộc phải có một agent CLI
 Sửa về sau dùng `cau-hinh-client` (xem [RUNBOOK.md](RUNBOOK.md) mục 4), lệnh đó chỉ **sửa** chứ
 không tạo.
 
+### 4a. Muốn deal ĐÓNG trên tài khoản **Master** cũng mang `CLIENT` (tuỳ chọn, D-21c)
+
+Mặc định lệnh đóng vị thế Master đi `OrderSend` của EA, nên deal mang `EXPERT`. Bật đường giao diện
+cho Master chỉ cần khi **bên kiểm tra nhìn cả tài khoản Master**.
+
+Cái giá là **một tiến trình clicker nữa** lái terminal Master, và từ đó terminal Master phải luôn mở
+Toolbox ở tab **Trade** — y hệt điều kiện bên Client.
+
+Cách dễ nhất: chạy `scripts\tro-ly.ps1` và trả lời **có** ở câu hỏi *"Bat duong DONG phia Master qua
+giao dien?"*. Trợ lý tự tạo agent, **ghi token thẳng vào mục `[clicker_master]`** của `config.toml`,
+đăng ký tác vụ `ClickerMaster`, rồi bật cấu hình. **Bạn không phải chạm vào token lần nào.**
+
+Làm tay thì ba bước:
+
+```powershell
+& $py -m bridge.admin them-agent AG-CLICKER-MASTER --role CLICKER --magic 770001 --login <so-tk-Master>
+# chep token vao muc [clicker_master] cua config.toml (token, account_login, terminal_title)
+& $py -m bridge.admin cau-hinh-master --clicker-agent AG-CLICKER-MASTER --close-route UI
+& C:\CopyBridge\scripts\tao-dich-vu.ps1 -AccountLoginMaster <so-tk-Master> -TerminalTitleMaster "<tieu-de>"
+```
+
+Token là **danh tính**, không phải thủ tục: Bridge tìm agent bằng token rồi mới đối chiếu vai trò và
+số tài khoản. Hai clicker dùng chung một token thì Bridge chỉ giữ một kết nối cho danh tính đó, và
+một lệnh đóng dành cho Client có thể được bấm trên terminal Master.
+
 ---
 
 ## 5. Đăng ký dịch vụ và tác vụ
