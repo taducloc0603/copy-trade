@@ -237,6 +237,36 @@ def kiem_reason_client(db: Database) -> list[dict[str, object]]:
     return vi_pham
 
 
+def kiem_reason_master(db: Database) -> list[dict[str, object]]:
+    """Phase 12: khi `master_close_route = UI`, mọi deal **đóng** trên Master phải là `CLIENT`.
+
+    Chỉ kiểm khi đang bật đường giao diện cho Master. Với `EA` thì `EXPERT` là **đúng**, không
+    phải vi phạm — kiểm nó ở đó chỉ tạo ra một tiêu chí không bao giờ đạt.
+
+    Cùng cách xử lý "đã có giải thích" như phía Client: một lần rơi về `OrderSend` khi clicker của
+    Master hỏng là hành vi cố ý, có alert CRITICAL, và con số `EXPERT` ấy nằm lại vĩnh viễn trong
+    `master_position`. Gộp nó vào phần thất bại thì sau đúng một sự cố, TEST-30 báo KHÔNG ĐẠT mãi.
+    """
+    if (db.get_config("master_close_route", "EA") or "EA").upper() != "UI":
+        return []
+    rows = db.query_all(
+        "SELECT master_position_id, symbol, close_reason, close_time FROM master_position "
+        "WHERE close_reason IS NOT NULL AND close_reason <> ? ORDER BY master_position_id",
+        (REASON_CLIENT,))
+    vi_pham = []
+    for r in rows:
+        da_giai_thich = db.query_one(
+            "SELECT 1 FROM alert a JOIN pair p ON p.pair_id = a.pair_id "
+            "WHERE a.code = 'CLOSE_MASTER_FELL_BACK_TO_EA' AND p.master_position_id = ? LIMIT 1",
+            (r["master_position_id"],)) is not None
+        vi_pham.append({**dict(r), "da_giai_thich": da_giai_thich})
+    chua_ro = [v for v in vi_pham if not v["da_giai_thich"]]
+    if chua_ro:
+        log.error("TEST-30 KHONG DAT: %d vi the Master dong sai kenh khong giai thich duoc",
+                  len(chua_ro))
+    return vi_pham
+
+
 def _da_giai_thich(pair: Any, cot: list[str]) -> bool:
     """Deal sai kênh này đã có lời giải thích kèm alert hay chưa.
 

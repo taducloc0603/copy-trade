@@ -17,6 +17,10 @@ param(
     [string] $ThuMuc = "C:\CopyBridge",
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
+    # Muc cau hinh trong config.toml. `clicker_master` la clicker THU HAI, lai terminal Master
+    # (phase 12) -- token, so tai khoan, tieu de va nhat ky deu rieng.
+    [ValidateSet("clicker", "clicker_master")]
+    [string] $Muc = "clicker",
     [int]    $ChoGiuaHaiLan = 10
 )
 
@@ -41,11 +45,11 @@ function ghi([string] $tin) {
     Add-Content -Path $nhatKy -Value $dong -Encoding utf8
 }
 
-$doiSo = @("-m", "clicker")
+$doiSo = @("-m", "clicker", "--muc", $Muc)
 if ($AccountLogin -gt 0) { $doiSo += @("--account-login", "$AccountLogin") }
 if ($TerminalTitle)      { $doiSo += @("--terminal-title", $TerminalTitle) }
 
-ghi "wrapper khoi dong, thu muc $ThuMuc"
+ghi "wrapper khoi dong, thu muc $ThuMuc, muc $Muc"
 
 while ($true) {
     & $py @doiSo

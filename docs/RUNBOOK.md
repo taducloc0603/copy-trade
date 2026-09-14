@@ -20,7 +20,7 @@ hành phải biết cách bấm nó **trước khi** cần dùng tới.
 
 ---
 
-## 1. Kiến trúc chạy — ba tiến trình
+## 1. Kiến trúc chạy — ba tiến trình, hoặc **bốn** khi bật đường đóng Master qua giao diện
 
 | Tiến trình | Chạy ở đâu | Vai trò |
 |---|---|---|
@@ -126,7 +126,17 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin kiem-reason           # TEST-23
 # Danh dau DA XEM alert cu theo ma. Mac dinh chi dem; them --that de ghi. Khong dung finding.
 .\.venv\Scripts\python.exe -m bridge.admin xac-nhan-alert --code FINDING_BO_QUEN --truoc 2026-09-11T16:30:00+07:00
+# Duong DONG phia Master (phase 12). Mac dinh EA; bat UI can clicker thu hai lai terminal Master.
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master                                    # xem
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master --clicker-agent AG-CLICKER-MASTER --close-route UI
 ```
+
+> **Bật `master_close_route = UI` là thêm một tiến trình và một điều kiện vận hành.** Clicker thứ
+> hai chạy bằng `python -m clicker --muc clicker_master`, đọc mục `[clicker_master]` của
+> `config.toml` (token riêng, số tài khoản riêng, tiêu đề cửa sổ riêng) và ghi nhật ký riêng
+> `data/clicker_master_commands.ndjson` — dùng chung nhật ký là mất lệnh trong im lặng. Terminal
+> **Master** từ đó phải luôn mở Toolbox ở tab **Trade**, y như Client. Đăng ký tác vụ:
+> `scripts\tao-dich-vu.ps1 -AccountLoginMaster <so-tk> -TerminalTitleMaster "<tieu-de>"`.
 
 **Token thô chỉ hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc
 lại. `thu-hoi` không xoá dòng agent (sẽ mất lịch sử); nó đặt hash thành giá trị không token nào

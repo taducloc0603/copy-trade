@@ -2706,6 +2706,40 @@ Không lần nào rơi về EA. Phần còn lại chủ yếu vẫn là cú nh�
 phải tìm ra cơ chế, không hạ hạn chờ tiếp được nữa — 0,6 giây đã gần sát 0,27–0,38 giây của một cú
 nhấp thành công.
 
+### Phase 12 — đóng phía Master qua giao diện (D-21c)
+
+*(2026-09-14.)* Yêu cầu mới: khi Client đóng và `can_close_master = 1`, deal đóng trên **tài khoản
+Master** cũng phải mang `CLIENT`. D-21 chốt từ đầu "Master giữ `OrderSend`" với đúng lập luận đã hỏng
+ở D-21b — bên kiểm tra chỉ nhìn Client. Plan: `plan/12-dong-master-qua-giao-dien.md`.
+
+Cái giá **không nằm ở code** mà ở vận hành: clicker là một tiến trình lái một terminal (khoá
+`SingleInstance` theo số tài khoản), nên phải có **clicker thứ hai**.
+
+- **Cấu hình:** mục `[clicker_master]` trong `config.toml`; `clicker --muc clicker_master`;
+  `chay-clicker.ps1 -Muc`; `tao-dich-vu.ps1 -AccountLoginMaster` đăng ký tác vụ `ClickerMaster`.
+  **Nhật ký riêng** `data/clicker_master_commands.ndjson` — dùng chung thì clicker này thấy
+  `command_id` của clicker kia là "đã giữ chỗ" và trả `unknown`, tức một lệnh đóng biến mất im lặng.
+- **Định tuyến:** `system_config.master_close_route` + `master_clicker_agent_id` (migration `005`),
+  mặc định `EA`. `_gui_lenh_dong_master` thành điểm phễu duy nhất, rơi về EA kèm CRITICAL
+  `CLOSE_MASTER_FELL_BACK_TO_EA` khi clicker Master hỏng hoặc từ chối (D-28 mở rộng).
+- **Nhận diện theo agent nhận, không theo loại lệnh.** Cả hai đường đều gửi `CLOSE_UI` cho một agent
+  role `CLICKER`; nhầm thì ghi sổ chân Client bằng kết quả của một lệnh đóng chân Master. Cùng lý do,
+  `_dang_dong_master` phải lọc theo agent — nếu không, một lệnh đóng Client đang bay sẽ làm cascade
+  tưởng Master đang được đóng rồi và **bỏ luôn** cú đóng Master.
+- **Nhận cha cho event đóng Master** (D-27 cho phía Master): EA Master không gọi `OrderSend` nên event
+  về với `caused_by_command_id = NULL` — đúng dấu hiệu của cú đóng tay. Tra theo **vị thế Master** và
+  lọc đúng clicker của Master.
+- **Đo được:** `master_position.close_reason` + `kiem-reason` có phần TEST-30, cùng cách "đã có giải
+  thích" như phía Client.
+- **Lệnh mới:** `bridge.admin cau-hinh-master`, từ chối bật `UI` khi chưa khai clicker và từ chối
+  dùng lại clicker của Client.
+
++15 test (9 cho luồng đóng Master, 6 cho lệnh cấu hình và `kiem-reason`). **683 test xanh**, ruff sạch,
+hai script PowerShell parse 0 lỗi.
+
+**Chưa làm:** đo ctrlID trên terminal Master của VPS (bước 1 của plan 12), TEST-30 trên demo, và
+hiển thị `master_close_route` trên dashboard.
+
 ### Chỗ treo là `WM_LBUTTONDOWN` — và cú nhấp đầu hỏng vì code bỏ dở chuỗi
 
 *(2026-09-12, đo trên VPS.)* Năm kiểu gửi message, mỗi kiểu 3 lần, mỗi lần tái tạo đúng điều kiện của

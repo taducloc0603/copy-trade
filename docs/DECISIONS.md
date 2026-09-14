@@ -42,6 +42,7 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-26 | Mở lệnh qua **hộp thoại New Order**, không dùng One Click Trading. OCT không có ô Comment, mà thẻ trong comment là cơ chế tương quan duy nhất (D-07b, D-23). Ô volume phải ghi bằng `WM_CHAR`, không phải `WM_SETTEXT`. |
 | D-21b | Lệnh **ĐÓNG** phía Client cũng đi qua giao diện (`close_route = 'UI'`). D-21 giữ nguyên tinh thần — đổi kênh chứ không đổi tham số — nhưng phạm vi mở rộng sang deal đóng, vì bên kiểm tra nhìn cả `entry = OUT`. |
 | D-27 | Tương quan đóng làm tại Bridge bằng **cửa sổ command đang bay**, không bằng thẻ trong comment: hộp thoại đóng không có ô Comment. Thiếu nó thì mọi lệnh đóng của bot tự kích hoạt cascade. |
+| D-21c | Lệnh **ĐÓNG phía Master** cũng đi qua giao diện khi bật `master_close_route = UI`, bằng một clicker **thứ hai** lái terminal Master. Mặc định `EA` — bật là hành động có chủ đích. |
 | D-28 | Clicker hỏng thì đường đóng **được** rơi về `OrderSend` của EA (`close_degraded_fallback = EA`), ngược với D-25, kèm alert CRITICAL. Không mở được thì an toàn; không đóng được thì không. |
 | D-29 | Phía **Master** giữ nguyên `OrderSend`. Chỉ tài khoản Client bị soi `DEAL_REASON`. |
 | D-30 | Danh sách vị thế **không đọc được nội dung**. Nhắm một vị thế là **phép tìm có kiểm chứng**: mở hộp thoại theo dòng, đọc ngược ticket, sai thì huỷ rồi thử dòng khác. Mở và huỷ không đặt lệnh nào. |
@@ -322,6 +323,29 @@ D-07b đã thu hẹp D-07 chứ không lật nó.
 
 Cái giá đã được trả đúng như dự đoán trong chính D-21: đóng phải nhắm đúng một `position_id` và
 đóng được một phần theo volume chính xác — hai thứ giao diện làm rất tệ. Cách trả nằm ở D-30.
+
+### D-21c — Lệnh ĐÓNG phía **Master** cũng đi qua giao diện, khi bật `master_close_route = UI`
+
+**Lý do:** D-21 chốt "Master giữ `OrderSend`" với cùng lập luận đã hỏng ở D-21b — bên kiểm tra chỉ
+nhìn tài khoản Client. Khi phạm vi mở sang tài khoản Master thì phần ấy hết hiệu lực, và lần này
+cái giá **không nằm ở code** mà ở vận hành: cần một clicker **thứ hai** lái terminal Master, token
+riêng, tác vụ riêng, nhật ký riêng, và terminal Master phải luôn mở Toolbox ở tab Trade.
+
+Vì cái giá đó có thật, mặc định là `EA`: nâng cấp không đổi hành vi của bản đang chạy. Bật là một
+hành động có chủ đích, và `cau-hinh-master` từ chối bật khi chưa khai clicker.
+
+Hai chỗ **bắt buộc** phải khác bản Client, và đều là chỗ sai thì hỏng âm thầm:
+
+* **Nhận diện lệnh đóng chân Master theo agent nhận**, không theo loại lệnh. Cả hai đường đều gửi
+  `CLOSE_UI` cho một agent role `CLICKER`; nhầm thì ghi sổ chân Client bằng kết quả của một lệnh
+  đóng chân Master.
+* **Nhận cha cho event đóng Master** (D-27 áp cho phía Master). EA Master không gọi `OrderSend` nên
+  event về với `caused_by_command_id = NULL`, mang đúng dấu hiệu của một cú đóng tay — không nhận
+  cha thì mỗi lần cascade tự kích hoạt thêm một lượt đồng bộ.
+
+Rơi về `OrderSend` khi clicker Master hỏng: **được**, cùng lý do D-28. Các Client đã đóng rồi, nên
+Master đứng lại một mình là phơi nhiễm một chiều. Deal lần ấy mang `EXPERT` và đi kèm alert CRITICAL
+`CLOSE_MASTER_FELL_BACK_TO_EA`.
 
 Bật theo từng Client bằng `close_route`, mặc định `EA`, vì nâng cấp không được tự đổi hành vi của
 một Client đang chạy.

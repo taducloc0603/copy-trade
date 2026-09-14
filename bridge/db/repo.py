@@ -314,6 +314,19 @@ class Database:
                 (status, current_volume, close_time, _now(), master_position_id),
             )
 
+    def set_master_close_reason(self, master_position_id: int, reason: int) -> None:
+        """Ghi `DEAL_REASON` của deal đóng phía Master (phase 12).
+
+        Đối xứng với `pair.client_close_reason`, và tồn tại vì cùng một lý do: câu "deal đóng trên
+        Master nay cũng mang `CLIENT`" phải **kiểm được bằng truy vấn**, không phải tin.
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE master_position SET close_reason = ?, updated_at = ? "
+                "WHERE master_position_id = ?",
+                (reason, _now(), master_position_id),
+            )
+
     # -- Pair ID ---------------------------------------------------------------------------
 
     def next_pair_id(self, day: str | None = None) -> str:

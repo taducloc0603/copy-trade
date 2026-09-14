@@ -62,6 +62,20 @@ sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 | TEST-28 | Clicker chết giữa chừng, Master đóng | **DEMO** | Chạy thật 2026-09-10: tắt clicker → Master đóng → lệnh `CLOSE` tới `AG-CLIENT`, vị thế Client **vẫn đóng được** trong **342 ms**, alert CRITICAL `CLOSE_FELL_BACK_TO_EA`, `client_close_reason = 3`, và **không** kèm `UI_CLOSE_REASON_MISMATCH`. |
 | TEST-29 | Bộ tương quan đóng với `can_close_master = 1` | **DEMO** | Chạy thật 2026-09-11, **cả hai chiều**. *Bot đóng:* Master đóng → đúng **2** lệnh cho cặp (`OPEN_UI` + `CLOSE_UI`), **0** lệnh `CLOSE` tới `AG-MASTER`, **0** alert — không cascade. *Người dùng đóng tay:* đóng vị thế Client bằng tay → **1** lệnh `CLOSE` tới `AG-MASTER` `ACK_OK` trong 363 ms, alert `CASCADE_STARTED`. Hai event **giống hệt nhau** từ phía EA (`caused_by_command_id = NULL` cả hai) mà Bridge phân biệt đúng cả hai. |
 
+
+### TEST-30 — Đóng phía Master qua giao diện (phase 12, D-21c)
+
+**Chưa chạy trên demo.** Code và test tự động đã có; phần dưới là bài phải đo trên VPS trước khi
+tin, vì mọi kết luận về `DEAL_REASON` đều phải đến từ deal thật.
+
+| | Phép thử | Đạt khi |
+|---|---|---|
+| TEST-30a | Đóng ở Client, `can_close_master = 1`, `master_close_route = UI` | Master đóng theo, `master_position.close_reason = 0`, lệnh `CLOSE_UI` tới clicker của Master |
+| TEST-30b | Tắt clicker Master rồi đóng ở Client | Master **vẫn đóng** qua EA, alert CRITICAL `CLOSE_MASTER_FELL_BACK_TO_EA`, `kiem-reason` xếp vào "đã có giải thích" |
+| TEST-30c | Cascade với hai Client | Đúng **một** lệnh đóng Master; không có lượt đồng bộ tự kích hoạt |
+| TEST-30d | Đóng khẩn cấp | Thứ tự Client → Master giữ nguyên, deal đóng Master mang `CLIENT` |
+| TEST-30e | `kiem-reason` sau cả bốn bài | ĐẠT phần Master; và **KHÔNG ĐẠT** nếu cố tình đóng Master bằng EA trong khi `master_close_route = UI` |
+
 ---
 
 ## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì

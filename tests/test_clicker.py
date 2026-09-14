@@ -271,7 +271,7 @@ def test_khong_co_dry_run_thi_tu_choi_khoi_dong(monkeypatch: pytest.MonkeyPatch)
     lặp clicker vô hạn — test không bao giờ trả về. Xanh trên máy chưa khai mục
     `[clicker]`, treo trên đúng cái máy đã cài xong.
     """
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
     code = main(["--token", CLICKER_TOKEN, "--account-login", str(CLICKER_LOGIN)])
     assert code == 2
 
@@ -286,7 +286,7 @@ def test_tham_so_bat_buoc(monkeypatch: pytest.MonkeyPatch) -> None:
     parser.parse_args(["--dry-run"])          # khong con nem SystemExit
 
     monkeypatch.delenv(ENV_TOKEN, raising=False)
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
     assert main(["--dry-run"]) == 2
 
 
@@ -299,7 +299,7 @@ def test_clicker_khong_ghi_chung_file_log_voi_bridge(monkeypatch: pytest.MonkeyP
     goi: list[dict[str, object]] = []
     monkeypatch.setattr("clicker.__main__.setup_logging", lambda **kw: goi.append(kw))
     monkeypatch.delenv(ENV_TOKEN, raising=False)
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
 
     assert main(["--dry-run"]) == 2
     assert len(goi) == 1
@@ -339,7 +339,7 @@ def _args(argv: list[str]) -> object:
 
 def test_token_dong_lenh_thang_bien_moi_truong(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ENV_TOKEN, "tu-moi-truong")
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "tu-config"})
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {"token": "tu-config"})
     args = _args(["--token", "tu-dong-lenh", "--account-login", "1", "--terminal-title", "T"])
     bo_sung_tham_so(args)
     assert args.token == "tu-dong-lenh"
@@ -347,7 +347,7 @@ def test_token_dong_lenh_thang_bien_moi_truong(monkeypatch: pytest.MonkeyPatch) 
 
 def test_token_lay_tu_bien_moi_truong_khi_thieu_dong_lenh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ENV_TOKEN, "tu-moi-truong")
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "tu-config"})
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {"token": "tu-config"})
     args = _args(["--account-login", "1", "--terminal-title", "T"])
     bo_sung_tham_so(args)
     assert args.token == "tu-moi-truong"
@@ -356,8 +356,8 @@ def test_token_lay_tu_bien_moi_truong_khi_thieu_dong_lenh(monkeypatch: pytest.Mo
 def test_lay_du_ba_gia_tri_tu_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_TOKEN, raising=False)
     monkeypatch.setattr("clicker.__main__.doc_muc_clicker",
-                        lambda: {"token": "tu-config", "account_login": 538217,
-                                 "terminal_title": "MetaTrader 5 - 538217"})
+                        lambda *_a: {"token": "tu-config", "account_login": 538217,
+                                     "terminal_title": "MetaTrader 5 - 538217"})
     args = _args([])
     bo_sung_tham_so(args)
     assert (args.token, args.account_login, args.terminal_title) == (
@@ -367,12 +367,12 @@ def test_lay_du_ba_gia_tri_tu_config(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_thieu_token_o_ca_ba_duong_thi_thoat_khac_khong(monkeypatch: pytest.MonkeyPatch) -> None:
     """Không token thì **không** được chạy tiếp và cũng không được rơi về `--dry-run`."""
     monkeypatch.delenv(ENV_TOKEN, raising=False)
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", dict)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
     assert main(["--account-login", "1", "--terminal-title", "T"]) == 2
 
 
 def test_thieu_so_tai_khoan_thi_thoat_khac_khong(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda: {"token": "co-token"})
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {"token": "co-token"})
     assert main(["--terminal-title", "T"]) == 2
 
 

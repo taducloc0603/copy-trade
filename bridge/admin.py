@@ -24,6 +24,7 @@ from bridge.ops import (
     cap_token,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
+    kiem_reason_master,
     sao_luu,
     thu_hoi_token,
     thu_muc_sao_luu,
@@ -155,7 +156,88 @@ def lenh_kiem_reason(db: Database, _args: argparse.Namespace) -> int:
         for r in da_ro:
             _in(r, sys.stdout)
 
-    return 1 if chua_ro else 0
+    chua_ro_master = _in_phan_master(db)
+    return 1 if (chua_ro or chua_ro_master) else 0
+
+
+def _in_phan_master(db: Database) -> list[dict]:
+    """Phần Master của `kiem-reason` (TEST-30). Im lặng khi `master_close_route = EA`."""
+    vi_pham = kiem_reason_master(db)
+    route = (db.get_config("master_close_route", "EA") or "EA").upper()
+    if route != "UI":
+        return []
+
+    tong = db.query_one(
+        "SELECT COUNT(*) n FROM master_position WHERE close_reason IS NOT NULL")["n"]
+    chua_ro = [r for r in vi_pham if not r["da_giai_thich"]]
+    da_ro = [r for r in vi_pham if r["da_giai_thich"]]
+
+    if not chua_ro:
+        print(f"\nTEST-30 DAT: {tong - len(da_ro)}/{tong} vi the Master dong dung kenh.")
+    else:
+        print(f"\nTEST-30 KHONG DAT: {len(chua_ro)}/{tong} vi the Master dong sai kenh:",
+              file=sys.stderr)
+        for r in chua_ro:
+            print(f"  master_position={r['master_position_id']} {r['symbol']} "
+                  f"close_reason={r['close_reason']}", file=sys.stderr)
+    if da_ro:
+        print(f"{len(da_ro)} vi the Master sai kenh nhung DA CO GIAI THICH "
+              "(alert CLOSE_MASTER_FELL_BACK_TO_EA):")
+        for r in da_ro:
+            print(f"  master_position={r['master_position_id']} {r['symbol']} "
+                  f"close_reason={r['close_reason']}")
+    return chua_ro
+
+
+def lenh_cau_hinh_master(db: Database, args: argparse.Namespace) -> int:
+    """Xem và sửa đường đóng phía Master (phase 12, D-21c).
+
+    Master không có dòng `client_account` nào, nên hai giá trị này nằm ở `system_config`. Lệnh này
+    tồn tại vì cùng lý do `cau-hinh-client` tồn tại: đổi chúng bằng `UPDATE` tay vào SQLite là chỗ
+    dễ gõ nhầm nhất, mà gõ nhầm ở đây nghĩa là lệnh đóng Master đi sai kênh trong im lặng.
+    """
+    route = (db.get_config("master_close_route", "EA") or "EA").upper()
+    clicker_id = (db.get_config("master_clicker_agent_id", "") or "").strip()
+
+    if args.close_route is None and args.clicker_agent is None:
+        print(f"master_close_route={route} master_clicker_agent_id={clicker_id or '(chua khai)'}")
+        return 0
+
+    if args.clicker_agent is not None:
+        agent = db.get_agent(args.clicker_agent)
+        if agent is None:
+            print(f"Khong co agent {args.clicker_agent}. Tao bang `them-agent --role CLICKER`.",
+                  file=sys.stderr)
+            return 1
+        if agent["role"] != "CLICKER":
+            print(f"Agent {args.clicker_agent} co role {agent['role']}, can CLICKER",
+                  file=sys.stderr)
+            return 1
+        # Một clicker lái ĐÚNG MỘT terminal (khoá `SingleInstance` theo số tài khoản). Dùng chung
+        # clicker của Client cho Master nghĩa là hai terminal khác nhau chung một tiến trình —
+        # bất khả, và nếu để lọt thì lệnh đóng Master sẽ bấm vào cửa sổ của Client.
+        trung = db.query_one(
+            "SELECT client_id FROM client_account WHERE clicker_agent_id = ?",
+            (args.clicker_agent,))
+        if trung is not None:
+            print(f"Agent {args.clicker_agent} dang la clicker cua Client {trung['client_id']}. "
+                  "Moi terminal can mot clicker rieng.", file=sys.stderr)
+            return 1
+        clicker_id = args.clicker_agent
+        db.set_config("master_clicker_agent_id", clicker_id)
+        print(f"master_clicker_agent_id = {clicker_id}")
+
+    if args.close_route is not None:
+        if args.close_route == "UI" and not clicker_id:
+            print("master_close_route = UI can master_clicker_agent_id, chua co. "
+                  "Dat kem --clicker-agent.", file=sys.stderr)
+            return 1
+        db.set_config("master_close_route", args.close_route)
+        print(f"master_close_route = {args.close_route}")
+        if args.close_route == "UI":
+            print("Luu y: terminal Master phai luon mo Toolbox o tab Trade, va clicker thu hai "
+                  "phai dang chay (python -m clicker --muc clicker_master).")
+    return 0
 
 
 def lenh_tinh_hinh(db: Database, _args: argparse.Namespace, db_path: Path) -> int:
@@ -537,6 +619,13 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Kenh gui lenh DONG. UI de deal dong mang DEAL_REASON_CLIENT")
     cf.add_argument("--can-close-master", dest="can_close_master", choices=("bat", "tat"))
 
+    cm = sub.add_parser("cau-hinh-master",
+                        help="Xem hoac sua duong DONG phia Master (phase 12)")
+    cm.add_argument("--close-route", dest="close_route", choices=("EA", "UI"),
+                    help="UI de deal dong tren Master mang DEAL_REASON = CLIENT")
+    cm.add_argument("--clicker-agent", dest="clicker_agent",
+                    help="agent_id vai tro CLICKER lai terminal Master")
+
     ax = sub.add_parser("anh-xa-symbol", help="Xem hoac khai bao anh xa symbol giua hai san")
     ax.add_argument("client_id")
     ax.add_argument("master_symbol", nargs="?")
@@ -584,6 +673,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_them_client(db, args)
         if args.lenh == "cau-hinh-client":
             return lenh_cau_hinh_client(db, args)
+        if args.lenh == "cau-hinh-master":
+            return lenh_cau_hinh_master(db, args)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
         if args.lenh == "xac-nhan-alert":

@@ -78,6 +78,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--terminal-title", default="",
                         help="Mau tieu de cua so terminal, thuong chua so tai khoan "
                              "(hoac muc [clicker] config.toml)")
+    parser.add_argument("--muc", default="clicker", choices=("clicker", "clicker_master"),
+                        help="Muc cau hinh trong config.toml. `clicker_master` la clicker thu hai, "
+                             "lai terminal Master (phase 12)")
     parser.add_argument("--journal", default=DEFAULT_JOURNAL,
                         help=f"Duong dan nhat ky append-only (mac dinh {DEFAULT_JOURNAL})")
     parser.add_argument("--heartbeat-sec", type=float, default=DEFAULT_HEARTBEAT_SEC)
@@ -86,15 +89,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def doc_muc_clicker() -> dict[str, object]:
-    """Trả về mục ``[clicker]`` của ``config.toml``, hoặc rỗng nếu không đọc được.
+def doc_muc_clicker(ten_muc: str = "clicker") -> dict[str, object]:
+    """Trả về mục cấu hình của clicker này (``[clicker]`` hoặc ``[clicker_master]``).
+
+    Tên mục đi vào đây thay vì cố định, vì từ phase 12 có **hai** clicker: một lái terminal
+    Client, một lái terminal Master, mỗi cái một token riêng. Rỗng nếu không đọc được.
 
     Không ném: clicker chạy được hoàn toàn bằng tham số dòng lệnh, và một máy chỉ chạy clicker
     thì không nhất thiết có ``config.toml``. Thiếu giá trị thật sự cần thì `bo_sung_tham_so`
     mới là chỗ báo lỗi, và ở đó thông báo nói rõ cả ba đường.
     """
     try:
-        return dict(load_config().clicker)
+        return dict(load_config().muc_clicker(ten_muc))
     except ConfigError as exc:
         log.info("Khong doc duoc config.toml (%s). Chi dung tham so dong lenh va bien moi truong.",
                  exc)
@@ -112,7 +118,7 @@ def bo_sung_tham_so(args: argparse.Namespace) -> None:
     phơi ra suốt ngày. `config.toml` thì siết được bằng ACL.
     """
     thieu = not (args.token and args.account_login and args.terminal_title)
-    muc = doc_muc_clicker() if thieu else {}
+    muc = doc_muc_clicker(getattr(args, "muc", "clicker")) if thieu else {}
 
     if not args.token:
         args.token = str(os.environ.get(ENV_TOKEN) or "") or str(muc.get("token") or "")
@@ -147,10 +153,23 @@ def build_link(args: argparse.Namespace) -> ClickerLink:
 LOG_FILENAME = "clicker.log"
 
 
+def nhat_ky_theo_muc(args: argparse.Namespace) -> str:
+    """Mỗi clicker một file nhật ký. Dùng chung là **mất lệnh trong im lặng**.
+
+    Nhật ký khoá theo `command_id` để một lệnh không bao giờ bị bấm hai lần. Hai tiến trình dùng
+    chung một file thì clicker này thấy `command_id` của clicker kia là "đã giữ chỗ nhưng chưa có
+    kết quả" và trả `unknown` — tức là một lệnh đóng không được thực hiện mà cũng không báo lỗi.
+    """
+    if args.journal != DEFAULT_JOURNAL or args.muc == "clicker":
+        return str(args.journal)
+    return f"data/{args.muc}_commands.ndjson"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     setup_logging(filename=LOG_FILENAME)
     bo_sung_tham_so(args)
+    args.journal = nhat_ky_theo_muc(args)
 
     if not args.token:
         log.critical("Thieu token. Dat mot trong ba: --token, bien %s, hoac muc [clicker] trong "

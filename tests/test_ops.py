@@ -386,6 +386,80 @@ def test_admin_doc_va_dat_run_mode(db: Database, monkeypatch, capsys) -> None:
     assert capsys.readouterr().out.strip() == "RUNNING"
 
 
+# -- cau-hinh-master + kiem-reason phia Master (phase 12) --------------------------------------
+
+def _agent_clicker(db: Database, agent_id: str) -> None:
+    db.upsert_agent(agent_id, role="CLICKER", token_hash="h", magic_number=0)
+
+
+def test_admin_cau_hinh_master_tu_choi_UI_khi_chua_co_clicker(db: Database, monkeypatch) -> None:
+    """Bật UI mà không có clicker là cấu hình vô nghĩa: lệnh đóng khong co ai bam."""
+    admin = _admin_tren(db, monkeypatch)
+    assert admin.main(["cau-hinh-master", "--close-route", "UI"]) == 1
+    assert db.get_config("master_close_route", "EA") == "EA"
+
+
+def test_admin_cau_hinh_master_tu_choi_dung_lai_clicker_cua_client(
+        seeded: Database, monkeypatch) -> None:
+    """Một clicker lái ĐÚNG MỘT terminal. Dùng chung là bấm vào cửa sổ của Client."""
+    admin = _admin_tren(seeded, monkeypatch)
+    _agent_clicker(seeded, "AG-CLICKER-1")
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id="AG-CLICKER-1")
+
+    assert admin.main(["cau-hinh-master", "--clicker-agent", "AG-CLICKER-1"]) == 1
+    assert (seeded.get_config("master_clicker_agent_id", "") or "") == ""
+
+
+def test_admin_cau_hinh_master_dat_ca_hai_gia_tri(db: Database, monkeypatch, capsys) -> None:
+    admin = _admin_tren(db, monkeypatch)
+    _agent_clicker(db, "AG-CLICKER-MASTER")
+
+    assert admin.main(["cau-hinh-master", "--clicker-agent", "AG-CLICKER-MASTER",
+                       "--close-route", "UI"]) == 0
+    assert db.get_config("master_close_route") == "UI"
+    assert db.get_config("master_clicker_agent_id") == "AG-CLICKER-MASTER"
+
+    capsys.readouterr()
+    assert admin.main(["cau-hinh-master"]) == 0
+    assert "master_close_route=UI" in capsys.readouterr().out
+
+
+def test_kiem_reason_master_im_lang_khi_di_duong_EA(seeded: Database) -> None:
+    """Với `EA` thì `EXPERT` là ĐÚNG. Kiểm nó ở đó chỉ tạo một tiêu chí không bao giờ đạt."""
+    from bridge.ops import kiem_reason_master
+
+    seeded.set_master_close_reason(MASTER_POSITION_ID, 3)
+    assert kiem_reason_master(seeded) == []
+
+
+def test_kiem_reason_master_bat_deal_sai_kenh_tren_duong_UI(seeded: Database) -> None:
+    from bridge.ops import kiem_reason_master
+
+    seeded.set_config("master_close_route", "UI")
+    seeded.set_master_close_reason(MASTER_POSITION_ID, 3)
+
+    vi_pham = kiem_reason_master(seeded)
+    assert len(vi_pham) == 1
+    assert vi_pham[0]["master_position_id"] == MASTER_POSITION_ID
+    assert vi_pham[0]["da_giai_thich"] is False
+
+
+def test_kiem_reason_master_coi_cu_roi_ve_EA_la_DA_CO_GIAI_THICH(seeded: Database) -> None:
+    """Rơi về EA là hành vi cố ý và có alert CRITICAL — đếm nó là thất bại thì sau một sự cố,
+    TEST-30 báo KHÔNG ĐẠT mãi mãi."""
+    from bridge.ops import kiem_reason_master
+
+    seeded.set_config("master_close_route", "UI")
+    seeded.set_master_close_reason(MASTER_POSITION_ID, 3)
+    pair_id = seeded.create_pending_pair(MASTER_POSITION_ID, CLIENT_ID, copy_mode="OPPOSITE",
+                                         master_initial_volume=1.0, effective_multiplier=1.0)
+    seeded.create_alert("CRITICAL", "CLOSE_MASTER_FELL_BACK_TO_EA", "roi ve EA", pair_id=pair_id)
+
+    vi_pham = kiem_reason_master(seeded)
+    assert len(vi_pham) == 1 and vi_pham[0]["da_giai_thich"] is True
+
+
 # -- xac-nhan-alert ----------------------------------------------------------------------------
 
 def _admin_tren(db: Database, monkeypatch):

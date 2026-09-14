@@ -78,6 +78,22 @@ class Config:
     #: ``SecretSection`` chứ không phải dict thường vì token nằm trong đó: mục đích của mục này
     #: là để token **không** phải đi qua dòng lệnh, nên nó cũng không được rơi vào log.
     clicker: SecretSection = field(default_factory=SecretSection)
+    #: Mục ``[clicker_master]`` — clicker **thứ hai**, lái terminal Master (phase 12). Cùng hình
+    #: dạng với ``[clicker]`` và cùng lý do phải là ``SecretSection``: nó cũng chứa token riêng.
+    #: Để trống là cấu hình bình thường — chỉ bản nào bật `master_close_route = UI` mới cần.
+    clicker_master: SecretSection = field(default_factory=SecretSection)
+
+    def muc_clicker(self, ten: str) -> SecretSection:
+        """Mục cấu hình của một clicker theo tên (`clicker`, `clicker_master`).
+
+        Tra theo tên thay vì thuộc tính để `clicker/__main__.py --muc` không phải biết trước có
+        bao nhiêu mục: thêm terminal thứ ba chỉ là thêm một mục trong `config.toml`.
+        """
+        if ten == "clicker":
+            return self.clicker
+        if ten == "clicker_master":
+            return self.clicker_master
+        raise ConfigError(f"Khong co muc cau hinh [{ten}] duoc ho tro")
 
     @property
     def db_path(self) -> Path:
@@ -151,12 +167,17 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
     if not isinstance(clicker_raw, Mapping):
         raise ConfigError("Mục [clicker] phải là một bảng TOML")
 
+    clicker_master_raw = raw.get("clicker_master", {})
+    if not isinstance(clicker_master_raw, Mapping):
+        raise ConfigError("Mục [clicker_master] phải là một bảng TOML")
+
     return Config(
         bridge=BridgeSection(host=host, port=port, web_port=web_port, db_path=db_path),
         security=SecretSection(security_raw),
         source_path=source_path,
         project_root=project_root,
         clicker=SecretSection(clicker_raw),
+        clicker_master=SecretSection(clicker_master_raw),
     )
 
 

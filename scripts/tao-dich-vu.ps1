@@ -26,6 +26,10 @@ param(
     [string] $NguoiDung = "$env:USERDOMAIN\$env:USERNAME",
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
+    # Clicker THU HAI, lai terminal MASTER (phase 12). Chi dang ky tac vu khi co so tai khoan --
+    # ban nao khong bat `master_close_route = UI` thi khong can no.
+    [int]    $AccountLoginMaster = 0,
+    [string] $TerminalTitleMaster = "",
     [string] $GioBaoTri = "03:00",
     [switch] $BoQuaTacVu,
     [switch] $GoBo
@@ -194,15 +198,16 @@ function kiem_tu_bat_lai([string] $nssm) {
 # ---------------------------------------------------------------------------------------------
 # Scheduled Task
 # ---------------------------------------------------------------------------------------------
-function dang_ky_tac_vu_clicker() {
-    tieu_de "Dang ky Scheduled Task '${DuongDanTacVu}Clicker'"
+function dang_ky_tac_vu_clicker([string] $Ten = "Clicker", [string] $Muc = "clicker",
+                                [int] $Login = 0, [string] $Title = "") {
+    tieu_de "Dang ky Scheduled Task '${DuongDanTacVu}$Ten'"
     $exe = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
     $wrapper = Join-Path $ThuMuc "scripts\chay-clicker.ps1"
     if (-not (Test-Path $wrapper)) { throw "Khong thay $wrapper." }
 
-    $doiSo = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$wrapper`" -ThuMuc `"$ThuMuc`""
-    if ($AccountLogin -gt 0)  { $doiSo += " -AccountLogin $AccountLogin" }
-    if ($TerminalTitle)       { $doiSo += " -TerminalTitle `"$TerminalTitle`"" }
+    $doiSo = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$wrapper`" -ThuMuc `"$ThuMuc`" -Muc $Muc"
+    if ($Login -gt 0)  { $doiSo += " -AccountLogin $Login" }
+    if ($Title)        { $doiSo += " -TerminalTitle `"$Title`"" }
 
     $hanhDong = New-ScheduledTaskAction -Execute $exe -Argument $doiSo -WorkingDirectory $ThuMuc
     $kichHoat = New-ScheduledTaskTrigger -AtLogOn -User $NguoiDung
@@ -220,9 +225,9 @@ function dang_ky_tac_vu_clicker() {
     $caiDat.ExecutionTimeLimit = "PT0S"
     $caiDat.IdleSettings.StopOnIdleEnd = $false
 
-    Register-ScheduledTask -TaskName "Clicker" -TaskPath $DuongDanTacVu -Action $hanhDong `
+    Register-ScheduledTask -TaskName $Ten -TaskPath $DuongDanTacVu -Action $hanhDong `
         -Trigger $kichHoat -Principal $chuThe -Settings $caiDat -Force | Out-Null
-    ok "tac vu Clicker (chay khi dang nhap, tre 90 giay)"
+    ok "tac vu $Ten (chay khi dang nhap, tre 90 giay, muc [$Muc])"
 
     canh ("Muc toan ven cua clicker phai >= cua MT5. MT5 chay 'Run as administrator' ma clicker " +
           "chay thuong thi UIPI chan het window message: PostMessage tra ve thanh cong nhung " +
@@ -298,7 +303,13 @@ try {
     if ($BoQuaTacVu) {
         canh "-BoQuaTacVu: khong dang ky Scheduled Task"
     } else {
-        dang_ky_tac_vu_clicker
+        dang_ky_tac_vu_clicker "Clicker" "clicker" $AccountLogin $TerminalTitle
+        # Clicker thu hai chi dang ky khi co so tai khoan Master. Ban nao khong bat
+        # `master_close_route = UI` thi khong can no, va mot tac vu thua se chay roi chet lien tuc.
+        if ($AccountLoginMaster -gt 0) {
+            dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" `
+                $AccountLoginMaster $TerminalTitleMaster
+        }
         dang_ky_tac_vu_bao_tri
     }
 

@@ -73,6 +73,12 @@ EMERGENCY_WAIT_MAX_SEC = 120.0
 #: của việc chuyển đường đóng sang giao diện, và là thứ duy nhất chứng minh được nó đã đạt.
 DEAL_REASON_CLIENT = 0
 
+#: Định tuyến lệnh đóng phía **Master** (phase 12, D-21c). Nằm ở `system_config` chứ không phải một
+#: cột, vì Master không có dòng `client_account` nào để mang cột đó. Mặc định `EA`: nâng cấp không
+#: đổi hành vi của bản đang chạy, và bật đường giao diện còn đòi thêm một clicker thứ hai.
+MASTER_CLOSE_ROUTE_KEY = "master_close_route"
+MASTER_CLICKER_KEY = "master_clicker_agent_id"
+
 
 class CloseFlow:
     """Toàn bộ ngữ nghĩa đóng lệnh. `EventProcessor` chỉ định tuyến vào đây."""
@@ -132,6 +138,16 @@ class CloseFlow:
             current_volume=0.0 if dong_han else volume_after,
             close_time=event["received_at"] if dong_han else None,
         )
+
+        self._ghi_reason_dong_master(master_position_id, data)
+
+        # Đóng qua giao diện thì EA Master không gọi `OrderSend`, nên nó không có gì để nhớ và
+        # event về với `caused_by_command_id = NULL` — **đúng dấu hiệu của một cú đóng tay**. Nhận
+        # cha tại Bridge trước khi đọc cờ đó, nếu không mỗi lần cascade sẽ tự kích hoạt chính nó.
+        lenh_bot = self._ai_gay_ra_master(event, master_position_id)
+        if lenh_bot is not None:
+            return ("IGNORED", "Do bot gay ra qua giao dien, khong lan truyen",
+                    lenh_bot["pair_id"])
 
         if event["caused_by_command_id"]:
             # Do chính bot gây ra. Trạng thái cặp đã được cập nhật ở đường ack; ở đây chỉ ghi
@@ -431,6 +447,61 @@ class CloseFlow:
         self.db.set_event_cause(event["event_id"], ung_vien[0]["command_id"])
         return ung_vien[0]
 
+    def _ai_gay_ra_master(self, event: sqlite3.Row,
+                          master_position_id: int) -> sqlite3.Row | None:
+        """Lệnh `CLOSE_UI` nào của Bridge đã gây ra cú đóng **Master** này (D-27, phía Master).
+
+        Bản sao có chủ đích của `_ai_gay_ra`, khác ở chỗ tra theo **vị thế Master** thay vì theo
+        cặp: một vị thế Master có thể thuộc nhiều cặp, và lệnh đóng nó chỉ mang `pair_id` của cặp
+        đã kích hoạt cascade.
+
+        Lọc theo đúng clicker của Master. Không lọc thì một lệnh `CLOSE_UI` gửi cho clicker của
+        **Client** — cùng cặp, cùng cửa sổ thời gian — sẽ bị nhận nhầm làm cha của cú đóng Master,
+        và khi đó một cú đóng tay thật trên Master sẽ bị bỏ qua trong im lặng.
+        """
+        if event["caused_by_command_id"]:
+            return None
+        clicker_master = self._clicker_master_id()
+        if not clicker_master:
+            return None
+
+        grace = self.db.get_config_int("ui_close_correlate_grace_ms", DEFAULT_UI_CLOSE_GRACE_MS)
+        moc_goc = parse_iso(event["received_at"]) if event["received_at"] else utc_now()
+        moc = to_iso(moc_goc - timedelta(milliseconds=grace))
+        ung_vien = self.db.query_all(
+            "SELECT c.* FROM command c JOIN pair p ON p.pair_id = c.pair_id "
+            "WHERE p.master_position_id = ? AND c.target_agent_id = ? "
+            "  AND c.type IN ('CLOSE_UI','CLOSE_UI_PARTIAL') "
+            "  AND (c.status IN ('PENDING','SENT') "
+            "       OR COALESCE(c.acked_at, c.updated_at) >= ?) "
+            "ORDER BY c.created_at DESC",
+            (master_position_id, clicker_master, moc),
+        )
+        if not ung_vien:
+            return None
+        self.db.set_event_cause(event["event_id"], ung_vien[0]["command_id"])
+        return ung_vien[0]
+
+    def _ghi_reason_dong_master(self, master_position_id: int, data: dict[str, Any]) -> None:
+        """Ghi `DEAL_REASON` của deal đóng phía Master, và báo động nếu nó sai kênh.
+
+        Ghi **luôn**, kể cả khi đang đi đường EA: con số đó là bằng chứng, và bằng chứng thì không
+        phụ thuộc cấu hình. Chỉ phần báo động mới nhìn cấu hình — `EA` thì `EXPERT` là đúng.
+        """
+        reason = data.get("reason")
+        if reason is None:
+            return
+        reason = int(reason)
+        self.db.set_master_close_reason(master_position_id, reason)
+
+        route = (self.db.get_config(MASTER_CLOSE_ROUTE_KEY, "EA") or "EA").upper()
+        if route != "UI" or reason == DEAL_REASON_CLIENT:
+            return
+        self._alert("ERROR", "MASTER_CLOSE_REASON_MISMATCH",
+                    f"Vi the Master {master_position_id} dong voi DEAL_REASON = {reason} trong khi "
+                    f"{MASTER_CLOSE_ROUTE_KEY} = UI (mong doi {DEAL_REASON_CLIENT}). Hoac lenh vua "
+                    "roi ve duong EA, hoac ai do dong tay bang EA.")
+
     def _ghi_volume_con_lai(self, pair: sqlite3.Row, event: sqlite3.Row,
                             lenh: sqlite3.Row) -> None:
         """Ghi volume Client còn lại **từ event**, cho các lệnh đóng đi qua giao diện.
@@ -568,20 +639,88 @@ class CloseFlow:
         trước phase 11 thì đường khẩn cấp **không có** bước này: nó đóng phía Client rồi dừng,
         biến một sổ đang hedge thành một sổ phơi nhiễm một chiều mà vẫn báo là đã xong.
         """
+        deadline_ms = self.db.get_config_int("cascade_wait_master_ms", DEFAULT_CASCADE_WAIT_MS)
+        route = (self.db.get_config(MASTER_CLOSE_ROUTE_KEY, "EA") or "EA").upper()
+
+        if route == "UI":
+            san_sang, ly_do = self._clicker_master_san_sang()
+            if san_sang:
+                # Không mang `magic`: giao diện không đặt được nó, và clicker từ chối thẳng một
+                # payload có `magic` vì đó là dấu hiệu định tuyến sai.
+                return await self.dispatcher.dispatch(
+                    self._clicker_master_id(), "CLOSE_UI", pair_id=pair_id,
+                    payload={"position_id": master_position_id}, deadline_ms=deadline_ms,
+                )
+            # Rơi về EA vì cùng lý do D-28: **không đóng được thì không an toàn**. Master còn vị
+            # thế trong khi các Client đã đóng là phơi nhiễm một chiều, và nó không tự hết.
+            self._alert("CRITICAL", "CLOSE_MASTER_FELL_BACK_TO_EA",
+                        f"Dong vi the Master {master_position_id} qua OrderSend cua EA thay vi "
+                        f"giao dien: {ly_do}. Deal dong se mang DEAL_REASON = EXPERT chu khong "
+                        "phai CLIENT.",
+                        pair_id=pair_id, agent_id=master["agent_id"])
+
+        return await self._gui_lenh_dong_master_ea(master, master_position_id, pair_id,
+                                                   deadline_ms)
+
+    async def _gui_lenh_dong_master_ea(self, master: sqlite3.Row, master_position_id: int,
+                                       pair_id: str, deadline_ms: int) -> str:
+        """Đường cũ: `OrderSend` của EA Master. Deal đóng mang `DEAL_REASON = EXPERT`."""
         return await self.dispatcher.dispatch(
             master["agent_id"], "CLOSE", pair_id=pair_id,
             payload={"position_id": master_position_id,
                      "magic": self.db.get_agent(master["agent_id"])["magic_number"]},
-            deadline_ms=self.db.get_config_int("cascade_wait_master_ms",
-                                               DEFAULT_CASCADE_WAIT_MS),
+            deadline_ms=deadline_ms,
         )
 
+    def _clicker_master_id(self) -> str:
+        return (self.db.get_config(MASTER_CLICKER_KEY, "") or "").strip()
+
+    def _clicker_master_san_sang(self) -> tuple[bool, str]:
+        """Clicker lái terminal Master có đang điều khiển được giao diện không.
+
+        Cùng nghĩa với `_clicker_san_sang` của phía Client: `ONLINE` ở đây là khẳng định **có bằng
+        chứng** (canary), không phải chỉ là còn kết nối TCP.
+        """
+        clicker_id = self._clicker_master_id()
+        if not clicker_id:
+            return False, f"chua khai {MASTER_CLICKER_KEY}"
+        clicker = self.db.get_agent(clicker_id)
+        if clicker is None:
+            return False, f"khong tim thay clicker {clicker_id}"
+        if clicker["role"] != "CLICKER":
+            return False, f"agent {clicker_id} co role {clicker['role']}, can CLICKER"
+        if clicker["status"] != "ONLINE":
+            return False, f"clicker {clicker_id} dang {clicker['status']}"
+        return True, ""
+
+    def _la_lenh_dong_master(self, command: sqlite3.Row) -> bool:
+        """Command này đóng vị thế **Master** hay vị thế Client?
+
+        Đường EA trả lời được bằng role của agent nhận. Đường giao diện thì không: cả hai đều gửi
+        cho một agent role `CLICKER`, nên phải so với clicker đã khai cho Master. Nhầm chỗ này
+        nghĩa là ghi sổ chân Client bằng kết quả của một lệnh đóng chân Master.
+        """
+        target = self.db.get_agent(command["target_agent_id"])
+        if target is not None and target["role"] == "MASTER":
+            return True
+        clicker_master = self._clicker_master_id()
+        return bool(clicker_master) and command["target_agent_id"] == clicker_master
+
     def _dang_dong_master(self, master_position_id: int) -> bool:
+        """Đã có lệnh đóng **chân Master** đang bay cho vị thế này chưa.
+
+        Phải lọc theo **agent nhận**, không chỉ theo loại lệnh: một lệnh `CLOSE` gửi cho EA Client,
+        hay `CLOSE_UI` gửi cho clicker của Client, cũng thuộc cùng vị thế Master qua `pair`. Đếm
+        nhầm chúng thì cascade tưởng Master đang được đóng rồi và **bỏ luôn** cú đóng Master.
+        """
         row = self.db.query_one(
             "SELECT 1 FROM command c JOIN pair p ON p.pair_id = c.pair_id "
-            "WHERE c.type = 'CLOSE' AND c.status IN ('PENDING','SENT') "
-            "AND p.master_position_id = ? LIMIT 1",
-            (master_position_id,))
+            "WHERE c.status IN ('PENDING','SENT') AND p.master_position_id = ? "
+            "  AND ((c.type = 'CLOSE' AND EXISTS ("
+            "          SELECT 1 FROM agent a WHERE a.agent_id = c.target_agent_id "
+            "          AND a.role = 'MASTER'))"
+            "    OR (c.type = 'CLOSE_UI' AND c.target_agent_id = ?)) LIMIT 1",
+            (master_position_id, self._clicker_master_id()))
         return row is not None
 
     async def _cho_master_dong(self, master_position_id: int, pair_id: str,
@@ -601,6 +740,13 @@ class CloseFlow:
                 return
             command = self.db.get_command(command_id)
             if command is not None and command["status"] in ("ACK_FAILED", "TIMEOUT"):
+                # Lệnh này hỏng, nhưng có thể nó vừa được **đổi kênh**: clicker của Master từ chối
+                # thì `_roi_ve_ea_master_sau_rejected` gửi tiếp một lệnh `CLOSE` cho EA. Kết luận
+                # thất bại lúc đó là báo động giả, và cái giá của báo động giả ở đây là đánh một
+                # loạt cặp thành `ORPHANED`.
+                if self._dang_dong_master(master_position_id):
+                    await asyncio.sleep(0.2)
+                    continue
                 break
             await asyncio.sleep(0.2)
 
@@ -634,8 +780,7 @@ class CloseFlow:
         pair = self.db.get_pair(command["pair_id"])
         if pair is None:
             return
-        target = self.db.get_agent(command["target_agent_id"])
-        la_master = target is not None and target["role"] == "MASTER"
+        la_master = self._la_lenh_dong_master(command)
 
         if message.status in ("ok", "already_closed"):
             # `already_closed` là kết quả **bình thường** khi hai bên cùng đóng gần như đồng
@@ -668,11 +813,37 @@ class CloseFlow:
                         pair_id=pair["pair_id"], agent_id=command["target_agent_id"])
             return
 
-        if message.status == "rejected" and command["type"] in LOAI_DONG_QUA_UI and not la_master:
-            await self._roi_ve_ea_sau_rejected(pair, command, message)
+        if message.status == "rejected" and command["type"] in LOAI_DONG_QUA_UI:
+            if la_master:
+                await self._roi_ve_ea_master_sau_rejected(pair, command, message)
+            else:
+                await self._roi_ve_ea_sau_rejected(pair, command, message)
             return
 
         await self._dong_that_bai(pair, command, message, la_master)
+
+    async def _roi_ve_ea_master_sau_rejected(self, pair: sqlite3.Row, command: sqlite3.Row,
+                                             message: Any) -> None:
+        """Clicker của Master từ chối lệnh đóng: đổi kênh sang EA.
+
+        Cùng lập luận với bản phía Client (`_roi_ve_ea_sau_rejected`), nhưng hậu quả của việc **bỏ
+        cuộc** ở đây còn nặng hơn: các Client đã đóng rồi, nên Master đứng lại một mình là phơi
+        nhiễm một chiều đúng nghĩa.
+        """
+        master_position_id = pair["master_position_id"]
+        master = self.db.get_master_position(master_position_id)
+        if master is None:
+            await self._dong_that_bai(pair, command, message, True)
+            return
+
+        self._alert("CRITICAL", "CLOSE_MASTER_FELL_BACK_TO_EA",
+                    f"Clicker tu choi lenh dong vi the Master {master_position_id} "
+                    f"({message.retmsg or ''}). Chua bam gi nen thu lai bang OrderSend cua EA; "
+                    "deal dong se mang DEAL_REASON = EXPERT chu khong phai CLIENT.",
+                    pair_id=pair["pair_id"], agent_id=command["target_agent_id"])
+        deadline_ms = self.db.get_config_int("cascade_wait_master_ms", DEFAULT_CASCADE_WAIT_MS)
+        await self._gui_lenh_dong_master_ea(master, master_position_id, pair["pair_id"],
+                                            deadline_ms)
 
     async def _roi_ve_ea_sau_rejected(self, pair: sqlite3.Row, command: sqlite3.Row,
                                       message: Any) -> None:

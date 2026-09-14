@@ -27,3 +27,12 @@ token = ""
 account_login = 0
 # Mau tieu de cua so terminal Client, thuong chua so tai khoan. Che do that bat buoc phai co.
 terminal_title = ""
+
+# Clicker THU HAI, lai terminal MASTER (phase 12). Chi can khi bat `master_close_route = UI` de
+# deal DONG tren tai khoan Master cung mang DEAL_REASON = CLIENT. De trong thi khong chay clicker
+# nay, va lenh dong Master di duong OrderSend cua EA nhu cu.
+# Chay bang: python -m clicker --muc clicker_master
+[clicker_master]
+token = ""
+account_login = 0
+terminal_title = ""
