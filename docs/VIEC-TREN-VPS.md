@@ -122,21 +122,80 @@ Select-String -Path logs\clicker.log -Pattern 'Do dong|OPEN_UI' | Select-Object 
 Nếu có dòng `UI_OPEN_QUEUE_EXPIRED`, đó là **số đo thật**, không phải lỗi phần mềm — ghi vào
 `docs/BACKLOG.md` B-15 và bàn tiếp. **Đừng nới 15 giây cho khỏi thấy.**
 
-## 7. Tìm vị thế cần đóng không còn dò từ dòng 0 (D-30, bổ sung 2026-09-15)
+## 7. Lũ alert `COMMAND_TIMEOUT` của `REQUEST_SNAPSHOT` — LÀM TRƯỚC mọi test khác
 
-Mở **10** lệnh `0.01` trên Master, chờ Client copy đủ, rồi **đóng lệnh thứ 9** ở Master. Sau đó đóng
-tiếp lệnh thứ 5.
+*(Mục "tìm vị thế không dò từ dòng 0" đã ĐẠT 2026-09-15: `2 lan mo / 11 dong`, `1 lan mo / 10 dong`
+— xem B-15.)*
+
+`tinh-hinh` 2026-09-15 báo **388.059** ERROR/CRITICAL chưa xem, toàn `COMMAND_TIMEOUT … REQUEST_SNAPSHOT`
+(~1,2 alert/giây). Code không có đường nào sinh ngần ấy khi kết nối ổn định; nghi hai EA dùng chung một
+token (EA gắn trên hai chart, hoặc terminal thừa) đá nhau ra liên tục. Thu bằng chứng, **chỉ đọc**:
 
 ```powershell
-Select-String -Path logs\clicker.log -Pattern 'Tim vi the' | Select-Object -Last 6 | Out-Host
+cd C:\CopyBridge
+@'
+import sqlite3
+c = sqlite3.connect("file:data/bridge.db?mode=ro", uri=True)
+print("== COMMAND_TIMEOUT theo gio (6 gio gan nhat) ==")
+for r in c.execute("SELECT substr(created_at,1,13) h, COUNT(*) FROM alert WHERE code='COMMAND_TIMEOUT' "
+                   "GROUP BY h ORDER BY h DESC LIMIT 6"): print(r)
+print("== REQUEST_SNAPSHOT 10 phut gan nhat, theo agent va trang thai ==")
+for r in c.execute("SELECT target_agent_id, status, COUNT(*) FROM command WHERE type='REQUEST_SNAPSHOT' "
+                   "AND created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-10 minutes') "
+                   "GROUP BY 1,2 ORDER BY 1,2"): print(r)
+print("== alert khac COMMAND_TIMEOUT dang mo ==")
+for r in c.execute("SELECT code, COUNT(*) FROM alert WHERE acknowledged_at IS NULL "
+                   "AND code <> 'COMMAND_TIMEOUT' GROUP BY code ORDER BY 2 DESC"): print(r)
+print("== sai lech dang cho theo loai ==")
+for r in c.execute("SELECT kind, severity, COUNT(*) FROM reconcile_finding WHERE resolution='PENDING' "
+                   "GROUP BY 1,2 ORDER BY 3 DESC"): print(r)
+'@ | .\.venv\Scripts\python.exe - | Tee-Object logs\lu-alert.txt
+
+Select-String -Path logs\bridge.log -Pattern 'da ket noi|dong ket noi|thay the|qua dai' |
+  Select-Object -Last 40 | Out-File logs\ket-noi.txt
+Get-NetTCPConnection -LocalPort 8787 -State Established |
+  Select-Object RemoteAddress, RemotePort, OwningProcess | Out-File logs\tcp-8787.txt
 ```
 
-**Đạt khi:** lần đóng thứ 9 ghi `… <=4 lan mo / 11 dong (nhi-phan)` và `CLOSE_UI` gần mức 0,8–1,5
-giây (trước là 3–4 giây); lần đóng thứ 5 ghi `1 lan mo (ban-do)` nếu dòng đó đã được đọc ở lần dò
-trước, hoặc vẫn `nhi-phan` với ≤4 lần mở; `kiem-reason` vẫn ĐẠT.
+Nhìn tay trên **từng** terminal: EA `CopyBridge` gắn trên **mấy chart**? Có terminal MT5 nào khác chạy?
 
-Nếu log ghi `tuan-tu` kèm lý do *ticket khong don dieu*: tab Trade trên terminal đó **không** sắp
-theo thời gian — ghi lại, bấm tiêu đề cột **Time** để sắp lại, đo lần nữa. Ghi số thật vào B-15.
+**Kết quả thu 2026-09-15 ~14:10 (giờ VN):** mỗi terminal **1** EA, không terminal thừa ⇒ giả thuyết "hai
+EA cùng token" **bị bác**. Nhưng lũ đang chạy: 10 phút gần nhất 430 `TIMEOUT` + 605 `ACK_OK`; **cả
+AG-CLIENT lẫn AG-MASTER nối lại mỗi 1,2–1,4 giây** (`mo ket noi moi … dong ket noi cu`); cổng 8787 có 6
+kết nối. Đã có từ 02:00 UTC — trước bản `0b2cec3`.
+
+Code loại trừ: bắt tay không chậm (SHA-256), Bridge không tự đá (chỉ đóng kết nối cũ khi có hello mới),
+payload heartbeat/snapshot của EA khớp schema. EA chỉ tự ngắt ở **bốn** chỗ và **chỗ nào cũng ghi log EA**:
+`Gui khong tron goi`, `Bridge gui dong qua dai`, `Bridge tu choi: <code> - <message>`, `Bat tay khong
+xong`. Backoff 1 giây + `hello_ack` đặt lại backoff ⇒ đúng nhịp 1,3 giây. Bước tiếp — lấy lý do:
+
+```powershell
+Get-Content logs\bridge.log -Tail 400 | Out-File logs\bridge-tail.txt -Encoding utf8
+Select-String -Path logs\bridge.log -Pattern 'sai schema|giai ma|qua dai|Tu choi|WARNING|ERROR' |
+  Select-Object -Last 40 | Out-File logs\bridge-loi.txt -Encoding utf8
+```
+
+Và log EA hôm nay của **cả hai** terminal (Toolbox → Experts → chuột phải → Open): ~30 dòng gần nhất có
+`Bridge tu choi`, `Gui khong tron goi`, `qua dai`, `Bat tay`, `Da ket noi toi Bridge`.
+
+**Kết quả `bridge.log` 2026-09-15 ~14:21:** **không** có dòng `sai schema` / `giai ma` / `qua dai` /
+`Tu choi` / WARNING nào ⇒ Bridge **không** gửi lỗi, nhánh `error` bị loại. `dong ket noi` là EOF từ phía
+EA ⇒ **EA tự đóng socket** ~1,2 giây sau mỗi lần nối, có lúc chưa trả lời snapshot. Mỗi lần nối Bridge
+gửi **hai** `REQUEST_SNAPSHOT` (`on_agent_online` + đối chiếu `AGENT_ONLINE`). Còn ba đường: `Gui khong tron
+goi`, `Bridge gui dong qua dai`, hoặc EA bị gỡ/khởi động lại (`… dung, ly do N`). Bước tiếp — **log EA
+không lọc**, ~60 dòng cuối file `MQL5\Logs\YYYYMMDD.log` hôm nay của **cả hai** terminal, kèm cỡ file:
+
+```powershell
+Get-ChildItem -Path "$env:APPDATA\MetaQuotes\Terminal" -Recurse -Filter commands.ndjson -ErrorAction SilentlyContinue |
+  Select-Object FullName, Length, LastWriteTime | Format-List | Out-File C:\CopyBridge\logs\ea-commands.txt -Encoding utf8
+```
+
+**Không** gỡ EA ra gắn lại trước khi có log — làm vậy có thể dừng lũ tạm thời và xoá dấu vết.
+
+**Đạt khi** (sau khi đã gỡ nguyên nhân): 10 phút gần nhất `REQUEST_SNAPSHOT` chỉ vài dòng và `ACK_OK`;
+`tcp-8787.txt` đúng 3 kết nối (EA Master, EA Client, clicker). **Chỉ khi đó** mới dọn:
+`bridge.admin xac-nhan-alert --code COMMAND_TIMEOUT --truoc <moc-lu-da-dung> [--that]`. 125 sai lệch
+đang chờ **không** dọn hàng loạt — có thể là hệ quả của đối chiếu không lấy được snapshot.
 
 ## 8. Chẩn đoán "chốt sai" — chạy TRƯỚC khi cập nhật (D-30, bổ sung 2026-09-15)
 

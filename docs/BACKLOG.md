@@ -111,8 +111,10 @@ mà MT5 thật sự đổi nội dung hay không — cùng kiểu nghi ngờ đ�
 > **2026-09-15 — thứ tự dò.** Người dùng quan sát: có 10 vị thế, đóng cái thứ 9 thì clicker mở lần
 > lượt hộp thoại dòng 0 → 8 rồi mới đóng (~0,3–0,4 giây mỗi dòng trượt, tức thêm 3–4 giây). Nay
 > `clicker/ui/timdong.py` dò theo bản đồ `ticket → dòng` rồi tìm nhị phân: test cho **≤4 lần mở**
-> với mọi vị thế trong 10 dòng sắp tăng (bản cũ: tới 10). **Chưa đo trên VPS** — xem
-> `docs/VIEC-TREN-VPS.md` mục 7, ghi số thật vào đây.
+> với mọi vị thế trong 10 dòng sắp tăng (bản cũ: tới 10). **Đo trên VPS 2026-09-15 (`0b2cec3`):**
+> `Tim vi the 73064311: 2 lan mo / 11 dong (nhi-phan)` và `Tim vi the 73064187: 1 lan mo / 10 dong
+> (nhi-phan)`; cả hai `Bam Close` đúng ticket, xả hàng đợi `0 ms`. Chưa đo được thời gian `CLOSE_UI`
+> đầu-cuối của hai lần này — output gửi về không có cột `giay`.
 
 Đo 2026-09-10 trên demo: `CLOSE_UI` **5,1–5,5 giây**, `CLOSE_UI_PARTIAL` **5,8–5,9 giây**, so với
 **342 ms** của đường EA. Clicker xử lý **một lệnh tại một thời điểm** (`link._gate`), nên nó là

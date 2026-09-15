@@ -2946,3 +2946,60 @@ lần dò (`Dong N mo hop thoai #T (hwnd H)`) để đo.
   `rejected` và rơi về EA — lần đóng một phần đầu tiên trên VPS phải xem log.
 
 **743 test xanh**, `ruff` sạch. Việc trên VPS: `docs/VIEC-TREN-VPS.md` mục 8.
+
+---
+
+## Đo trên VPS sau khi cập nhật `0b2cec3` (2026-09-15)
+
+**Đạt:**
+- Thứ tự dò: `Tim vi the 73064311: 2 lan mo / 11 dong (nhi-phan)`, `Tim vi the 73064187: 1 lan mo /
+  10 dong (nhi-phan)` — bản cũ tới 9–10 lần mở cho vị thế ở cuối danh sách.
+- `Bam Close ticket` đúng ticket cả hai lần, xả hàng đợi `0 ms`.
+- hwnd hai hộp thoại khác nhau (`0xa20c4e`, `0x19701a2`): MT5 tạo cửa sổ mới mỗi lần — câu hỏi còn treo
+  trong D-30 đã có câu trả lời đo được.
+- `kiem-dong-sai --ngay 2026-09-15`: `[A] [B] [C]` đều 0. `kiem-reason`: TEST-23 ĐẠT 97/98 (cặp còn lại
+  đã có giải thích).
+
+**Chưa có trong output gửi về:** TEST-31 (10 lệnh liên tiếp), đóng nhanh 5+5, `kiem-dong-sai` ngày
+2026-09-14, và thời gian `CLOSE_UI` đầu-cuối. Log chỉ có 2 lần đóng.
+
+**Vấn đề mới — lũ alert:** `tinh-hinh` báo **388.059** ERROR/CRITICAL chưa xem, toàn `COMMAND_TIMEOUT`
+của `REQUEST_SNAPSHOT` (~1,2/giây trong ~3,6 ngày), kèm 125 sai lệch chờ (cũ nhất 87 giờ). Đọc code:
+mọi nguồn tạo `REQUEST_SNAPSHOT` (đối chiếu định kỳ 60 giây, đối chiếu khi agent nối lại,
+`on_agent_online`, Close-By) đều không ra được ~1/giây khi kết nối ổn định; EA gửi snapshot rồi ack,
+server ghi `ACK_OK`, hạn 5 giây. Giả thuyết số một: **hai EA cùng token** — `server.connections` giữ
+một kết nối mỗi agent, hai bản đá nhau ra liên tục, mỗi lần nối lại hỏi snapshot rồi mất kết nối trước
+khi ack về. **Chưa xác nhận** — bằng chứng cần thu ở `docs/VIEC-TREN-VPS.md` mục 7. Không sửa code
+trước khi có bằng chứng.
+
+### Lũ `COMMAND_TIMEOUT` — bằng chứng đợt 1 (2026-09-15 ~14:10 giờ VN)
+
+- Mỗi terminal **1** EA, không terminal thừa ⇒ giả thuyết "hai EA cùng token" **bị bác**.
+- Lũ **đang chạy**: 10 phút gần nhất `REQUEST_SNAPSHOT` 430 `TIMEOUT` + 605 `ACK_OK`; 3,5–5,3 nghìn
+  timeout mỗi giờ từ 02:00 UTC — **trước** bản `0b2cec3`, không phải do nó.
+- `bridge.log`: **cả AG-CLIENT lẫn AG-MASTER nối lại mỗi 1,2–1,4 giây**
+  (`mo ket noi moi tu :58279, dong ket noi cu tai :58277`). Cổng 8787: 6 kết nối.
+- Code loại trừ: bắt tay không chậm (`verify_token` = một SHA-256); Bridge không tự đá (chỉ đóng kết nối
+  cũ khi đã nhận hello mới, `check_heartbeats` không đóng socket); payload heartbeat/snapshot EA khớp
+  schema `extra="forbid"` từng trường.
+- EA tự ngắt chỉ ở bốn chỗ, chỗ nào cũng log: `Gui khong tron goi`, `Bridge gui dong qua dai`,
+  `Bridge tu choi: <code>`, `Bat tay khong xong`. Backoff 1 giây, `hello_ack` đặt lại ⇒ đúng nhịp 1,3 s.
+  **Lý do thật chưa biết** — chờ log EA + `bridge.log` không lọc (`docs/VIEC-TREN-VPS.md` mục 7).
+- Dự kiến sửa phòng vệ bất kể nguyên nhân: snapshot hết hạn không tạo alert ERROR mỗi lần; không gửi
+  `REQUEST_SNAPSHOT` mới khi lệnh trước của agent còn `SENT`.
+
+### Lũ `COMMAND_TIMEOUT` — bằng chứng đợt 2: `bridge.log` (2026-09-15 ~14:21 giờ VN)
+
+- **Bridge không gửi lỗi nào cho EA**: 400 dòng cuối + lọc `sai schema|giai ma|qua dai|Tu choi|WARNING|ERROR`
+  chỉ ra `COMMAND_TIMEOUT`. Nhánh "Bridge trả `error` → EA ngắt" **bị loại**.
+- **EA tự đóng socket**: `dong ket noi` là EOF đọc từ phía EA (`server.py:354-356`). Chu kỳ điển hình:
+  `51.188` AG-CLIENT nối → Bridge gửi `REQUEST_SNAPSHOT` từ `on_agent_online` **và** một cái nữa từ đối
+  chiếu `AGENT_ONLINE` → `52.360` EA đóng, không trả lời lệnh `24981807` → TIMEOUT `56.907`. Có chu kỳ EA
+  trả snapshot + ack rồi mới đóng, nối lại sau vài chục ms. Cả hai EA cùng nhịp.
+- **Rút lại một suy luận**: `day len 13 symbol spec` mỗi chu kỳ không chứng minh EA khởi động lại — EA gửi
+  specs sau mỗi `hello_ack` (`CopyBridgeCommon.mqh:957`).
+- Còn ba đường EA đóng socket, đường nào cũng log: `Gui khong tron goi` (`:861`), `Bridge gui dong qua dai`
+  (`:885` — điều kiện tính **tổng** byte chưa xử lý chứ không phải độ dài một dòng), hoặc `OnDeinit`
+  (`… dung, ly do N`). **Chờ log EA không lọc** — `docs/VIEC-TREN-VPS.md` mục 7.
+- Manh mối phụ: mỗi `REQUEST_SNAPSHOT` thêm một dòng vào `commands.ndjson` của EA, giữ 24 giờ, tìm tuyến
+  tính — lũ ~1/giây ⇒ ~100 nghìn dòng/ngày mỗi terminal. Cần cỡ file thật.

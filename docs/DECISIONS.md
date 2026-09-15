@@ -457,6 +457,11 @@ Không cơ chế nào ở trên đã được **quan sát** trên VPS; `bridge.a
 **Không** từ chối hộp thoại có hwnd trùng lần trước: chưa đo MT5 có dùng lại hwnd hay không, và từ
 chối sai sẽ tắt hẳn đường đóng qua giao diện — thay vào đó log hwnd mỗi lần dò để đo.
 
+**Đo trên VPS 2026-09-15 (commit `0b2cec3`):** hai lần đóng liên tiếp cho hwnd `0xa20c4e` và
+`0x19701a2` — MT5 **tạo cửa sổ mới** mỗi lần mở hộp thoại, không dùng lại. Quyết định không từ chối
+hwnd trùng là đúng: nó không tắt gì, và nếu có ngày hwnd trùng xuất hiện thì đó là bất thường đáng
+nhìn log, không phải hành vi thường. Xả hàng đợi đo được `0 ms` cả hai lần.
+
 ### D-31 — Clicker bận thì **xếp hàng**, không bỏ lệnh
 
 **Bằng chứng:** 2026-09-14, vào 10 lệnh liên tiếp trên Master thì Client chỉ copy được vài lệnh.
