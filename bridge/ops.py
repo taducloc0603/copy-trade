@@ -170,6 +170,26 @@ def thu_hoi_token(db: Database, agent_id: str) -> bool:
     return True
 
 
+def doi_login_agent(db: Database, agent_id: str, login: int) -> bool:
+    """Đặt lại `account_login` của một agent đã có. `False` nếu không có agent đó.
+
+    Tồn tại vì một lỗi thật trên VPS 2026-09-15: trợ lý tạo `AG-CLICKER-MASTER` với số tài khoản
+    `0`, clicker gửi `538286`, và Bridge từ chối bắt tay mãi với `ACCOUNT_MISMATCH` (`server.py`
+    so khớp khi cột này khác NULL). Không có lệnh nào sửa được, còn `UPDATE` tay vào SQLite là
+    điều dự án cấm — nên phải có lệnh có tên.
+    """
+    if login <= 0:
+        raise ValueError(f"So tai khoan phai duong, nhan duoc {login}")
+    if db.get_agent(agent_id) is None:
+        return False
+    with db.transaction() as conn:
+        conn.execute("UPDATE agent SET account_login = ?, updated_at = ? WHERE agent_id = ?",
+                     (login, utc_now_iso(), agent_id))
+    log.warning("Doi account_login cua agent %s thanh %s", agent_id, login,
+                extra={"agent_id": agent_id})
+    return True
+
+
 # -- dọn log (plan 10.1) -----------------------------------------------------------------------
 
 def don_log_cu(logs_dir: Path, giu_ngay: int = 30) -> list[Path]:
@@ -249,10 +269,17 @@ def kiem_reason_master(db: Database) -> list[dict[str, object]]:
     """
     if (db.get_config("master_close_route", "EA") or "EA").upper() != "UI":
         return []
+    # Chỉ chấm vị thế đóng SAU lúc bật `UI`. Trước mốc đó `EXPERT` là **đúng cấu hình**, và chấm nó
+    # là tạo một tiêu chí không bao giờ đạt — đúng chuyện đã xảy ra trên VPS 2026-09-15: bật UI xong,
+    # TEST-30 báo 6 vi phạm, cả 6 là lần đóng qua EA từ trước khi bật.
+    # `close_time` NULL vẫn được tính: không biết thì không loại, để không che một vi phạm thật.
+    moc = moc_bat_ui_master(db)
     rows = db.query_all(
         "SELECT master_position_id, symbol, close_reason, close_time FROM master_position "
-        "WHERE close_reason IS NOT NULL AND close_reason <> ? ORDER BY master_position_id",
-        (REASON_CLIENT,))
+        "WHERE close_reason IS NOT NULL AND close_reason <> ? "
+        "  AND (close_time IS NULL OR ? IS NULL OR close_time >= ?) "
+        "ORDER BY master_position_id",
+        (REASON_CLIENT, moc, moc))
     vi_pham = []
     for r in rows:
         da_giai_thich = db.query_one(
@@ -265,6 +292,16 @@ def kiem_reason_master(db: Database) -> list[dict[str, object]]:
         log.error("TEST-30 KHONG DAT: %d vi the Master dong sai kenh khong giai thich duoc",
                   len(chua_ro))
     return vi_pham
+
+
+def moc_bat_ui_master(db: Database) -> str | None:
+    """Lúc `master_close_route` được đặt lần gần nhất — tức lúc bật đường đóng Master qua giao diện.
+
+    Lấy từ `system_config.updated_at`: `bridge.admin cau-hinh-master` ghi bằng `set_config`, và
+    `set_config` luôn cập nhật cột đó.
+    """
+    row = db.query_one("SELECT updated_at FROM system_config WHERE key = 'master_close_route'")
+    return row["updated_at"] if row is not None else None
 
 
 # -- chẩn đoán "chốt sai" ------------------------------------------------------------------------

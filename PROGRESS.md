@@ -3043,3 +3043,19 @@ EA trên hai chart, người vận hành chưa gỡ.
 có mã lỗi và mã alert đó), không chạy thử bằng stash.
 
 **Chưa commit, chưa lên VPS.** Kiểm sau khi cập nhật: `docs/VIEC-TREN-VPS.md` mục 7.
+
+### Bật đóng Master qua giao diện trên VPS — clicker Master chưa chạy; sửa cách chấm TEST-30 (2026-09-15)
+
+**Quan sát trên VPS** sau khi người dùng bật `master_close_route = UI`: đóng tay ở Client, Master đóng theo
+nhưng vẫn **Placed by expert**. Dữ liệu: 3 lệnh đóng Master gần nhất đều `CLOSE` → `AG-MASTER` (EA), **không
+có** `CLOSE_UI` → `AG-CLICKER-MASTER`; vị thế `73139678` `close_reason = 3` kèm alert
+`CLOSE_MASTER_FELL_BACK_TO_EA` ⇒ route đã `UI` nhưng `_clicker_master_san_sang()` trả sai (clicker Master chưa
+khai / chưa `ONLINE`). Lý do cụ thể nằm trong nội dung alert. Đang chờ người dùng chạy chẩn đoán.
+
+**Lỗi chấm, đã sửa:** TEST-30 báo 6 vi phạm "không giải thích" — cả 6 là vị thế đóng qua EA **trước** lúc
+bật UI, khi đó EXPERT là đúng cấu hình. `ops.kiem_reason_master` nay chỉ tính vị thế có
+`close_time >= system_config.updated_at` của `master_close_route` (hàm mới `moc_bat_ui_master`); `close_time`
+NULL vẫn tính để không che vi phạm thật. `admin._in_phan_master` đếm `tong` theo cùng mốc và in mốc ra.
+
++2 test (`test_ops.py`): đóng EA trước mốc ⇒ không vi phạm; sau mốc ⇒ vẫn vi phạm. **752 test xanh**, `ruff`
+sạch. Chưa commit.

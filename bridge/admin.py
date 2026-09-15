@@ -104,6 +104,27 @@ def lenh_thu_hoi(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_sua_agent(db: Database, args: argparse.Namespace) -> int:
+    """Sửa số tài khoản MT5 của một agent đã có — không đụng token.
+
+    Sai số tài khoản thì Bridge từ chối bắt tay với `ACCOUNT_MISMATCH` mãi mãi, và trước lệnh này
+    cách duy nhất để sửa là `UPDATE` tay vào database.
+    """
+    from bridge.ops import doi_login_agent
+
+    try:
+        co = doi_login_agent(db, args.agent_id, args.login)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if not co:
+        print(f"Khong co agent {args.agent_id}", file=sys.stderr)
+        return 1
+    print(f"Da dat account_login cua {args.agent_id} = {args.login}. Token giu nguyen; "
+          "tien trinh dang bi tu choi se tu noi lai o lan thu ke tiep.")
+    return 0
+
+
 def lenh_sao_luu(db: Database, args: argparse.Namespace, db_path: Path) -> int:
     ban = sao_luu(db, db_path)
     dem = kiem_chung_ban_sao_luu(ban)
@@ -167,10 +188,15 @@ def _in_phan_master(db: Database) -> list[dict]:
     if route != "UI":
         return []
 
+    from bridge.ops import moc_bat_ui_master
+
+    moc = moc_bat_ui_master(db)
     tong = db.query_one(
-        "SELECT COUNT(*) n FROM master_position WHERE close_reason IS NOT NULL")["n"]
+        "SELECT COUNT(*) n FROM master_position WHERE close_reason IS NOT NULL "
+        "AND (close_time IS NULL OR ? IS NULL OR close_time >= ?)", (moc, moc))["n"]
     chua_ro = [r for r in vi_pham if not r["da_giai_thich"]]
     da_ro = [r for r in vi_pham if r["da_giai_thich"]]
+    print(f"\n(TEST-30 chi tinh vi the Master dong sau khi bat master_close_route = UI luc {moc})")
 
     if not chua_ro:
         print(f"\nTEST-30 DAT: {tong - len(da_ro)}/{tong} vi the Master dong dung kenh.")
@@ -636,6 +662,11 @@ def build_parser() -> argparse.ArgumentParser:
     thu = sub.add_parser("thu-hoi", help="Thu hoi token, vo hieu hoa agent")
     thu.add_argument("agent_id")
 
+    sa = sub.add_parser("sua-agent",
+                        help="Sua so tai khoan MT5 cua agent da co (token giu nguyen)")
+    sa.add_argument("agent_id")
+    sa.add_argument("--login", type=int, required=True, help="So tai khoan MT5 dung")
+
     sub.add_parser("sao-luu", help="Sao luu DB ngay bay gio va kiem chung")
     sub.add_parser("bao-tri", help="Retention + sao luu + don ban cu")
     sub.add_parser("kiem-reason", help="TEST-23: moi vi the Client phai la DEAL_REASON_CLIENT")
@@ -704,6 +735,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_cap_token(db, args)
         if args.lenh == "thu-hoi":
             return lenh_thu_hoi(db, args)
+        if args.lenh == "sua-agent":
+            return lenh_sua_agent(db, args)
         if args.lenh == "sao-luu":
             return lenh_sao_luu(db, args, db_path)
         if args.lenh == "bao-tri":

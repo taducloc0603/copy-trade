@@ -460,6 +460,37 @@ def test_kiem_reason_master_coi_cu_roi_ve_EA_la_DA_CO_GIAI_THICH(seeded: Databas
     assert len(vi_pham) == 1 and vi_pham[0]["da_giai_thich"] is True
 
 
+def _bat_ui_luc(db: Database, moc: str) -> None:
+    db.set_config("master_close_route", "UI")
+    with db.transaction() as conn:
+        conn.execute("UPDATE system_config SET updated_at = ? WHERE key = 'master_close_route'",
+                     (moc,))
+
+
+def test_kiem_reason_master_bo_qua_vi_the_dong_qua_EA_TRUOC_khi_bat_UI(seeded: Database) -> None:
+    """VPS 2026-09-15: bật UI xong, TEST-30 báo 6 vi phạm — cả 6 đóng qua EA từ trước khi bật."""
+    from bridge.ops import kiem_reason_master
+
+    _bat_ui_luc(seeded, "2026-09-15T13:30:00.000Z")
+    seeded.set_master_position_status(MASTER_POSITION_ID, "CLOSED", current_volume=0.0,
+                                      close_time="2026-09-15T13:00:00.000Z")
+    seeded.set_master_close_reason(MASTER_POSITION_ID, 3)
+
+    assert kiem_reason_master(seeded) == []
+
+
+def test_kiem_reason_master_van_bat_vi_the_dong_qua_EA_SAU_khi_bat_UI(seeded: Database) -> None:
+    from bridge.ops import kiem_reason_master
+
+    _bat_ui_luc(seeded, "2026-09-15T13:30:00.000Z")
+    seeded.set_master_position_status(MASTER_POSITION_ID, "CLOSED", current_volume=0.0,
+                                      close_time="2026-09-15T13:40:00.000Z")
+    seeded.set_master_close_reason(MASTER_POSITION_ID, 3)
+
+    vi_pham = kiem_reason_master(seeded)
+    assert len(vi_pham) == 1 and vi_pham[0]["da_giai_thich"] is False
+
+
 # -- xac-nhan-alert ----------------------------------------------------------------------------
 
 def _admin_tren(db: Database, monkeypatch):
@@ -635,6 +666,28 @@ def test_admin_kiem_dong_sai_thoat_1_khi_co_danh_dau(seeded: Database, monkeypat
     _cap(seeded, 9006, status="CLOSED")
     assert admin.main(["kiem-dong-sai", "--ngay", utc_now_iso()[:10]]) == 1
     assert "[B] cap CLOSED" in capsys.readouterr().out
+
+
+# -- sua-agent (VPS 2026-09-15: AG-CLICKER-MASTER tao voi login 0 => ACCOUNT_MISMATCH mai) ------
+
+def test_admin_sua_agent_dat_lai_so_tai_khoan(seeded: Database, monkeypatch) -> None:
+    admin = _admin_tren(seeded, monkeypatch)
+    seeded.upsert_agent("AG-CLICKER-MASTER", role="CLICKER", token_hash="hash-cm",
+                        magic_number=770001, account_login=0)
+
+    assert admin.main(["sua-agent", "AG-CLICKER-MASTER", "--login", "538286"]) == 0
+
+    agent = seeded.get_agent("AG-CLICKER-MASTER")
+    assert agent["account_login"] == 538286
+    assert agent["token_hash"] == "hash-cm", "Sua so tai khoan KHONG duoc dung toi token"
+
+
+def test_admin_sua_agent_tu_choi_agent_khong_co_va_so_khong_hop_le(seeded: Database,
+                                                                   monkeypatch) -> None:
+    admin = _admin_tren(seeded, monkeypatch)
+    assert admin.main(["sua-agent", "AG-KHONG-CO", "--login", "538286"]) == 1
+    assert admin.main(["sua-agent", MASTER_AGENT, "--login", "0"]) == 1
+    assert seeded.get_agent(MASTER_AGENT)["account_login"] == 111111
 
 
 def test_cap_token_bat_lai_agent_da_thu_hoi(seeded: Database) -> None:
