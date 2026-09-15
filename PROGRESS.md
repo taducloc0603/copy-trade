@@ -3003,3 +3003,43 @@ trước khi có bằng chứng.
   (`… dung, ly do N`). **Chờ log EA không lọc** — `docs/VIEC-TREN-VPS.md` mục 7.
 - Manh mối phụ: mỗi `REQUEST_SNAPSHOT` thêm một dòng vào `commands.ndjson` của EA, giữ 24 giờ, tìm tuyến
   tính — lũ ~1/giây ⇒ ~100 nghìn dòng/ngày mỗi terminal. Cần cỡ file thật.
+
+### Lũ `COMMAND_TIMEOUT` — ĐÃ TÌM RA NGUYÊN NHÂN (2026-09-15 ~19:51 giờ VN)
+
+Log EA của terminal Master: **hai** bản `CopyBridgeMaster` chạy song song — `(ETHUSD.s,H1)` và
+`(BTCUSD.s,H1)` — cùng token `AG-MASTER`. Bản này bắt tay thì Bridge đóng kết nối của bản kia
+(`server.py:290-294`); lần gửi kế của bản kia trả `-1` (`Gui khong tron goi (-1/217)`,
+`CopyBridgeCommon.mqh:861`), nó nối lại sau backoff 1 giây và đá ngược lại. Mỗi lần nối Bridge gửi hai
+`REQUEST_SNAPSHOT`; kết nối bị thay trước khi ack về ⇒ timeout ⇒ 388 nghìn alert trong ~4 ngày.
+
+**Bài học, ghi rõ để không lặp:** giả thuyết đầu tiên ("hai EA cùng token") là **đúng**, nhưng bị gạt đi vì
+người vận hành trả lời "1 chart" — chart thứ hai không nằm trong tầm mắt. Câu hỏi nhìn bằng mắt không phải
+bằng chứng; **log EA có tên chart trong ngoặc** mới là bằng chứng, và nó lẽ ra phải là thứ xin đầu tiên.
+Hai lượt đọc code để loại trừ các nhánh khác (schema, bắt tay chậm, Bridge tự đá) là đúng việc nhưng
+đi sau thứ tự.
+
+AG-CLIENT nối lại cùng nhịp ⇒ nhiều khả năng terminal Client cũng gắn EA trên hai chart; chờ người vận hành
+kiểm. Việc trên VPS và chốt chặn code dự kiến: `docs/VIEC-TREN-VPS.md` mục 7.
+
+### Chốt chặn kết nối trùng và lũ snapshot (2026-09-15, laptop)
+
+Tình trạng VPS lúc làm: Master đã sạch sau khi gỡ EA thừa; **Client vẫn lặp** — terminal Client cũng gắn
+EA trên hai chart, người vận hành chưa gỡ.
+
+**Đã làm** — để lần sau một EA gắn trên hai chart lộ ra trong một phút, không phải bốn ngày:
+- `bridge/protocol/server.py` `_handshake`: trước khi đóng kết nối cũ, gửi `error REPLACED`
+  (hạn 0,5 giây — socket chết có thể làm `drain()` chờ mãi giữa đường bắt tay). EA đã có nhánh `error`
+  nên log EA hiện `Bridge tu choi: REPLACED - …` thay vì `Gui khong tron goi (-1/217)` không nói gì. Đếm
+  lần thay theo agent trong 60 giây; ≥ 5 ⇒ **một** alert ERROR `AGENT_DUPLICATE_CONNECTION`, im 10 phút.
+  Terminal khởi động lại chỉ thay một lần ⇒ không báo.
+- `bridge/protocol/dispatcher.py` `request_snapshot`: agent còn một `REQUEST_SNAPSHOT` chưa trả lời và chưa
+  quá hạn thì trả lại lệnh đó. `on_agent_online` **cố ý không** đi qua đường này mà luôn hỏi mới: lệnh treo
+  lúc đó thuộc kết nối vừa chết, tái dùng nó là để kết nối mới không bao giờ được hỏi (có test riêng).
+- `scan_deadlines`: `REQUEST_SNAPSHOT` hết hạn ⇒ WARNING `SNAPSHOT_TIMEOUT`, tối đa một lần / agent /
+  10 phút, mốc tra trong bảng `alert` nên sống qua khởi động lại. Lệnh giao dịch hết hạn vẫn ERROR.
+
+**Test:** +7 bài (`test_server.py` 3, `test_dispatcher.py` 4). **750 test xanh**, `ruff` sạch. Các bài
+`REPLACED` / `AGENT_DUPLICATE_CONNECTION` / `SNAPSHOT_TIMEOUT` đỏ trên code cũ theo suy luận (code cũ không
+có mã lỗi và mã alert đó), không chạy thử bằng stash.
+
+**Chưa commit, chưa lên VPS.** Kiểm sau khi cập nhật: `docs/VIEC-TREN-VPS.md` mục 7.

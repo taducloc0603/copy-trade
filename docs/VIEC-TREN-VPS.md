@@ -190,7 +190,33 @@ Get-ChildItem -Path "$env:APPDATA\MetaQuotes\Terminal" -Recurse -Filter commands
   Select-Object FullName, Length, LastWriteTime | Format-List | Out-File C:\CopyBridge\logs\ea-commands.txt -Encoding utf8
 ```
 
-**Không** gỡ EA ra gắn lại trước khi có log — làm vậy có thể dừng lũ tạm thời và xoá dấu vết.
+**ĐÃ TÌM RA (log EA Master, 2026-09-15 19:51 giờ VN):** terminal Master chạy **hai** bản
+`CopyBridgeMaster` — một trên chart **ETHUSD.s,H1**, một trên **BTCUSD.s,H1** — cùng token. Bản này bắt tay
+thì Bridge đóng kết nối của bản kia (`server.py:290-294`), lần gửi kế của bản kia trả `-1`
+(`Gui khong tron goi (-1/217)`, `CopyBridgeCommon.mqh:861`), nó nối lại sau 1 giây và đá ngược lại. Lặp
+~1,2 giây. Giả thuyết "hai EA cùng token" ban đầu là **đúng** — chart thứ hai không nằm trong tầm mắt.
+
+Việc cần làm:
+1. Terminal **Master**: menu **Window** xem mọi chart; giữ EA trên **đúng một** chart, gỡ EA khỏi chart kia
+   (chuột phải → Expert list → Remove, hoặc đóng chart). Tab Experts phải hiện `CopyBridgeMaster dung, ly do …`.
+2. Terminal **Client**: xem tab Experts — nếu `CopyBridgeClient (…)` hiện với **hai** tên chart thì làm y như
+   trên, **giữ chart của symbol đang copy** (hộp thoại New Order lấy symbol theo chart, B-01).
+3. Đạt khi sau ~1 phút: `bridge.log` không còn `mo ket noi moi` mới; `REQUEST_SNAPSHOT` 2 phút gần nhất chỉ vài
+   dòng, toàn `ACK_OK`; `Get-NetTCPConnection -LocalPort 8787 -State Established` đúng **3** kết nối.
+4. Chỉ khi đó mới dọn: `xac-nhan-alert --code COMMAND_TIMEOUT --truoc <moc-da-go> [--that]`.
+
+Tình trạng 2026-09-15 ~19:58: **Master đã sạch** sau khi gỡ EA thừa; **Client vẫn lặp** (5 lần thay kết nối
+gần nhất đều `AG-CLIENT`, 58 `TIMEOUT` / 2 phút) ⇒ terminal Client cũng gắn EA trên hai chart, chưa gỡ.
+
+**Chốt chặn trong code — ĐÃ LÀM trên laptop (chưa lên VPS):**
+- Kết nối bị thay nhận `error REPLACED` ⇒ log EA ghi `Bridge tu choi: REPLACED - …` thay vì `Gui khong tron goi (-1)`.
+- Thay ≥ 5 lần / 60 giây ⇒ **một** alert ERROR `AGENT_DUPLICATE_CONNECTION`, im 10 phút cho cùng agent.
+- `request_snapshot` không gửi chồng; `on_agent_online` vẫn hỏi mới cho kết nối mới.
+- `REQUEST_SNAPSHOT` hết hạn ⇒ WARNING `SNAPSHOT_TIMEOUT`, tối đa một lần / agent / 10 phút; lệnh giao dịch hết
+  hạn vẫn ERROR `COMMAND_TIMEOUT`.
+
+Kiểm sau khi cập nhật: trên demo cố ý gắn EA lên chart thứ hai ⇒ trong 1 phút có đúng **một**
+`AGENT_DUPLICATE_CONNECTION`, log EA hiện `REPLACED`; gỡ ra ⇒ yên, không có alert mới.
 
 **Đạt khi** (sau khi đã gỡ nguyên nhân): 10 phút gần nhất `REQUEST_SNAPSHOT` chỉ vài dòng và `ACK_OK`;
 `tcp-8787.txt` đúng 3 kết nối (EA Master, EA Client, clicker). **Chỉ khi đó** mới dọn:

@@ -55,6 +55,85 @@ def _client(server: BridgeServer, **kwargs: object) -> MockAgent:
 
 
 # ---------------------------------------------------------------------------------------------
+# REQUEST_SNAPSHOT: không gửi chồng, hết hạn không ngập alert (sự cố VPS 2026-09-12→15)
+# ---------------------------------------------------------------------------------------------
+
+def _snapshot(db: Database, agent_id: str = CLIENT_AGENT) -> list:
+    return db.query_all(
+        "SELECT * FROM command WHERE type = 'REQUEST_SNAPSHOT' AND target_agent_id = ? "
+        "ORDER BY created_at", (agent_id,))
+
+
+async def test_request_snapshot_khong_gui_chong_khi_lenh_truoc_con_cho(
+        stack, agents_db: Database) -> None:
+    server, dispatcher = stack
+    agent = _client(server, auto_ack=False)
+    await agent.start()
+    try:
+        await _wait_until(lambda: len(_snapshot(agents_db)) == 1)
+        dau = _snapshot(agents_db)[0]["command_id"]
+        assert await dispatcher.request_snapshot(CLIENT_AGENT) == dau
+        assert await dispatcher.request_snapshot(CLIENT_AGENT) == dau
+        assert len(_snapshot(agents_db)) == 1
+    finally:
+        await agent.kill()
+
+
+async def test_request_snapshot_da_tra_loi_thi_hoi_lai_duoc(stack, agents_db: Database) -> None:
+    server, dispatcher = stack
+    agent = _client(server)
+    await agent.start()
+    try:
+        await _wait_until(lambda: [r["status"] for r in _snapshot(agents_db)] == ["ACK_OK"])
+        moi = await dispatcher.request_snapshot(CLIENT_AGENT)
+        assert moi != _snapshot(agents_db)[0]["command_id"]
+        assert len(_snapshot(agents_db)) == 2
+    finally:
+        await agent.kill()
+
+
+async def test_noi_lai_van_hoi_snapshot_tren_ket_noi_moi(stack, agents_db: Database) -> None:
+    """Lệnh cũ còn treo trên kết nối đã chết không được làm kết nối mới mất snapshot."""
+    server, _ = stack
+    cu = _client(server, auto_ack=False)
+    await cu.start()
+    await _wait_until(lambda: len(_snapshot(agents_db)) == 1)
+    await cu.kill()
+
+    moi = _client(server, auto_ack=False)
+    await moi.start()
+    try:
+        await _wait_until(lambda: len(_snapshot(agents_db)) == 2)
+        lenh = await moi.wait_for_command("REQUEST_SNAPSHOT")
+        assert lenh["command_id"] == _snapshot(agents_db)[1]["command_id"]
+    finally:
+        await moi.kill()
+
+
+async def test_snapshot_het_han_hang_loat_chi_mot_alert_warning(stack,
+                                                               agents_db: Database) -> None:
+    """Lệnh chỉ đọc hết hạn không phải sự cố giao dịch; lệnh giao dịch hết hạn thì vẫn là ERROR."""
+    _, dispatcher = stack
+    qua_han = "2000-01-01T00:00:00.000Z"
+    for i in range(20):
+        agents_db.create_command(f"CMD-SNAP-{i}", CLIENT_AGENT, "REQUEST_SNAPSHOT", pair_id=None,
+                                 payload_json="{}", deadline_at=qua_han)
+        agents_db.mark_command_sent(f"CMD-SNAP-{i}")
+    agents_db.create_command("CMD-CLOSE-1", CLIENT_AGENT, "CLOSE", pair_id=None,
+                             payload_json="{}", deadline_at=qua_han)
+    agents_db.mark_command_sent("CMD-CLOSE-1")
+
+    assert dispatcher.scan_deadlines() == 21
+
+    mo = agents_db.list_open_alerts()
+    snap = [a for a in mo if a["code"] == "SNAPSHOT_TIMEOUT"]
+    assert len(snap) == 1 and snap[0]["level"] == "WARNING"
+    loi = [a for a in mo if a["code"] == "COMMAND_TIMEOUT"]
+    assert len(loi) == 1 and loi[0]["level"] == "ERROR", "Lenh giao dich het han van la ERROR"
+    assert all(agents_db.get_command(f"CMD-SNAP-{i}")["status"] == "TIMEOUT" for i in range(20))
+
+
+# ---------------------------------------------------------------------------------------------
 # Ghi trước, gửi sau
 # ---------------------------------------------------------------------------------------------
 

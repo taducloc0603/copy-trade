@@ -70,6 +70,17 @@ ERR_AGENT_DISABLED = "AGENT_DISABLED"
 ERR_BAD_MESSAGE = "BAD_MESSAGE"
 ERR_HELLO_TIMEOUT = "HELLO_TIMEOUT"
 ERR_HELLO_EXPECTED = "HELLO_EXPECTED"
+#: Gửi cho kết nối **cũ** khi một kết nối mới cùng token thế chỗ nó. EA ghi log
+#: `Bridge tu choi: REPLACED - …`, nên người đọc log thấy nguyên nhân bằng chữ.
+ERR_REPLACED = "REPLACED"
+
+#: Nhận ra hai tiến trình giành một agent (EA gắn trên hai chart, hai terminal cùng token).
+#: Terminal khởi động lại chỉ thay kết nối **một** lần; hai bản chạy song song thì thay liên tục
+#: mỗi ~1,2 giây — đo trên VPS 2026-09-15, sau bốn ngày và 388 nghìn alert `COMMAND_TIMEOUT` không
+#: một dòng nào nói ra nguyên nhân.
+TRUNG_KET_NOI_CUA_SO_SEC = 60.0
+TRUNG_KET_NOI_NGUONG = 5
+TRUNG_KET_NOI_IM_SEC = 600.0
 
 
 @dataclass
@@ -132,6 +143,11 @@ class BridgeServer:
         self.on_agent_online: Any = None
         #: Đặt bởi `EventProcessor` (phase 6). Được await sau khi ack đã ghi vào DB.
         self.on_command_acked: Any = None
+        #: Mốc (monotonic) các lần một kết nối mới thay kết nối cũ, theo agent. Nằm trong bộ nhớ
+        #: là đủ: câu hỏi là "đang giành nhau ngay lúc này không", không phải lịch sử.
+        self._lan_thay: dict[str, list[float]] = {}
+        #: Lần gần nhất đã báo `AGENT_DUPLICATE_CONNECTION` cho mỗi agent.
+        self._da_bao_trung: dict[str, float] = {}
 
     # -- vòng đời --------------------------------------------------------------------------
 
@@ -291,7 +307,37 @@ class BridgeServer:
         if existing is not None:
             log.info("Agent %s mo ket noi moi tu %s, dong ket noi cu tai %s",
                      agent_id, peer, existing.peer)
+            # Nói cho kết nối cũ biết VÌ SAO nó bị đóng. Là xác chết thì không ai đọc; là một tiến
+            # trình thứ hai còn sống cùng token thì EA ghi đúng chữ này vào log. Có hạn chờ vì
+            # socket chết mà bộ đệm gửi đầy thì `drain()` có thể chờ mãi, giữa đường bắt tay.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(_send_error(
+                    existing.writer, ERR_REPLACED,
+                    "Ket noi bi thay boi ket noi moi cung token. Kiem EA co gan tren 2 chart "
+                    "hoac 2 terminal khong."), 0.5)
             existing.close()
+
+            # Thay một lần là terminal khởi động lại. Thay dồn dập là hai tiến trình giành nhau —
+            # báo MỘT alert rồi im, thay vì để nó chỉ lộ ra qua hàng trăm nghìn timeout.
+            bay_gio = time.monotonic()
+            lan_thay = [t for t in self._lan_thay.get(agent_id, [])
+                        if bay_gio - t <= TRUNG_KET_NOI_CUA_SO_SEC] + [bay_gio]
+            self._lan_thay[agent_id] = lan_thay
+            lan_bao = self._da_bao_trung.get(agent_id)
+            if len(lan_thay) >= TRUNG_KET_NOI_NGUONG and (
+                    lan_bao is None or bay_gio - lan_bao >= TRUNG_KET_NOI_IM_SEC):
+                self._da_bao_trung[agent_id] = bay_gio
+                self.db.create_alert(
+                    "ERROR", "AGENT_DUPLICATE_CONNECTION",
+                    f"Agent {agent_id} bi thay ket noi {len(lan_thay)} lan trong "
+                    f"{int(TRUNG_KET_NOI_CUA_SO_SEC)} giay: co HAI tien trinh dung chung token "
+                    "(EA gan tren 2 chart, hoac 2 terminal). Tab Experts cua terminal hien ten "
+                    "chart trong ngoac — giu EA tren dung mot chart.",
+                    agent_id=agent_id,
+                )
+                log.error("Agent %s bi thay ket noi %d lan trong %ds — nghi hai tien trinh "
+                          "cung token", agent_id, len(lan_thay), int(TRUNG_KET_NOI_CUA_SO_SEC),
+                          extra={"agent_id": agent_id})
 
         connection = AgentConnection(agent_id=agent_id, role=hello.role, writer=writer,
                                      peer=peer, buffer=buffer)

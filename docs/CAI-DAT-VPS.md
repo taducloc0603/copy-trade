@@ -247,6 +247,11 @@ Script không làm hộ phần này.
    ```
 3. Chép `.ex5` vào `MQL5\Experts` của từng terminal, gắn EA lên chart, điền `AgentToken`
    (`BridgeHost` để `127.0.0.1`, `BridgePort` để `8787`).
+   **Mỗi terminal gắn EA trên ĐÚNG MỘT chart.** Hai chart cùng token thì hai bản EA đá nhau ra khỏi
+   Bridge mỗi ~1 giây — đã xảy ra thật 2026-09-12→15, bốn ngày, 388 nghìn alert, lệnh đóng gửi cho
+   Master có thể mất. Kiểm bằng menu **Window** (thấy mọi chart) và tab **Experts** (tên chart nằm
+   trong ngoặc, ví dụ `CopyBridgeMaster (ETHUSD.s,H1)` — chỉ được có **một** tên). Phía Client giữ EA
+   trên chart của **symbol đang copy** (hộp thoại New Order lấy symbol theo chart).
 4. **Khai địa chỉ Bridge vào danh sách cho phép**, trên **cả hai** terminal: Tools → Options →
    Expert Advisors, tick **Allow WebRequest for listed URL** rồi thêm dòng `127.0.0.1`. MT5 chỉ
    cho EA mở kết nối tới địa chỉ đã khai trước; chưa khai thì EA **không bao giờ lên `ONLINE`**

@@ -120,14 +120,28 @@ class CommandDispatcher:
         agent = self.db.get_agent(agent_id)
         # Agent role CLICKER không có vị thế nào để báo cáo — nó chỉ bấm nút.
         if agent is not None and agent["role"] in ("MASTER", "CLIENT"):
-            await self.request_snapshot(agent_id)
+            # Luôn hỏi MỚI, không qua `request_snapshot`: lệnh snapshot còn treo lúc này thuộc về
+            # kết nối vừa chết và sẽ không bao giờ được trả lời. Tái dùng nó là để kết nối mới
+            # không bao giờ được hỏi.
+            await self.dispatch(agent_id, "REQUEST_SNAPSHOT")
         await self.flush_pending(agent_id)
 
     async def request_snapshot(self, agent_id: str) -> str:
-        """Yêu cầu agent gửi toàn bộ vị thế hiện có.
+        """Yêu cầu agent gửi toàn bộ vị thế hiện có — **không gửi chồng**.
 
-        Phase này chỉ lưu lại kết quả; đối chiếu là việc của phase 8.
+        Agent còn một `REQUEST_SNAPSHOT` chưa trả lời và chưa quá hạn thì trả lại chính lệnh đó.
+        Mỗi lần agent nối lại, `on_agent_online` hỏi một lần và vòng đối chiếu `AGENT_ONLINE` hỏi
+        thêm một lần; trước 2026-09-15 hai lệnh đó cùng treo, và khi kết nối chập chờn thì cả hai
+        cùng hết hạn thành hai alert mỗi giây.
         """
+        dang_cho = self.db.query_one(
+            "SELECT command_id FROM command WHERE target_agent_id = ? "
+            "AND type = 'REQUEST_SNAPSHOT' AND status IN ('PENDING', 'SENT') AND deadline_at >= ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (agent_id, utc_now_iso()),
+        )
+        if dang_cho is not None:
+            return str(dang_cho["command_id"])
         return await self.dispatch(agent_id, "REQUEST_SNAPSHOT")
 
     async def flush_pending(self, agent_id: str) -> int:
@@ -195,14 +209,49 @@ class CommandDispatcher:
                     "UPDATE command SET status = 'TIMEOUT', updated_at = ? WHERE command_id = ?",
                     (now, command_id),
                 )
-            self.db.create_alert(
-                "ERROR", "COMMAND_TIMEOUT",
-                f"Command {command_id} type {row['type']} khong nhan duoc ack truoc han",
-                pair_id=row["pair_id"], agent_id=row["target_agent_id"],
-            )
-            log.error("Command %s qua han ma chua co ack, chuyen TIMEOUT", command_id,
-                      extra={"command_id": command_id, "pair_id": row["pair_id"],
-                             "agent_id": row["target_agent_id"]})
+            extra = {"command_id": command_id, "pair_id": row["pair_id"],
+                     "agent_id": row["target_agent_id"]}
+            if row["type"] == "REQUEST_SNAPSHOT":
+                log.warning("Snapshot %s qua han ma chua co ack, chuyen TIMEOUT", command_id,
+                            extra=extra)
+                self._bao_snapshot_het_han(row)
+            else:
+                self.db.create_alert(
+                    "ERROR", "COMMAND_TIMEOUT",
+                    f"Command {command_id} type {row['type']} khong nhan duoc ack truoc han",
+                    pair_id=row["pair_id"], agent_id=row["target_agent_id"],
+                )
+                log.error("Command %s qua han ma chua co ack, chuyen TIMEOUT", command_id,
+                          extra=extra)
             if self.on_timeout is not None:
                 self.on_timeout(self.db.get_command(command_id))
         return len(rows)
+
+    #: Một agent chỉ nhận tối đa một alert `SNAPSHOT_TIMEOUT` trong khoảng này.
+    SNAPSHOT_TIMEOUT_IM_SEC = 600
+
+    def _bao_snapshot_het_han(self, row: sqlite3.Row) -> None:
+        """Alert cho `REQUEST_SNAPSHOT` hết hạn — WARNING, và **gộp** theo agent.
+
+        Snapshot là lệnh chỉ đọc: hết hạn không để lại vị thế nào mở dở, nên nó không cùng hạng với
+        một lệnh giao dịch hết hạn. Trước 2026-09-15 mỗi lần hết hạn là một alert ERROR, và một kết
+        nối chập chờn (EA gắn trên hai chart) sinh ra 388 nghìn dòng trong bốn ngày — nhấn chìm
+        đúng những alert cần đọc.
+
+        Mốc gộp tra thẳng trong bảng `alert`, không giữ trong bộ nhớ: Bridge khởi động lại giữa
+        lúc đang lũ thì vẫn không báo lại ngay.
+        """
+        agent_id = row["target_agent_id"]
+        moc = to_iso(utc_now() - timedelta(seconds=self.SNAPSHOT_TIMEOUT_IM_SEC))
+        da_bao = self.db.query_one(
+            "SELECT 1 FROM alert WHERE code = 'SNAPSHOT_TIMEOUT' AND agent_id = ? "
+            "AND created_at >= ? LIMIT 1", (agent_id, moc))
+        if da_bao is not None:
+            return
+        self.db.create_alert(
+            "WARNING", "SNAPSHOT_TIMEOUT",
+            f"Agent {agent_id} khong tra loi REQUEST_SNAPSHOT {row['command_id']} truoc han. "
+            f"Chi bao mot lan moi {self.SNAPSHOT_TIMEOUT_IM_SEC // 60} phut. Lap lai lien tuc "
+            "thuong la ket noi chap chon — xem alert AGENT_DUPLICATE_CONNECTION.",
+            agent_id=agent_id,
+        )

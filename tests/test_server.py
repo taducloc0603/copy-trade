@@ -186,6 +186,63 @@ async def test_ket_noi_thu_hai_cung_agent_dong_ket_noi_cu(server: BridgeServer) 
         await second.kill()
 
 
+# Sự cố VPS 2026-09-12→15: EA gắn trên hai chart, hai bản cùng token đá nhau ra mỗi ~1,2 giây suốt
+# bốn ngày. Dấu vết duy nhất là `Gui khong tron goi (-1/217)` bên EA và 388 nghìn COMMAND_TIMEOUT.
+
+def _ma_alert(db: Database, code: str) -> list:
+    return [a for a in db.list_open_alerts() if a["code"] == code]
+
+
+async def test_ket_noi_cu_bi_thay_duoc_bao_ly_do_REPLACED(server: BridgeServer) -> None:
+    """EA ghi `Bridge tu choi: REPLACED - …` — lần sau đọc log EA là thấy chữ, không phải đoán."""
+    first = _master(server)
+    await first.start()
+    second = _master(server)
+    try:
+        await second.start()
+        loi = await first.expect("error")
+        assert loi["code"] == "REPLACED"
+        assert "2 chart" in loi["message"]
+    finally:
+        await first.kill()
+        await second.kill()
+
+
+async def test_thay_ket_noi_don_dap_thi_bao_DUNG_MOT_alert(server: BridgeServer,
+                                                         agents_db: Database) -> None:
+    """Hai tiến trình cùng token thay nhau liên tục: báo một lần, không báo mỗi lần thay."""
+    agents: list[MockAgent] = []
+    try:
+        for _ in range(8):
+            agent = _master(server)
+            await agent.start()
+            agents.append(agent)
+        await _wait_until(lambda: len(_ma_alert(agents_db, "AGENT_DUPLICATE_CONNECTION")) >= 1)
+        await asyncio.sleep(0.1)
+        canh_bao = _ma_alert(agents_db, "AGENT_DUPLICATE_CONNECTION")
+        assert len(canh_bao) == 1
+        assert canh_bao[0]["level"] == "ERROR"
+        assert canh_bao[0]["agent_id"] == MASTER_AGENT
+    finally:
+        for agent in agents:
+            await agent.kill()
+
+
+async def test_terminal_khoi_dong_lai_mot_lan_khong_bao_trung(server: BridgeServer,
+                                                            agents_db: Database) -> None:
+    """Thay kết nối **một** lần là terminal khởi động lại — chuyện thường, không được báo giả."""
+    first = _master(server)
+    await first.start()
+    second = _master(server)
+    try:
+        await second.start()
+        await first.expect("error")
+        assert _ma_alert(agents_db, "AGENT_DUPLICATE_CONNECTION") == []
+    finally:
+        await first.kill()
+        await second.kill()
+
+
 # ---------------------------------------------------------------------------------------------
 # Khung dòng qua mạng thật
 # ---------------------------------------------------------------------------------------------
