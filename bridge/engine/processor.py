@@ -60,6 +60,11 @@ DEAL_REASON_CLIENT = 0
 #: o phase 6b voi `OPEN_UI` (PROGRESS.md muc "Phase 6b - lap ke hoach va ra soat").
 LOAI_LENH_DONG = frozenset({"CLOSE", "CLOSE_PARTIAL", "CLOSE_UI", "CLOSE_UI_PARTIAL"})
 
+#: Lý do bỏ qua của **cổng 2** đường mở qua giao diện. Có hằng riêng vì đây là lý do DUY NHẤT tự
+#: hết theo thời gian — clicker bấm xong là đi được — nên nó dẫn tới xếp hàng, còn hai cổng kia
+#: (clicker hỏng, Algo Trading tắt) vẫn bỏ qua như cũ (D-31).
+UI_BAN = "clicker dang ban"
+
 #: Tiền tố thẻ tương quan. Thẻ suy được từ `command_id` nên không cần cột riêng để tra ngược.
 TAG_PREFIX = "CB"
 TAG_ID_CHARS = 10
@@ -166,6 +171,7 @@ class EventProcessor:
         while True:
             try:
                 processed = await self.process_pending()
+                processed += await self._bom_hang_doi_ui()
                 now = asyncio.get_running_loop().time()
                 if now - last_scan >= self.deadline_scan_sec:
                     self.dispatcher.scan_deadlines()
@@ -319,8 +325,14 @@ class EventProcessor:
 
     async def _open_for_client(self, event: sqlite3.Row, client: sqlite3.Row,
                                master_position_id: int, symbol: str, direction: str,
-                               master_volume: float) -> tuple[str | None, str]:
-        """Tính và mở lệnh cho một Client. Trả về (pair_id, lý do nếu bỏ qua)."""
+                               master_volume: float,
+                               tu_hang_doi: bool = False) -> tuple[str | None, str]:
+        """Tính và mở lệnh cho một Client. Trả về (pair_id, lý do nếu bỏ qua).
+
+        `tu_hang_doi` = lượt bơm lại của một lệnh từng bị cổng 2 chặn (D-31). Nó nới **đúng một**
+        cổng — trần tuổi sự kiện — và tắt việc tự xếp hàng lại. Mọi cổng khác (ánh xạ symbol, khối
+        lượng, giới hạn, clicker ONLINE, Algo Trading) vẫn tính lại tại thời điểm mở thật.
+        """
         client_id = client["client_id"]
         ctx = {"event_id": event["event_id"], "agent_id": client["agent_id"]}
 
@@ -338,7 +350,7 @@ class EventProcessor:
         mapping = self.db.find_symbol_map(client_id, symbol)
         if mapping is None:
             # ERROR chu khong phai WARNING: khong co anh xa nghia la KHONG COPY duoc lenh
-            # nao ca — cung hau qua voi VOLUME_BELOW_MIN va UI_OPEN_BUSY, nen cung muc.
+            # nao ca — cung hau qua voi VOLUME_BELOW_MIN va UI_OPEN_QUEUE_EXPIRED, nen cung muc.
             self._alert("ERROR", "NO_SYMBOL_MAPPING",
                         f"Client {client_id} khong co anh xa cho symbol {symbol}, bo qua lenh",
                         agent_id=client["agent_id"])
@@ -351,7 +363,10 @@ class EventProcessor:
         # Tuổi sự kiện. Dùng `ts_agent` chứ không phải `received_at`: một event gửi bù sau khi
         # Bridge chết 20 phút thì `received_at` vẫn mới tinh, mà lệnh thì đã cũ.
         age_ms = self._event_age_ms(event)
-        max_age = client["max_event_age_ms"]
+        # Lệnh từ hàng đợi đương nhiên cũ hơn trần của đường thường (mặc định 5000ms) — nó vừa
+        # nằm chờ clicker bấm xong lệnh trước. Trần riêng của hàng đợi là thứ quyết định ở đây.
+        max_age = (self.db.get_config_int("ui_open_queue_max_age_ms", 15000) if tu_hang_doi
+                   else int(client["max_event_age_ms"]))
         if age_ms is not None and age_ms > max_age:
             self._alert("WARNING", "EVENT_TOO_OLD",
                         f"Event {event['event_id']} da {age_ms}ms tuoi, vuot gioi han "
@@ -420,6 +435,12 @@ class EventProcessor:
         via_ui = client["open_route"] == "UI"
         if via_ui:
             skip = self._ui_route_blocked(client)
+            # Xếp hàng khi clicker đang bận, **và cũng khi đường dây đang rảnh mà hàng đợi còn
+            # người đứng trước**: chen lên trước là biến cái đang chờ thành cái sắp hết hạn, tức
+            # tự chọn bỏ lệnh cũ nhất — đúng thứ tự sai để hy sinh.
+            if not tu_hang_doi and (skip == UI_BAN or
+                                    (skip is None and self.db.dem_hang_doi_ui(client_id))):
+                return None, self._xep_hang_ui(client, event, master_position_id)
             if skip is not None:
                 return None, skip
 
@@ -676,14 +697,12 @@ class EventProcessor:
             (client_id,),
         )
         if inflight is not None:
-            # Muc ERROR chu khong phai WARNING (chot o phase 10). Bo mot lenh copy nghia la
-            # **mat hedge**, va tu phase 10 chi ERROR/CRITICAL moi di ra Telegram — de o WARNING
-            # thi no nam lai trong dashboard cho toi luc co nguoi tinh co mo ra xem.
-            self._alert("ERROR", "UI_OPEN_BUSY",
-                        f"Client {client_id} dang co lenh mo qua giao dien "
-                        f"{inflight['command_id']} chua xong, bo qua lenh nay",
-                        agent_id=clicker_id)
-            return "clicker dang ban"
+            # KHÔNG alert ở đây. Bận là trạng thái tự hết sau ~0,8 giây, và từ D-31 lệnh bị chặn
+            # được **xếp hàng** chứ không mất — chỗ gọi lo việc đó. Alert chuyển sang đúng nơi
+            # lệnh thật sự mất: hàng đợi hết hạn, hoặc hàng đợi đầy.
+            log.info("Client %s dang co lenh mo qua giao dien %s chua xong",
+                     client_id, inflight["command_id"], extra={"agent_id": clicker_id})
+            return UI_BAN
 
         # Cổng 3 — **đừng mở cái mà không đóng được** (B-09). Đường mở đi qua giao diện nên
         # không cần Algo Trading. Đường đóng nay cũng đi qua giao diện, nhưng cổng này **vẫn
@@ -705,6 +724,118 @@ class EventProcessor:
                         agent_id=client["agent_id"])
             return "Algo Trading tat phia Client"
         return None
+
+    def _xep_hang_ui(self, client: sqlite3.Row, event: sqlite3.Row,
+                     master_position_id: int) -> str:
+        """Xếp một lệnh bị cổng 2 chặn vào hàng chờ. Trả về lý do để ghi vào event (D-31).
+
+        Trước bản này chỗ đây **bỏ hẳn** lệnh, và bỏ một lệnh copy nghĩa là mất hedge.
+        """
+        client_id = client["client_id"]
+        tran = self.db.get_config_int("ui_open_queue_max_len", 20)
+        dang_cho = self.db.dem_hang_doi_ui(client_id)
+        if dang_cho >= tran:
+            # Đây là chặn cuối, không phải đường chạy bình thường. Hàng đợi chạm trần nghĩa là
+            # Master vào lệnh nhanh hơn giao diện bấm được, kéo dài — và lệnh này MẤT thật.
+            self._alert("ERROR", "UI_OPEN_QUEUE_FULL",
+                        f"Hang doi mo qua giao dien cua Client {client_id} da day "
+                        f"({dang_cho}/{tran}), BO QUA vi the Master {master_position_id}",
+                        agent_id=client["agent_id"])
+            return "hang doi day"
+
+        queue_id = self.db.xep_hang_ui(client_id, event["event_id"], master_position_id)
+        if queue_id is None:
+            return "da xep hang truoc do"
+        log.info("Xep hang lenh mo cho Client %s (vi the Master %s), dang cho %d lenh",
+                 client_id, master_position_id, dang_cho + 1,
+                 extra={"event_id": event["event_id"], "agent_id": client["agent_id"]})
+        return "da xep hang"
+
+    async def _bom_hang_doi_ui(self) -> int:
+        """Đẩy lệnh kế tiếp trong hàng đợi ra đường dây. Trả về số lệnh đã mở.
+
+        Chạy trong `_loop` mỗi nhịp thay vì móc vào các đường ack, vì một lệnh `OPEN_UI` kết thúc
+        theo **bốn** đường khác nhau (ack ok, ack lỗi, timeout, huỷ); một chỗ bơm duy nhất là thứ
+        không thể quên đường nào. Trễ thêm tối đa một nhịp (0,1 giây) so với 0,8 giây một vòng bấm.
+        """
+        rows = self.db.list_hang_doi_ui()
+        if not rows:
+            return 0
+
+        if self.db.get_config("run_mode", "PAUSED") != "RUNNING":
+            so_xoa = self.db.xoa_het_hang_doi_ui()
+            log.info("Roi che do RUNNING, xoa %d lenh dang cho trong hang doi giao dien", so_xoa)
+            return 0
+
+        max_age = self.db.get_config_int("ui_open_queue_max_age_ms", 15000)
+        da_bom: set[str] = set()
+        mo_duoc = 0
+
+        for row in rows:  # đã sắp theo `queue_id`, tức FIFO
+            queue_id = row["queue_id"]
+            client_id = row["client_id"]
+            event = self.db.get_event(row["event_id"])
+            if event is None:
+                self.db.xoa_hang_doi_ui(queue_id)
+                continue
+
+            age_ms = self._event_age_ms(event)
+            if age_ms is not None and age_ms > max_age:
+                # Mất hedge thật, nên ERROR để đi ra Telegram (quy ước từ phase 10). Nới trần cho
+                # khỏi thấy dòng này là tự bịt mắt trước số đo thông lượng thật của giao diện.
+                self.db.xoa_hang_doi_ui(queue_id)
+                self._alert("ERROR", "UI_OPEN_QUEUE_EXPIRED",
+                            f"Lenh mo cho Client {client_id} (vi the Master "
+                            f"{row['master_position_id']}) da cho {age_ms}ms, vuot {max_age}ms "
+                            "nen HUY thay vi mo sai gia",
+                            agent_id=event["agent_id"])
+                continue
+
+            master = self.db.get_master_position(row["master_position_id"])
+            if master is None or master["status"] != "OPEN":
+                # Master đã đóng trước khi tới lượt. Mở ra rồi đóng ngay chỉ tốn phí.
+                self.db.xoa_hang_doi_ui(queue_id)
+                log.info("Vi the Master %s da dong truoc khi toi luot, bo lenh cho cua Client %s",
+                         row["master_position_id"], client_id)
+                continue
+
+            if client_id in da_bom:
+                # Cổng 2 chỉ cho MỘT lệnh trên đường dây, nên mỗi Client một lượt mỗi nhịp.
+                continue
+            da_bom.add(client_id)
+
+            client = self.db.get_client_account(client_id)
+            if client is None or not client["enabled"]:
+                self.db.xoa_hang_doi_ui(queue_id)
+                log.info("Client %s khong con bat, bo lenh cho trong hang doi", client_id)
+                continue
+
+            data = json.loads(event["payload_json"] or "{}").get("data", {})
+            symbol = data.get("symbol")
+            direction = data.get("direction")
+            volume = event["volume_after"]
+            if not symbol or not direction or not volume:
+                self.db.xoa_hang_doi_ui(queue_id)
+                log.error("Event %s trong hang doi thieu truong bat buoc, bo", row["event_id"])
+                continue
+
+            pair_id, reason = await self._open_for_client(
+                event, client, row["master_position_id"], symbol, direction, volume,
+                tu_hang_doi=True,
+            )
+            if reason == UI_BAN:
+                # Có lệnh khác chen vào giữa hai nhịp. Giữ nguyên chỗ trong hàng, thử lại nhịp sau
+                # — trần tuổi 15 giây là thứ chấm dứt việc chờ, không phải số lần thử.
+                continue
+            self.db.xoa_hang_doi_ui(queue_id)
+            if pair_id:
+                mo_duoc += 1
+                log.info("Bom lenh tu hang doi: cap %s cho Client %s (cho %sms)",
+                         pair_id, client_id, age_ms, extra={"pair_id": pair_id})
+            else:
+                log.info("Lenh cho cua Client %s khong mo duoc: %s", client_id, reason)
+
+        return mo_duoc
 
     async def _on_ui_ack(self, pair: sqlite3.Row, command: sqlite3.Row, message: Any) -> None:
         """Ack của clicker. Đọc theo hợp đồng ở plan 6b mục 6b.3.
@@ -788,7 +919,7 @@ class EventProcessor:
         if data.get("volume") is None:
             data["volume"] = event["volume_after"] or data.get("volume_after")
 
-        candidates = self._open_ui_candidates(client_id)
+        candidates = self._open_ui_candidates(client_id, event["received_at"])
         if not candidates:
             return "IGNORED", "Khong co lenh OPEN_UI nao dang cho, coi la lenh mo tay", None
 
@@ -813,9 +944,27 @@ class EventProcessor:
 
         return self._bind(matched[0], event, data, client_id, position_id, how)
 
-    def _open_ui_candidates(self, client_id: str) -> list[sqlite3.Row]:
-        """Các lệnh `OPEN_UI` còn trong cửa sổ tương quan của một Client."""
-        rows = self.db.query_all(
+    def _open_ui_candidates(self, client_id: str,
+                            moc_iso: str | None = None) -> list[sqlite3.Row]:
+        """Các cặp `OPEN_UI` còn trong cửa sổ tương quan của một Client — **mỗi cặp một dòng**.
+
+        `moc_iso` là lúc event **tới Bridge** (`received_at`), không phải lúc được xử lý. Vòng xử lý
+        có thể bị chặn nhiều giây (đóng khẩn cấp chờ lệnh xong, đối chiếu chờ snapshot); đo theo giờ
+        xử lý thì cặp đúng rớt khỏi cửa sổ chỉ vì Bridge bận — đúng lỗi D-27 đã sửa cho đường đóng.
+
+        Gộp theo `pair_id`, giữ lệnh mới nhất: `_retry_open` tạo lệnh thứ hai **cùng thẻ** cho cùng
+        cặp, và để nguyên thì chính cặp đó khớp thẻ hai lần thành `UI_CORRELATE_AMBIGUOUS`.
+        """
+        grace_ms = self.db.get_config_int("ui_correlate_grace_ms", 10000)
+        moc = moc_iso or utc_now_iso()
+        return self._moi_cap_mot_dong(
+            r for r in self._open_ui_dang_cho(client_id)
+            if (_latency_ms(r["deadline_at"], moc) or 0) <= grace_ms
+        )
+
+    def _open_ui_dang_cho(self, client_id: str) -> list[sqlite3.Row]:
+        """Mọi lệnh `OPEN_UI` của các cặp còn chờ ghép, **không** lọc cửa sổ."""
+        return self.db.query_all(
             "SELECT c.command_id, c.deadline_at, c.payload_json, p.pair_id, p.open_tag, "
             "       p.client_symbol, p.client_direction "
             "FROM command c JOIN pair p ON p.pair_id = c.pair_id "
@@ -824,29 +973,63 @@ class EventProcessor:
             "ORDER BY c.created_at",
             (client_id,),
         )
-        grace_ms = self.db.get_config_int("ui_correlate_grace_ms", 10000)
-        now_iso = utc_now_iso()
-        return [r for r in rows
-                if (_latency_ms(r["deadline_at"], now_iso) or 0) <= grace_ms]
+
+    @staticmethod
+    def _moi_cap_mot_dong(rows: Any) -> list[sqlite3.Row]:
+        """Giữ dòng **cuối** của mỗi `pair_id` (dòng vào theo `created_at` tăng dần)."""
+        theo_cap: dict[str, sqlite3.Row] = {}
+        for r in rows:
+            theo_cap[r["pair_id"]] = r
+        return list(theo_cap.values())
 
     def _heuristic_match(self, candidates: list[sqlite3.Row], data: dict[str, Any],
                          client_id: str, position_id: int) -> tuple[list[sqlite3.Row], str]:
-        """Ghép bằng suy đoán khi thẻ bị mất. Chỉ chạy khi `ui_fallback_match = HEURISTIC`."""
+        """Ghép bằng suy đoán khi thẻ bị mất. Chỉ chạy khi `ui_fallback_match = HEURISTIC`.
+
+        Hai chốt chặn thêm (2026-09-15), cả hai vì hàng đợi D-31 làm cho **nhiều cặp cùng thông số
+        đang chờ ghép** trở thành chuyện thường:
+
+        * Comment mang thẻ của một cặp **có thật** — dù cặp đó đã rớt khỏi cửa sổ — thì vị thế này
+          thuộc cặp đó. Suy đoán sang cặp anh em là gắn nhầm, và mọi lần đóng về sau sẽ "đúng id"
+          mà sai lệnh.
+        * Đếm cả cặp cùng thông số **ngoài** cửa sổ. Trong cửa sổ còn đúng một không có nghĩa là
+          chỉ có một cặp có thể là chủ của vị thế này.
+        """
+        import re
+
         mode = (self.db.get_config("ui_fallback_match", "STRICT") or "STRICT").upper()
         if mode != "HEURISTIC":
             log.info("Vi the %s tren Client %s khong mang the tuong quan, ui_fallback_match = "
                      "%s nen khong doan", position_id, client_id, mode)
             return [], ""
 
-        hits = [
-            c for c in candidates
-            if c["client_symbol"] == data.get("symbol")
-            and c["client_direction"] == data.get("direction")
-            and _same_volume(c["payload_json"], data.get("volume"))
-        ]
-        if len(hits) != 1:
-            log.info("Suy doan cho vi the %s tren Client %s ra %d ung vien, khong ghep",
-                     position_id, client_id, len(hits))
+        comment = f"{data.get('comment') or ''} {data.get('order_comment') or ''}"
+        the = sorted(set(re.findall(rf"{TAG_PREFIX}[0-9a-f]{{{TAG_ID_CHARS}}}", comment)))
+        if the:
+            cua_cap = self.db.query_all(
+                "SELECT pair_id FROM pair WHERE client_id = ? AND open_tag IN "
+                f"({', '.join('?' for _ in the)})", (client_id, *the))
+            if cua_cap:
+                ids = [r["pair_id"] for r in cua_cap]
+                self._alert("WARNING", "UI_CORRELATE_TAG_OUT_OF_WINDOW",
+                            f"Vi the {position_id} tren Client {client_id} mang the cua cap {ids} "
+                            "nhung cap do khong con trong cua so tuong quan. KHONG suy doan sang "
+                            "cap khac; cho doi chieu.",
+                            pair_id=ids[0])
+                return [], ""
+
+        def cung_thong_so(c: sqlite3.Row) -> bool:
+            return (c["client_symbol"] == data.get("symbol")
+                    and c["client_direction"] == data.get("direction")
+                    and _same_volume(c["payload_json"], data.get("volume")))
+
+        hits = [c for c in candidates if cung_thong_so(c)]
+        anh_em = [c for c in self._moi_cap_mot_dong(self._open_ui_dang_cho(client_id))
+                  if cung_thong_so(c)]
+        if len(hits) != 1 or len(anh_em) != 1:
+            log.info("Suy doan cho vi the %s tren Client %s ra %d ung vien trong cua so, %d cap "
+                     "cung thong so dang cho — khong ghep", position_id, client_id, len(hits),
+                     len(anh_em))
             return [], ""
 
         self._alert("WARNING", "UI_CORRELATE_HEURISTIC",

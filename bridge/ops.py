@@ -267,6 +267,129 @@ def kiem_reason_master(db: Database) -> list[dict[str, object]]:
     return vi_pham
 
 
+# -- chẩn đoán "chốt sai" ------------------------------------------------------------------------
+
+#: Loại deal làm giảm hoặc xoá một vị thế.
+DEAL_DONG = ("OUT", "INOUT", "OUT_BY")
+
+#: Cửa sổ quanh một lệnh đóng khi tìm deal nó gây ra: từ trước lúc gửi tới sau lúc ack.
+CUA_SO_TRUOC_GUI_MS = 1000
+CUA_SO_SAU_ACK_MS = 5000
+
+#: Alert đáng xem khi nghi chốt sai. Không cái nào tự nó là bằng chứng — nhưng không có cái nào thì
+#: nhánh ghép nhầm lúc mở gần như bị loại.
+MA_ALERT_DONG_SAI = (
+    "UI_CORRELATE_HEURISTIC", "UI_CORRELATE_AMBIGUOUS", "UI_CORRELATE_TAG_OUT_OF_WINDOW",
+    "CLOSING_HEURISTIC_PAIR", "CLOSE_TIMEOUT", "CLOSE_ACK_UNKNOWN",
+    "CLOSING_MASTER_AFTER_OPEN_FAILURE",
+)
+
+
+def kiem_dong_sai(db: Database, ngay: str | None = None) -> dict[str, Any]:
+    """Chẩn đoán "bên kia chốt sai" từ dữ liệu có sẵn. **Chỉ đọc.** `ngay` là ngày UTC `YYYY-MM-DD`.
+
+    Ba câu hỏi, mỗi câu ứng với một cơ chế đã rà được trong code (2026-09-15):
+
+    * `ghep_nham` — cặp bị gắn nhầm vị thế lúc MỞ: vị thế Client của cặp **không mang thẻ** của cặp.
+      Mọi lần đóng về sau sẽ "đúng id" mà sai lệnh.
+    * `dong_nham` — một deal đóng vị thế X nằm trong đúng cửa sổ của lệnh đóng nhắm Y, và không lệnh
+      nào nhắm X. Người dùng đóng tay đúng lúc đó cũng ra hình dạng này, nên đây là **chỗ phải đọc
+      log**, không phải kết luận.
+    * `bao_dong_nham` — cặp `CLOSED` mà vị thế Client **không có deal đóng nào**: dấu hiệu clicker báo
+      `already_closed` sai trong khi vị thế vẫn mở.
+    """
+    import json
+
+    from bridge.clock import parse_iso
+
+    def trong_ngay(cot: str) -> tuple[str, tuple[str, ...]]:
+        return ("1 = 1", ()) if ngay is None else (f"substr({cot}, 1, 10) = ?", (ngay,))
+
+    dk, ts = trong_ngay("created_at")
+    alert = {r["code"]: r["n"] for r in db.query_all(
+        f"SELECT code, COUNT(*) n FROM alert WHERE {dk} AND code IN "
+        f"({', '.join('?' for _ in MA_ALERT_DONG_SAI)}) GROUP BY code",
+        (*ts, *MA_ALERT_DONG_SAI))}
+
+    # -- C: ghép nhầm lúc mở -----------------------------------------------------------------
+    dk, ts = trong_ngay("p.created_at")
+    ghep_nham: list[dict[str, Any]] = []
+    for p in db.query_all(
+            "SELECT p.pair_id, p.client_id, p.client_position_id, p.open_tag, ca.agent_id "
+            "FROM pair p JOIN client_account ca ON ca.client_id = p.client_id "
+            f"WHERE p.open_tag IS NOT NULL AND p.client_position_id IS NOT NULL AND {dk} "
+            "ORDER BY p.pair_id", ts):
+        mo = db.query_all(
+            "SELECT payload_json FROM event WHERE agent_id = ? AND position_id = ? "
+            "AND type = 'position_opened'", (p["agent_id"], p["client_position_id"]))
+        if mo and not any(p["open_tag"] in (e["payload_json"] or "") for e in mo):
+            ghep_nham.append(dict(p))
+
+    # -- A: deal đóng một vị thế không lệnh nào nhắm tới -------------------------------------
+    master_agent = db.query_one("SELECT agent_id FROM agent WHERE role = 'MASTER' LIMIT 1")
+    clicker_master = db.get_config("master_clicker_agent_id", "") or ""
+    clicker_cua_client = {r["clicker_agent_id"]: r["agent_id"] for r in db.query_all(
+        "SELECT clicker_agent_id, agent_id FROM client_account WHERE clicker_agent_id IS NOT NULL")}
+
+    def terminal_cua(dich: str) -> str:
+        """Lệnh gửi cho clicker thì deal hiện ra trên terminal mà clicker đó lái."""
+        if clicker_master and dich == clicker_master and master_agent is not None:
+            return master_agent["agent_id"]
+        return clicker_cua_client.get(dich, dich)
+
+    dk, ts = trong_ngay("created_at")
+    cua_so: list[dict[str, Any]] = []
+    for c in db.query_all(
+            "SELECT command_id, type, target_agent_id, payload_json, sent_at, acked_at, deadline_at "
+            f"FROM command WHERE type LIKE 'CLOSE%' AND sent_at IS NOT NULL AND {dk}", ts):
+        try:
+            position_id = int(json.loads(c["payload_json"] or "{}")["position_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        tu = parse_iso(c["sent_at"]).timestamp() - CUA_SO_TRUOC_GUI_MS / 1000
+        den = parse_iso(c["acked_at"] or c["deadline_at"] or c["sent_at"]).timestamp() \
+            + CUA_SO_SAU_ACK_MS / 1000
+        cua_so.append({"agent": terminal_cua(c["target_agent_id"]), "tu": tu, "den": den,
+                       "position_id": position_id, "command_id": c["command_id"],
+                       "type": c["type"]})
+
+    dk, ts = trong_ngay("received_at")
+    dong_nham: list[dict[str, Any]] = []
+    for e in db.query_all(
+            "SELECT event_id, agent_id, position_id, deal_entry, received_at, caused_by_command_id "
+            f"FROM event WHERE deal_entry IN ({', '.join('?' for _ in DEAL_DONG)}) AND {dk} "
+            "ORDER BY id", (*DEAL_DONG, *ts)):
+        luc = parse_iso(e["received_at"]).timestamp()
+        gan = [w for w in cua_so if w["agent"] == e["agent_id"] and w["tu"] <= luc <= w["den"]]
+        if not gan or any(w["position_id"] == e["position_id"] for w in gan):
+            continue
+        dong_nham.append({**dict(e),
+                          "lenh_gan": [(w["command_id"], w["type"], w["position_id"]) for w in gan]})
+
+    # -- B: cặp CLOSED mà vị thế Client không có deal đóng nào -------------------------------
+    dk, ts = trong_ngay("p.updated_at")
+    bao_dong_nham: list[dict[str, Any]] = []
+    for p in db.query_all(
+            "SELECT p.pair_id, p.client_position_id, p.updated_at, ca.agent_id "
+            "FROM pair p JOIN client_account ca ON ca.client_id = p.client_id "
+            f"WHERE p.status = 'CLOSED' AND p.client_position_id IS NOT NULL AND {dk} "
+            "ORDER BY p.pair_id", ts):
+        co_deal = db.query_one(
+            "SELECT 1 FROM event WHERE agent_id = ? AND position_id = ? AND deal_entry IN "
+            f"({', '.join('?' for _ in DEAL_DONG)}) LIMIT 1",
+            (p["agent_id"], p["client_position_id"], *DEAL_DONG))
+        if co_deal is None:
+            bao_dong_nham.append(dict(p))
+
+    return {
+        "ui_fallback_match": (db.get_config("ui_fallback_match", "STRICT") or "STRICT").upper(),
+        "alert": alert,
+        "ghep_nham": ghep_nham,
+        "dong_nham": dong_nham,
+        "bao_dong_nham": bao_dong_nham,
+    }
+
+
 def _da_giai_thich(pair: Any, cot: list[str]) -> bool:
     """Deal sai kênh này đã có lời giải thích kèm alert hay chưa.
 

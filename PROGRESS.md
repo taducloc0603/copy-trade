@@ -1079,7 +1079,13 @@ Không còn gì trong phạm vi đã định. Hai món nợ đã ghi vẫn nguy�
 
 ---
 
-## Cần quyết định: `UI_OPEN_BUSY` bỏ qua lệnh thay vì xếp hàng
+## ~~Cần quyết định~~ ĐÃ QUYẾT 2026-09-14: `UI_OPEN_BUSY` bỏ qua lệnh thay vì xếp hàng
+
+> **Chốt:** lựa chọn 2 (xếp hàng), nhưng **không** theo cách mô tả bên dưới. Xem D-31 và mục
+> "Hàng đợi mở qua giao diện" ở cuối file này. Bất biến "một lệnh đang bay" của D-23 **được giữ
+> nguyên** — hàng đợi nằm *trước* cổng chứ không thay cổng, nên D-23 không phải sửa.
+> Phần dưới giữ nguyên làm hồ sơ: nó đoán đúng vấn đề chín ngày trước khi nó xảy ra thật.
+
 
 *(Ghi 2026-09-05, sau câu hỏi "nếu Master đặt lệnh bằng One Click Trading thì Client có copy được không".)*
 
@@ -2822,3 +2828,121 @@ nhanh gấp khoảng 7 lần so với lúc nghiệm thu đường đóng. Còn n
 thời gian nữa: vì sao `WM_LBUTTONDOWN` gửi kiểu chờ bị MT5 giữ lại.
 
 **668 test xanh.**
+
+---
+
+## Hàng đợi mở qua giao diện — 10 lệnh liên tiếp mất gần hết (2026-09-14)
+
+**Triệu chứng người dùng báo:** vào khoảng 10 lệnh liên tiếp trên Master, nhấn liên tục, thì phía
+Client thiếu lệnh tương ứng.
+
+**Nguyên nhân không phải lỗi, mà là một lựa chọn cũ.** Cổng 2 của `_ui_route_blocked` cho đúng một
+`OPEN_UI` trên đường dây mỗi Client, và khi bận nó **bỏ hẳn** lệnh, chỉ để lại alert `UI_OPEN_BUSY`.
+Vì cổng chạy **trước** `create_pending_pair`, lệnh bị bỏ không để lại dòng `pair` nào — sổ sách
+không biết đã mất gì. Một vòng bấm giao diện mất ~0,8 giây, tức trần ~1,2 lệnh/giây, dưới tốc độ
+một người nhấn tay. Chuyện này đã được đoán trước từ 2026-09-05 (mục "Cần quyết định" ở trên);
+lần này nó xảy ra thật nên quyết được.
+
+**Đã làm:**
+
+- Migration `006`: bảng `ui_open_queue` (`UNIQUE (client_id, master_position_id)`), hai khoá
+  `ui_open_queue_max_age_ms = 15000` và `ui_open_queue_max_len = 20`.
+- `_ui_route_blocked` cổng 2 **không alert nữa**, chỉ trả hằng `UI_BAN`. Alert chuyển sang đúng
+  chỗ lệnh thật sự mất: `UI_OPEN_QUEUE_EXPIRED` và `UI_OPEN_QUEUE_FULL`, cả hai mức ERROR.
+- `_bom_hang_doi_ui()` chạy trong `_loop` mỗi nhịp (0,1 giây). Chọn vòng lặp thay vì móc vào các
+  đường ack vì một `OPEN_UI` kết thúc theo **bốn** đường khác nhau — một chỗ bơm duy nhất là thứ
+  không thể quên đường nào.
+- `_open_for_client(..., tu_hang_doi=True)` nới **đúng một** cổng: trần tuổi event, từ
+  `max_event_age_ms` (5000) sang `ui_open_queue_max_age_ms` (15000). Mọi cổng khác tính lại tại
+  thời điểm mở thật.
+- `tinh-hinh` in dòng `hang doi mo (UI)` kèm tuổi dòng cũ nhất.
+
+**Một điều test bắt được mà thiết kế ban đầu bỏ sót:** bản đầu chỉ xếp hàng khi đường dây đang
+bận, nên một lệnh mới đến lúc clicker vừa rảnh sẽ **chen lên trước** cả hàng đang chờ. Bài
+`test_vao_lenh_lien_tiep_khong_mat_lenh_nao` đỏ ngay ở phép kiểm thứ tự. Đã sửa: hàng đợi còn
+người đứng trước thì lệnh mới xếp cuối **dù đường dây rảnh** — cho chen là tự chọn hy sinh lệnh cũ
+nhất, đúng thứ tự sai để hy sinh.
+
+**Chưa đo trên VPS.** TEST-31 và `docs/VIEC-TREN-VPS.md` mục 6 là bài phải chạy: 15 giây đủ hay
+không là câu hỏi chỉ thông lượng thật trả lời được.
+
+**693 test xanh**, `ruff` sạch.
+
+---
+
+## Tìm vị thế cần đóng không còn dò từ dòng 0 (2026-09-15)
+
+**Người dùng quan sát:** có 10 lệnh, đóng lệnh thứ 9 ở một bên thì clicker bên kia mở lần lượt hộp
+thoại dòng 1 → 9 trong tab Trade rồi mới đóng. Đúng như code: `_thu_tu_dong` chỉ đưa "dòng trúng lần
+trước" lên đầu, còn lại dò 0 → n. Mỗi dòng trượt tốn một lần mở + huỷ (~0,3–0,4 giây), nên dòng 9
+tốn thêm 3–4 giây. Gợi ý "dòng lần trước" gần như vô dụng: đóng xong thì các dòng dưới dịch lên.
+
+**Đã làm:**
+
+- `clicker/ui/timdong.py` (mới, thuần, không Win32): `PhepDo` chọn dòng mở tiếp — bản đồ
+  `ticket → dòng` trước, rồi tìm nhị phân theo ticket (chiều sắp suy từ các ticket đã đọc). Ticket
+  không đơn điệu ⇒ dò tuần tự. Đoạn khả dĩ cạn ⇒ vẫn mở **hết** các dòng còn lại trước khi kết luận
+  `already_closed` (FR-18).
+- `Mt5UiDriver.close`: vòng dò dùng `PhepDo`; `_dong_gan_nhat` → `_ban_do`, ghi mọi ticket đọc được,
+  dịch lên một sau mỗi lần đóng hẳn, bỏ mục khi `unknown`/`rejected`/`already_closed`. Log mới
+  `Tim vi the <id>: <n> lan mo / <m> dong (ban-do|nhi-phan|tuan-tu)`.
+- Không đổi: đọc ngược ticket trước khi bấm, `_commit_close`, `_mo_dong` và nhấp lại khi treo, phía
+  Bridge.
+
+**Số từ test (chưa phải số VPS):** 10 vị thế sắp tăng + dòng Balance, mọi vị thế tìm được trong
+**≤4 lần mở** (bản cũ: tới 10). Sắp giảm ≤5 — điểm đọc đầu giả định tăng, sai tốn đúng một lần mở.
+Bài `test_dong_vi_the_thu_chin_khong_mo_lan_luot_tu_dong_dau` đỏ trên code cũ theo suy luận (bản cũ
+mở dòng 0 → 8, tức 9 lần) — không stash để chạy thử vì đang có thay đổi D-31 chưa commit.
+
+**Một lỗi trong test của chính tôi, không phải trong code:** bài bản đồ sai kỳ vọng `{TICKET: 0}`
+sau khi đóng; đúng ra là `{111: 0}` — mục sai bị xoá khi dòng 1 đọc ra `111`, rồi đóng hẳn dòng 0
+làm `111` dịch lên. Assertion mới chặt hơn: kiểm cả việc xoá lẫn việc dịch.
+
+**Chưa đo trên VPS** — `docs/VIEC-TREN-VPS.md` mục 7. Nếu log ghi `tuan-tu` thì tab Trade trên
+terminal đó không sắp theo thời gian.
+
+**726 test xanh**, `ruff` sạch.
+
+---
+
+## Rà soát "chốt sai" khi đang có ~10 vị thế (2026-09-15)
+
+**Người dùng báo:** đang mở ~10 lệnh, chốt ở một bên thì bên kia **có vẻ** có lần chốt sai. Chưa có
+bằng chứng từ VPS, nên rà code cả hai nửa rồi bịt các lỗ hổng có thật.
+
+**An toàn (đã đọc code):** Bridge không có đường gửi nhầm `position_id` — id luôn lấy từ dòng `pair`;
+bộ tương quan đóng D-27 lọc theo cặp/vị thế; `TIMEOUT` không gửi lại lệnh. Clicker không đọc ticket
+ở hộp thoại này rồi bấm nút của hộp thoại khác (`tu_hwnd` chỉ lấy control con của đúng hwnd).
+
+**Đã sửa — ba cơ chế có thể ra đúng triệu chứng:**
+
+1. **Khe hở kiểm → bấm.** `_commit_close` nay xả hàng đợi MT5 (`win32.cho_xu_ly_xong`, `WM_NULL`
+   vào danh sách rồi hộp thoại) **trước** khi đọc lại ticket; không xả được ⇒ `rejected`. Thêm
+   `CloseState.lech_nut_dong`: con số trên nút Close phải bằng volume yêu cầu (đóng một phần) hoặc
+   volume vị thế ở tiêu đề (đóng hẳn). Log `Bam Close ticket T (hwnd H, xa hang doi X ms)`.
+2. **`already_closed` chỉ từ phép tìm sạch.** Cờ `tim_ban` bật khi có dò treo (`_mo_dong` ghi
+   `_vua_treo`), hộp thoại sót, hoặc một ticket hiện ở hai dòng (hộp thoại mở trễ — mở lại cả hai qua
+   `PhepDo.mo_lai`, không ghi bản đồ). Tìm bẩn mà không thấy ⇒ `rejected`, Bridge rơi về EA đóng theo
+   đúng ticket. Sau một lần dò treo, xả hàng đợi trước khi mở dòng kế.
+3. **Ghép MỞ:** cửa sổ ứng viên đo từ `received_at` (không từ giờ xử lý), gộp theo cặp (lệnh thử lại
+   cùng thẻ không tự gây `AMBIGUOUS`), nhánh `HEURISTIC` từ chối vị thế mang thẻ của cặp có thật
+   (`UI_CORRELATE_TAG_OUT_OF_WINDOW`) và đếm cả cặp cùng thông số ngoài cửa sổ.
+
+**Chẩn đoán:** `python -m bridge.admin kiem-dong-sai [--ngay YYYY-MM-DD]` — `[C]` cặp ghép nhầm,
+`[A]` deal đóng một vị thế không lệnh nào nhắm tới, `[B]` cặp `CLOSED` mà vị thế không có deal đóng.
+Chỉ đọc; thoát 1 khi có dòng bị đánh dấu.
+
+**Lệch so với kế hoạch, cố ý:** **không** từ chối hộp thoại có hwnd trùng lần trước. Chưa đo MT5 có
+dùng lại hwnd hay không; nếu có, từ chối sẽ tắt hẳn đường đóng qua giao diện. Thay bằng log hwnd mỗi
+lần dò (`Dong N mo hop thoai #T (hwnd H)`) để đo.
+
+**Nói thẳng giới hạn:**
+- Không cơ chế nào ở trên đã được **quan sát** trên VPS — `kiem-dong-sai` cho ngày xảy ra sự cố là
+  thứ trả lời. Các bài test mới đỏ trên code cũ là **suy luận**, không chạy thử (không stash vì còn
+  thay đổi chưa commit).
+- `WM_NULL` không chứng minh được message **post** đã chạy hết: khe hở (1) hẹp lại, không mất hẳn.
+- Kiểm con số trên nút Close giả định MT5 cập nhật caption khi gõ volume (ghi chú cũ ở
+  `close_button` nói vậy, chưa đo riêng). Nếu sai, mọi lệnh **đóng một phần** qua giao diện sẽ bị
+  `rejected` và rơi về EA — lần đóng một phần đầu tiên trên VPS phải xem log.
+
+**743 test xanh**, `ruff` sạch. Việc trên VPS: `docs/VIEC-TREN-VPS.md` mục 8.

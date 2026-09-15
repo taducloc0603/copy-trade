@@ -87,6 +87,26 @@ def doc_ticket(text: str) -> int | None:
     return int(khop.group(1)) if khop else None
 
 
+_TICKET_VA_VOLUME = re.compile(r"#(\d+)\s+(?:buy|sell)\s+([\d.,]+)", re.IGNORECASE)
+
+
+def doc_ticket_va_volume(text: str) -> tuple[int | None, float | None]:
+    """Ticket và volume trong nút `'Close #72205853 buy 0.01 …'` hoặc tiêu đề `'Position: #… buy 0.01 …'`.
+
+    Nút Close **nhắc lại đúng con số sẽ đóng**, và đó là thứ gần nhất với cái MT5 thực sự sẽ làm mà
+    đọc được. Volume `None` khi chuỗi không theo mẫu — chỗ gọi coi đó là "không kiểm được", không
+    phải "lệch".
+    """
+    khop = _TICKET_VA_VOLUME.search(text or "")
+    if not khop:
+        return doc_ticket(text), None
+    try:
+        volume = float(khop.group(2).replace(",", "."))
+    except ValueError:
+        volume = None
+    return int(khop.group(1)), volume
+
+
 def _map_controls(dialog_hwnd: int) -> dict[int, win32.ControlInfo]:
     """Ánh xạ ctrlID → control, **chỉ lấy control đang hiện**.
 
@@ -221,6 +241,9 @@ class CloseState:
     volume: str
     symbol: str
     nut_text: str
+    #: Tiêu đề cửa sổ, `'Position: #72205853 buy 0.01 …'` — mang volume **của vị thế**, dùng để soi
+    #: con số trên nút Close khi đóng hẳn. Mặc định rỗng để các chỗ dựng tay không phải đổi.
+    tieu_de: str = ""
 
     def ticket(self) -> int | None:
         """Ticket khi **mọi nguồn đọc được đều đồng ý**, ngược lại `None`.
@@ -233,6 +256,34 @@ class CloseState:
         if not co or len(set(co)) != 1:
             return None
         return co[0]
+
+    def lech_nut_dong(self, position_id: int, volume: float | None) -> str | None:
+        """Lý do từ chối nếu **nút Close** nói nó sẽ đóng thứ khác yêu cầu, ngược lại `None`.
+
+        Nút Close nhắc lại đúng ticket và con số sẽ đóng — đó là thứ gần nhất với cái MT5 sẽ thật sự
+        làm mà đọc được. Trước 2026-09-15 chỉ tiền tố `Close #` được kiểm.
+
+        * Đóng một phần: con số trên nút phải bằng `volume`.
+        * Đóng hẳn: con số trên nút phải bằng volume **của vị thế** ở tiêu đề. MT5 đã từng giữ volume
+          nội bộ qua các lần mở hộp thoại (D-26) — đóng hẳn mà nút mang con số khác là đúng kiểu đó.
+
+        Không đọc được số (chuỗi lạ) thì không kết luận "lệch": ticket đã được `ticket()` soi từ ba
+        nguồn, và từ chối vì một định dạng lạ sẽ tắt hẳn đường đóng qua giao diện trên sàn khác.
+        """
+        ticket_nut, volume_nut = doc_ticket_va_volume(self.nut_text)
+        if ticket_nut is not None and ticket_nut != position_id:
+            return f"Nut Close mang ticket {ticket_nut}, khong phai {position_id}"
+        if volume_nut is None:
+            return None
+        if volume is not None:
+            if abs(volume_nut - volume) > 1e-9:
+                return f"Nut Close se dong {volume_nut:g} thay vi {volume:g}"
+            return None
+        _, volume_vi_the = doc_ticket_va_volume(self.tieu_de)
+        if volume_vi_the is not None and abs(volume_nut - volume_vi_the) > 1e-9:
+            return (f"Dong han nhung nut Close se dong {volume_nut:g}, "
+                    f"vi the dang {volume_vi_the:g}")
+        return None
 
     def volume_as_float(self) -> float | None:
         raw = self.volume.replace(" ", "").replace(" ", "").replace(",", ".")
@@ -417,12 +468,14 @@ class ClosePositionDialog(_HopThoai):
         """Đọc lại nguyên trạng, lấy ticket từ **cả ba** nguồn độc lập."""
         nut_text = win32.get_control_text(self.control(CTRL_CLOSE).hwnd)
         combo = self.controls.get(CTRL_POSITION_COMBO)
+        tieu_de = win32.get_window_text(self.hwnd)
         return CloseState(
-            ticket_tieu_de=doc_ticket(win32.get_window_text(self.hwnd)),
+            ticket_tieu_de=doc_ticket(tieu_de),
             ticket_nut=doc_ticket(nut_text),
             ticket_combo=(doc_ticket(win32.get_control_text(combo.hwnd))
                           if combo is not None else None),
             volume=win32.get_control_text(self.control(CTRL_VOLUME).hwnd),
             symbol=win32.get_control_text(self.control(CTRL_SYMBOL_EDIT).hwnd),
             nut_text=nut_text,
+            tieu_de=tieu_de,
         )

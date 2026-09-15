@@ -93,7 +93,73 @@ Ghi số **thật** vào `docs/BACKLOG.md` B-15. Nếu hai dòng đó chỉ vài
 mức cắt không đáng kể: phần còn lại của 0,77 giây là MT5 dựng hộp thoại (~0,3 giây), và chỗ đó chỉ
 cắt được bằng cách không mở hộp thoại nào — đường menu chuột phải, **chưa ai đo**.
 
-## 6. Qua một đêm
+## 6. TEST-31 — hàng đợi mở qua giao diện (D-31)
+
+Chính sự cố đã báo: nhấn **10** lệnh `0.01` liên tiếp trên Master, nhanh hết mức tay làm được.
+
+```powershell
+@'
+import sqlite3
+c = sqlite3.connect("file:data/bridge.db?mode=ro", uri=True)
+print("cap:", [r[0] for r in c.execute(
+    "SELECT master_position_id FROM pair WHERE created_at >= date('now') ORDER BY pair_id")])
+print("con cho:", c.execute("SELECT COUNT(*) FROM ui_open_queue").fetchone()[0])
+for r in c.execute("SELECT level, code, COUNT(*) FROM alert WHERE created_at >= date('now') "
+                   "AND code LIKE 'UI_OPEN_QUEUE%' GROUP BY 1, 2"):
+    print(r)
+'@ | .\.venv\Scripts\python.exe -
+```
+
+**Đạt khi:** đủ **10** cặp, đúng thứ tự Master vào lệnh, `ui_open_queue` rỗng, không có
+`UI_OPEN_QUEUE_EXPIRED`.
+
+Rồi đo thông lượng thật — đây mới là số quyết định trần 15 giây có đủ không:
+
+```powershell
+Select-String -Path logs\clicker.log -Pattern 'Do dong|OPEN_UI' | Select-Object -Last 20 | Out-Host
+```
+
+Nếu có dòng `UI_OPEN_QUEUE_EXPIRED`, đó là **số đo thật**, không phải lỗi phần mềm — ghi vào
+`docs/BACKLOG.md` B-15 và bàn tiếp. **Đừng nới 15 giây cho khỏi thấy.**
+
+## 7. Tìm vị thế cần đóng không còn dò từ dòng 0 (D-30, bổ sung 2026-09-15)
+
+Mở **10** lệnh `0.01` trên Master, chờ Client copy đủ, rồi **đóng lệnh thứ 9** ở Master. Sau đó đóng
+tiếp lệnh thứ 5.
+
+```powershell
+Select-String -Path logs\clicker.log -Pattern 'Tim vi the' | Select-Object -Last 6 | Out-Host
+```
+
+**Đạt khi:** lần đóng thứ 9 ghi `… <=4 lan mo / 11 dong (nhi-phan)` và `CLOSE_UI` gần mức 0,8–1,5
+giây (trước là 3–4 giây); lần đóng thứ 5 ghi `1 lan mo (ban-do)` nếu dòng đó đã được đọc ở lần dò
+trước, hoặc vẫn `nhi-phan` với ≤4 lần mở; `kiem-reason` vẫn ĐẠT.
+
+Nếu log ghi `tuan-tu` kèm lý do *ticket khong don dieu*: tab Trade trên terminal đó **không** sắp
+theo thời gian — ghi lại, bấm tiêu đề cột **Time** để sắp lại, đo lần nữa. Ghi số thật vào B-15.
+
+## 8. Chẩn đoán "chốt sai" — chạy TRƯỚC khi cập nhật (D-30, bổ sung 2026-09-15)
+
+Người dùng nghi có lần bên kia chốt sai khi đang có ~10 vị thế. Code đã được rà, nhưng **chưa có
+bằng chứng từ VPS** cơ chế nào đã xảy ra. Lệnh `kiem-dong-sai` có trong bản mới, nên thứ tự là:
+cập nhật code (mục 1) **nhưng chưa làm gì khác**, rồi chạy cho **ngày xảy ra sự cố** (ngày UTC):
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin kiem-dong-sai --ngay 2026-09-15
+Select-String -Path logs\clicker.log -Pattern 'Do dong|Tim vi the|gui=False|lan 2' |
+  Select-Object -Last 60 | Out-Host
+```
+
+Gửi nguyên văn cả hai phần. `[C]` khác 0 là cặp gắn nhầm lúc mở; `[A]` khác 0 thì đọc log quanh mốc
+đó; `[B]` khác 0 thì **mở terminal kiểm vị thế đó còn không** — sổ nói đã đóng.
+
+Sau đó tái hiện: mở 10 lệnh `0.01`, đóng nhanh liên tiếp 5 lệnh ở Master rồi 5 lệnh ở Client.
+
+**Đạt khi:** `kiem-dong-sai` cho ngày hôm đó không đánh dấu dòng nào; `kiem-reason` ĐẠT; mỗi dòng
+`Bam Close ticket T` trong log khớp đúng ticket của deal đóng. Có dòng `rejected … khong sach` thì ghi
+số lần vào B-15 — đó là số đo thật của việc MT5 treo khi dò.
+
+## 9. Qua một đêm
 
 Sáng hôm sau kiểm **cả ba** file log đều có bản đã xoay kèm ngày. Đây là bằng chứng duy nhất cho
 việc mỗi tiến trình một file log là đủ (bài học 2026-09-11: `bridge.log` đứng im 63 giờ).

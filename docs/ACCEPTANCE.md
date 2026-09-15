@@ -76,6 +76,20 @@ tin, vì mọi kết luận về `DEAL_REASON` đều phải đến từ deal th
 | TEST-30d | Đóng khẩn cấp | Thứ tự Client → Master giữ nguyên, deal đóng Master mang `CLIENT` |
 | TEST-30e | `kiem-reason` sau cả bốn bài | ĐẠT phần Master; và **KHÔNG ĐẠT** nếu cố tình đóng Master bằng EA trong khi `master_close_route = UI` |
 
+### TEST-31 — Hàng đợi mở qua giao diện (D-31)
+
+**Chưa chạy trên demo.** Bài này sinh ra từ một sự cố thật (2026-09-14): 10 lệnh liên tiếp trên
+Master, Client chỉ copy được vài lệnh. Con số 10 không phải làm tròn cho đẹp — nó là đúng điều
+người dùng đã làm.
+
+| | Phép thử | Đạt khi |
+|---|---|---|
+| TEST-31a | Nhấn **10** lệnh `0.01` liên tiếp trên Master, nhanh hết mức tay làm được | **10** cặp, không cặp nào `OPEN_FAILED`; `ui_open_queue` rỗng sau đó; **0** alert `UI_OPEN_QUEUE_EXPIRED` |
+| TEST-31b | Thứ tự | `pair.master_position_id` mở ra theo **đúng thứ tự** Master vào lệnh (FIFO) |
+| TEST-31c | Đo thông lượng | Giãn cách giữa hai `OPEN_UI` liên tiếp trong `logs\clicker.log` — đây là số quyết định 15 giây đủ hay không. Ghi số **thật** vào `docs/BACKLOG.md` |
+| TEST-31d | Quá tải có chủ đích | Nếu (c) cho thấy 10 lệnh vượt 15 giây: phải thấy `UI_OPEN_QUEUE_EXPIRED` ERROR đúng bằng số lệnh mất, **không** có lệnh nào mất im lặng |
+| TEST-31e | `tinh-hinh` trong lúc đang xếp hàng | In dòng `hang doi mo (UI)` khác 0 |
+
 ---
 
 ## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì

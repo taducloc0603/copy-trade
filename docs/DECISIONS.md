@@ -421,3 +421,68 @@ Hai chi tiết đã trả giá để biết, ghi lại để không ai phải tr
 * Hộp thoại đóng mang **đủ cả bốn** control trong `SIGNATURE` của hộp thoại New Order, nên chữ ký
   một mình nó không phân biệt được hai chế độ. Thứ phân biệt được là control `10410` đang hiện với
   chữ bắt đầu bằng `"Close #"`, hoặc tiêu đề bắt đầu bằng `"Position: #"`.
+
+**Thứ tự dò (bổ sung 2026-09-15).** Bản đầu dò tuần tự từ dòng 0, nên đóng vị thế thứ 9 trong 10
+phải mở rồi huỷ 8 hộp thoại trước (người dùng quan sát được). Nay `clicker/ui/timdong.py` chọn dòng:
+trước hết theo **bản đồ `ticket → dòng`** mà chính các lần dò trước đã đọc được (dịch lên một sau mỗi
+lần đóng hẳn), sau đó **tìm nhị phân theo ticket** — tab Trade mặc định sắp theo thời gian mở và
+ticket tăng theo thời gian. Chiều sắp suy từ các ticket đã đọc; ticket mâu thuẫn với một thứ tự đơn
+điệu thì quay về dò tuần tự.
+
+Hai điều **không** đổi, và là lý do thay đổi này an toàn: mọi dòng vẫn bị đọc ngược ticket trước khi
+bấm, và `already_closed` vẫn chỉ kết luận sau khi đã mở **mọi** dòng. Nhị phân cho biết đích *nên*
+nằm đâu, không cho biết nó *không* nằm ở đâu — suy "đã đóng" từ đó là đặt cược sổ sách vào cách
+người dùng sắp cột.
+
+**Rà soát "chốt sai" (bổ sung 2026-09-15).** Người dùng nghi có lần bên kia chốt sai khi đang có ~10
+vị thế. Rà cả hai nửa. Bridge **không** có đường gửi nhầm `position_id` (id luôn lấy từ dòng `pair`,
+bộ tương quan đóng lọc theo cặp/vị thế). Ba lỗ hổng có thật đã bịt, xếp theo độ nghi:
+
+1. **Khe hở giữa lúc kiểm và lúc MT5 xử lý cú bấm.** `BM_CLICK` là message post, chạy **sau** mọi
+   message còn tồn — kể cả `SendMessageTimeout` đã hết hạn của lần dò trước, vốn vẫn được giao muộn.
+   Nay `_commit_close` xả hàng đợi (`win32.cho_xu_ly_xong`, `WM_NULL` vào danh sách và hộp thoại),
+   **rồi** mới đọc lại ticket; không xả được thì `rejected`. Kiểm thêm **con số trên nút Close** —
+   đóng một phần phải bằng volume yêu cầu, đóng hẳn phải bằng volume vị thế ở tiêu đề. Giới hạn nói
+   thẳng: `WM_NULL` không chứng minh được message **post** đã chạy hết; khe hở hẹp lại, không mất.
+2. **`already_closed` chỉ từ một phép tìm sạch.** Một lần dò treo, một hộp thoại sót, hay một ticket
+   hiện ở hai dòng (hộp thoại mở trễ) làm "quét hết không thấy" mất giá trị — trả `rejected` để Bridge
+   rơi về EA, vốn đóng theo đúng ticket. Ticket ở hai dòng thì mở lại cả hai, không ghi bản đồ.
+3. **Cửa sổ tương quan MỞ đo từ `received_at`** (bổ sung D-23), cùng lý do D-27 đã sửa cho đường
+   đóng: vòng xử lý bận không được làm cặp đúng rớt khỏi cửa sổ. Ứng viên gộp theo cặp (lệnh thử lại
+   cùng thẻ không tự gây `AMBIGUOUS`). Nhánh `HEURISTIC` từ chối vị thế mang thẻ của một cặp có thật và
+   đếm cả cặp cùng thông số ngoài cửa sổ — hàng đợi D-31 làm nhiều cặp cùng thông số chờ ghép thành
+   chuyện thường, và gắn nhầm ở đây nghĩa là mọi lần đóng về sau "đúng id" mà sai lệnh.
+
+Không cơ chế nào ở trên đã được **quan sát** trên VPS; `bridge.admin kiem-dong-sai` là cách phân biệt.
+**Không** từ chối hộp thoại có hwnd trùng lần trước: chưa đo MT5 có dùng lại hwnd hay không, và từ
+chối sai sẽ tắt hẳn đường đóng qua giao diện — thay vào đó log hwnd mỗi lần dò để đo.
+
+### D-31 — Clicker bận thì **xếp hàng**, không bỏ lệnh
+
+**Bằng chứng:** 2026-09-14, vào 10 lệnh liên tiếp trên Master thì Client chỉ copy được vài lệnh.
+Không phải lỗi ngẫu nhiên: cổng 2 của `_ui_route_blocked` cho **đúng một** `OPEN_UI` trên đường dây
+mỗi Client, và bản trước **bỏ hẳn** lệnh thứ hai trở đi. Một vòng bấm giao diện mất ~0,8 giây, nên
+thông lượng trần là ~1,2 lệnh/giây — dưới tốc độ một người nhấn tay.
+
+**Cổng 2 được giữ nguyên.** Nó là thứ biến bài toán tương quan mờ (event Client không mang
+`command_id`) thành hàng đợi một phần tử luôn phân giải được. Cái sai là *cách xử lý khi bận*: bỏ
+một lệnh copy nghĩa là **mất hedge** — đúng thứ hệ thống này tồn tại để tránh.
+
+Nên bận thì lệnh vào bảng `ui_open_queue`, và `_bom_hang_doi_ui()` đẩy lệnh kế tiếp ra khi đường
+dây rảnh. Ba điều đi kèm, mỗi điều đều là một lựa chọn có thể sai theo hướng khác:
+
+* **Trần tuổi 15 giây**, đo từ `ts_agent` chứ không từ lúc xếp hàng. Quá đó giá đã chạy đủ xa để
+  mở thành mở sai giá, nên **huỷ** và kêu `UI_OPEN_QUEUE_EXPIRED` ở mức **ERROR** — mất hedge phải
+  ra tới Telegram. Nới trần cho khỏi thấy dòng này là tự bịt mắt trước thông lượng thật.
+* **FIFO tuyệt đối**: khi hàng đợi còn người đứng trước, lệnh mới cũng xếp cuối **dù đường dây đang
+  rảnh**. Cho chen là tự chọn hy sinh lệnh cũ nhất — sai thứ tự để hy sinh.
+* **Chỉ cổng 2 dẫn tới xếp hàng.** Clicker hỏng (cổng 1) và Algo Trading tắt (cổng 3) là trạng thái
+  **không tự hết**; xếp hàng ở đó chỉ tích lại một đống lệnh rồi hết hạn cả loạt.
+
+Hàng đợi nằm trong DB chứ không trong bộ nhớ, vì `tinh-hinh` phải thấy được nó, và một lần khởi
+động lại giữa chừng thì lệnh đang chờ phải hết hạn **có tiếng** chứ không biến mất im lặng.
+
+**Hệ quả:** giờ có thể có **nhiều** cặp `PENDING_OPEN` cùng lúc chờ tương quan. Điều này đã an toàn
+sẵn — ghép bằng thẻ `open_tag` riêng từng lệnh, mất thẻ thì `STRICT` từ chối đoán và nhiều ứng viên
+cùng khớp thì `UI_CORRELATE_AMBIGUOUS`. Hàng đợi làm **tăng tần suất** các nhánh đó, không tạo
+nhánh mới.

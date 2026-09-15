@@ -678,6 +678,50 @@ class Database:
             return self.query_all(sql + " ORDER BY created_at")
         return self.query_all(sql + " AND pair_id = ? ORDER BY created_at", (pair_id,))
 
+    # -- ui_open_queue ---------------------------------------------------------------------
+
+    def xep_hang_ui(self, client_id: str, event_id: str, master_position_id: int) -> int | None:
+        """Xếp một lệnh mở qua giao diện vào hàng chờ. Trả về `queue_id`, `None` nếu đã có.
+
+        `None` nghĩa là ràng buộc `UNIQUE (client_id, master_position_id)` chặn lại — một event
+        lặp, **không phải lỗi**, giống hệt quy ước của `create_pending_pair`.
+        """
+        with self.transaction() as conn:
+            try:
+                cur = conn.execute(
+                    "INSERT INTO ui_open_queue (client_id, event_id, master_position_id, "
+                    "created_at) VALUES (?, ?, ?, ?)",
+                    (client_id, event_id, master_position_id, _now()),
+                )
+            except sqlite3.IntegrityError:
+                log.info("Da co dong hang doi cho (client_id=%s, master_position_id=%s)",
+                         client_id, master_position_id)
+                return None
+            return int(cur.lastrowid or 0)
+
+    def list_hang_doi_ui(self, client_id: str | None = None) -> list[sqlite3.Row]:
+        """Hàng đợi theo thứ tự vào (`queue_id` tăng dần). FIFO là ràng buộc nghiệp vụ."""
+        if client_id is None:
+            return self.query_all("SELECT * FROM ui_open_queue ORDER BY queue_id")
+        return self.query_all(
+            "SELECT * FROM ui_open_queue WHERE client_id = ? ORDER BY queue_id", (client_id,)
+        )
+
+    def dem_hang_doi_ui(self, client_id: str) -> int:
+        row = self.query_one(
+            "SELECT COUNT(*) AS n FROM ui_open_queue WHERE client_id = ?", (client_id,)
+        )
+        return int(row["n"]) if row else 0
+
+    def xoa_hang_doi_ui(self, queue_id: int) -> None:
+        with self.transaction() as conn:
+            conn.execute("DELETE FROM ui_open_queue WHERE queue_id = ?", (queue_id,))
+
+    def xoa_het_hang_doi_ui(self) -> int:
+        """Xoá sạch hàng đợi. Dùng khi rời `RUNNING` — lệnh chờ lúc đó không còn nghĩa gì."""
+        with self.transaction() as conn:
+            return int(conn.execute("DELETE FROM ui_open_queue").rowcount or 0)
+
     # -- reconcile_finding -----------------------------------------------------------------
 
     def create_finding(self, run_id: str, severity: str, kind: str,

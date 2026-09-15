@@ -189,6 +189,38 @@ def _in_phan_master(db: Database) -> list[dict]:
     return chua_ro
 
 
+def lenh_kiem_dong_sai(db: Database, args: argparse.Namespace) -> int:
+    """Chẩn đoán "bên kia chốt sai" — xem `ops.kiem_dong_sai`. Thoát 1 khi có dòng bị đánh dấu."""
+    from bridge.ops import kiem_dong_sai
+
+    kq = kiem_dong_sai(db, args.ngay)
+    alert = ", ".join(f"{ma}={n}" for ma, n in sorted(kq["alert"].items())) or "0"
+    print(f"ngay (UTC)        : {args.ngay or 'tat ca'}")
+    print(f"ui_fallback_match : {kq['ui_fallback_match']}")
+    print(f"alert lien quan   : {alert}")
+
+    print(f"\n[C] cap ghep nham vi the luc mo : {len(kq['ghep_nham'])}")
+    for r in kq["ghep_nham"]:
+        print(f"    {r['pair_id']}  client_position={r['client_position_id']}  "
+              f"the {r['open_tag']} KHONG co trong comment cua vi the")
+
+    print(f"\n[A] deal dong mot vi the khong lenh nao nham toi : {len(kq['dong_nham'])}")
+    for r in kq["dong_nham"]:
+        lenh = "; ".join(f"{loai} nham {pid} ({cid})" for cid, loai, pid in r["lenh_gan"])
+        print(f"    {r['received_at']}  {r['agent_id']}  dong {r['position_id']}  <- gan: {lenh}")
+
+    print(f"\n[B] cap CLOSED ma vi the Client khong co deal dong : {len(kq['bao_dong_nham'])}")
+    for r in kq["bao_dong_nham"]:
+        print(f"    {r['pair_id']}  client_position={r['client_position_id']}  "
+              f"cap nhat {r['updated_at']}")
+
+    co = bool(kq["ghep_nham"] or kq["dong_nham"] or kq["bao_dong_nham"])
+    if co:
+        print("\nCo dong bi danh dau. Doc logs\\clicker.log quanh cac moc tren "
+              "(Do dong, Tim vi the, Bam Close). [A] co the la nguoi dung dong tay dung luc do.")
+    return 1 if co else 0
+
+
 def lenh_cau_hinh_master(db: Database, args: argparse.Namespace) -> int:
     """Xem và sửa đường đóng phía Master (phase 12, D-21c).
 
@@ -300,6 +332,16 @@ def lenh_tinh_hinh(db: Database, _args: argparse.Namespace, db_path: Path) -> in
         can_chu_y.append(f"{cho['n']} sai lech dang cho xu ly")
     else:
         print("sai lech dang cho  : 0")
+
+    # Hàng đợi mở qua giao diện (D-31). Bình thường nó rỗng vì mỗi lệnh chỉ chờ dưới một giây;
+    # thấy nó có dòng nghĩa là Master đang vào lệnh nhanh hơn giao diện bấm được.
+    hang_doi = db.query_one("SELECT COUNT(*) n, MIN(created_at) cu_nhat FROM ui_open_queue")
+    if hang_doi and hang_doi["n"]:
+        giay = (utc_now() - parse_iso(hang_doi["cu_nhat"])).total_seconds()
+        print(f"hang doi mo (UI)   : {hang_doi['n']}  (cu nhat {giay:.1f} giay)")
+        can_chu_y.append(f"{hang_doi['n']} lenh mo dang xep hang qua giao dien")
+    else:
+        print("hang doi mo (UI)   : 0")
 
     canh_bao = db.query_one(
         "SELECT COUNT(*) n FROM alert WHERE acknowledged_at IS NULL "
@@ -597,6 +639,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("sao-luu", help="Sao luu DB ngay bay gio va kiem chung")
     sub.add_parser("bao-tri", help="Retention + sao luu + don ban cu")
     sub.add_parser("kiem-reason", help="TEST-23: moi vi the Client phai la DEAL_REASON_CLIENT")
+    kd = sub.add_parser("kiem-dong-sai",
+                        help="Chan doan 'ben kia chot sai': ghep nham, dong nham, bao dong nham")
+    kd.add_argument("--ngay", help="Ngay UTC dang YYYY-MM-DD; bo trong la moi ngay")
 
     sub.add_parser("tinh-hinh", help="Co gi can lam khong (thoat khac 0 neu co)")
 
@@ -665,6 +710,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_bao_tri(db, args, db_path)
         if args.lenh == "kiem-reason":
             return lenh_kiem_reason(db, args)
+        if args.lenh == "kiem-dong-sai":
+            return lenh_kiem_dong_sai(db, args)
         if args.lenh == "tinh-hinh":
             return lenh_tinh_hinh(db, args, db_path)
         if args.lenh == "anh-xa-symbol":

@@ -555,6 +555,88 @@ def test_cap_chua_mo_duoc_khong_bi_tinh_la_vi_pham(seeded: Database) -> None:
     assert kiem_reason_client(seeded) == []
 
 
+# -- kiem-dong-sai (rà soát "chốt sai", 2026-09-15) ---------------------------------------------
+
+def _su_kien(db: Database, event_id: str, seq: int, loai: str, position_id: int,
+             deal_entry: str, payload: str = "{}") -> None:
+    db.record_event(event_id, CLIENT_AGENT, seq, loai, position_id=position_id,
+                    deal_entry=deal_entry, payload_json=payload)
+
+
+def _cap(db: Database, client_position_id: int, tag: str | None = None,
+         status: str = "OPEN") -> str:
+    pair_id = db.create_pending_pair(MASTER_POSITION_ID, CLIENT_ID, copy_mode="OPPOSITE",
+                                     master_initial_volume=1.0, effective_multiplier=1.0,
+                                     open_tag=tag)
+    with db.transaction() as conn:
+        conn.execute("UPDATE pair SET status = ?, client_position_id = ? WHERE pair_id = ?",
+                     (status, client_position_id, pair_id))
+    return pair_id
+
+
+def test_kiem_dong_sai_db_sach_thi_khong_danh_dau(seeded: Database) -> None:
+    from bridge.ops import kiem_dong_sai
+
+    kq = kiem_dong_sai(seeded)
+    assert kq["ghep_nham"] == kq["dong_nham"] == kq["bao_dong_nham"] == []
+    assert kq["ui_fallback_match"] == "STRICT"
+
+
+def test_kiem_dong_sai_bat_cap_ghep_nham_vi_the(seeded: Database) -> None:
+    """Vị thế Client không mang thẻ của cặp: mọi lần đóng về sau sẽ "đúng id" mà sai lệnh."""
+    from bridge.ops import kiem_dong_sai
+
+    pair_id = _cap(seeded, 9001, tag="CBaaaaaaaaaa")
+    _su_kien(seeded, "E-1", 1, "position_opened", 9001, "IN",
+             '{"data": {"comment": "CBbbbbbbbbbb"}}')
+    assert [r["pair_id"] for r in kiem_dong_sai(seeded)["ghep_nham"]] == [pair_id]
+
+    _su_kien(seeded, "E-2", 2, "position_opened", 9001, "IN",
+             '{"data": {"comment": "CBaaaaaaaaaa"}}')
+    assert kiem_dong_sai(seeded)["ghep_nham"] == []
+
+
+def test_kiem_dong_sai_bat_deal_dong_vi_the_khong_lenh_nao_nham(seeded: Database) -> None:
+    from bridge.ops import kiem_dong_sai
+
+    seeded.create_command("CMD-T1", CLIENT_AGENT, "CLOSE", pair_id=None,
+                          payload_json='{"position_id": 9001}')
+    seeded.mark_command_sent("CMD-T1")
+    seeded.mark_command_acked("CMD-T1", "ACK_OK")
+    _su_kien(seeded, "E-3", 3, "position_closed", 9002, "OUT")
+
+    dong = kiem_dong_sai(seeded)["dong_nham"]
+    assert len(dong) == 1 and dong[0]["position_id"] == 9002
+    assert dong[0]["lenh_gan"] == [("CMD-T1", "CLOSE", 9001)]
+
+    _su_kien(seeded, "E-4", 4, "position_closed", 9001, "OUT")
+    assert len(kiem_dong_sai(seeded)["dong_nham"]) == 1, \
+        "Deal dong dung vi the duoc nham thi khong bi danh dau"
+
+
+def test_kiem_dong_sai_bat_cap_closed_khong_co_deal_dong(seeded: Database) -> None:
+    """Dấu hiệu `already_closed` sai: sổ nói đã đóng, terminal không có deal đóng nào."""
+    from bridge.ops import kiem_dong_sai
+
+    pair_id = _cap(seeded, 9005, status="CLOSED")
+    assert [r["pair_id"] for r in kiem_dong_sai(seeded)["bao_dong_nham"]] == [pair_id]
+
+    _su_kien(seeded, "E-5", 5, "position_closed", 9005, "OUT")
+    assert kiem_dong_sai(seeded)["bao_dong_nham"] == []
+
+
+def test_admin_kiem_dong_sai_thoat_1_khi_co_danh_dau(seeded: Database, monkeypatch,
+                                                    capsys) -> None:
+    from bridge.clock import utc_now_iso
+
+    admin = _admin_tren(seeded, monkeypatch)
+    assert admin.main(["kiem-dong-sai"]) == 0
+
+    _cap(seeded, 9006, status="CLOSED")
+    assert admin.main(["kiem-dong-sai", "--ngay", utc_now_iso()[:10]]) == 1
+    assert "[B] cap CLOSED" in capsys.readouterr().out
+
+
 def test_cap_token_bat_lai_agent_da_thu_hoi(seeded: Database) -> None:
     """B-10: cấp token cho agent đã thu hồi phải làm nó nối lại được, không im lặng thất bại.
 

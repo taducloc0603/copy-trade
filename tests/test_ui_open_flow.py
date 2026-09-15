@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import timedelta
 
 import pytest
 
@@ -108,6 +109,19 @@ class Env:
     def alerts(self, code: str) -> list:
         return [a for a in self.db.query_all("SELECT * FROM alert ORDER BY id")
                 if a["code"] == code]
+
+    def hang_doi(self) -> list:
+        return self.db.list_hang_doi_ui()
+
+    async def bom(self) -> int:
+        """Một nhịp bơm hàng đợi. Trong bản chạy thật `_loop` gọi nó mỗi 0,1 giây."""
+        return await self.processor._bom_hang_doi_ui()
+
+    def lui_tuoi_event(self, event_id: str, giay: float) -> None:
+        """Kéo lùi `ts_agent` của một event — cách duy nhất để giả một lệnh đã chờ lâu."""
+        moc = to_iso(utc_now() - timedelta(seconds=giay))
+        with self.db.transaction() as conn:
+            conn.execute("UPDATE event SET ts_agent = ? WHERE event_id = ?", (moc, event_id))
 
     async def wait_ack(self, timeout: float = 3.0) -> None:
         await _wait_until(
@@ -531,7 +545,7 @@ async def test_gui_lai_cung_command_id_khong_bam_lan_hai(env: Env) -> None:
 
 
 async def test_mot_lenh_dang_bay_moi_client(env: Env) -> None:
-    """Hàng đợi một phần tử là thứ biến tương quan mờ thành bài toán luôn giải được."""
+    """Đúng MỘT lệnh trên đường dây — thứ biến tương quan mờ thành bài toán luôn giải được."""
     env.clicker.execution_delay_sec = 0.5
     await env.emit_master_open(700022)
     await _wait_until(lambda: len(env.commands("OPEN_UI")) == 1)
@@ -540,11 +554,203 @@ async def test_mot_lenh_dang_bay_moi_client(env: Env) -> None:
 
     assert len(env.commands("OPEN_UI")) == 1
     assert len(env.pairs()) == 1
-    canh_bao = env.alerts("UI_OPEN_BUSY")
+    # Lệnh thứ hai KHÔNG mất: nó nằm trong hàng đợi, chưa có pair (D-31).
+    hang = env.hang_doi()
+    assert len(hang) == 1
+    assert hang[0]["master_position_id"] == 700023
+
+
+# -- hàng đợi mở qua giao diện (D-31) ------------------------------------------------------
+
+async def test_vao_lenh_lien_tiep_khong_mat_lenh_nao(env: Env) -> None:
+    """Bài của chính sự cố: 10 lệnh liên tiếp trên Master phải ra 10 cặp, không bỏ cái nào."""
+    env.clicker.execution_delay_sec = 0.05   # bấm giao diện chậm hơn Master vào lệnh
+    for i in range(10):
+        await env.emit_master_open(710000 + i)
+
+    assert env.hang_doi(), "Phai co lenh phai xep hang, neu khong bai nay khong kiem gi ca"
+    assert len(env.pairs()) + len(env.hang_doi()) == 10
+
+    for _ in range(30):                      # mỗi nhịp bơm đúng một lệnh cho mỗi Client
+        await env.wait_ack()
+        if not await env.bom():
+            break
+
+    pairs = env.pairs()
+    assert len(pairs) == 10
+    assert env.hang_doi() == []
+    assert env.alerts("UI_OPEN_QUEUE_EXPIRED") == []
+    # FIFO: thứ tự mở phải đúng thứ tự Master vào lệnh.
+    assert [p["master_position_id"] for p in pairs] == [710000 + i for i in range(10)]
+
+
+async def test_lenh_cho_qua_han_thi_huy_va_keu(env: Env) -> None:
+    """Chờ quá trần thì HUỶ chứ không mở: giá đã chạy xa, mở lúc đó là mở sai giá."""
+    env.clicker.execution_delay_sec = 0.5
+    await env.emit_master_open(711001)
+    await _wait_until(lambda: len(env.commands("OPEN_UI")) == 1)
+    event_id = await env.emit_master_open(711002)
+
+    env.lui_tuoi_event(event_id, 20.0)       # trần mặc định 15 giây
+    await env.wait_ack()
+    await env.bom()
+
+    assert env.hang_doi() == []
+    assert len(env.pairs()) == 1, "Lenh qua han KHONG duoc mo"
+    canh_bao = env.alerts("UI_OPEN_QUEUE_EXPIRED")
     assert len(canh_bao) == 1
-    # Muc ERROR, khong phai WARNING: bo mot lenh copy la mat hedge, va chi ERROR tro len moi
-    # duoc kenh canh bao gui ra ngoai (`bridge/alerting.py`, MUC_GUI).
+    # Mất một lệnh copy là mất hedge, và chỉ ERROR trở lên mới đi ra kênh cảnh báo ngoài.
     assert canh_bao[0]["level"] == "ERROR"
+
+
+async def test_hang_doi_noi_tran_tuoi_chu_khong_bo_qua_tran_khac(env: Env) -> None:
+    """Lệnh chờ 8 giây vẫn mở được, dù trần của đường thường chỉ 5 giây."""
+    env.clicker.execution_delay_sec = 0.5
+    await env.emit_master_open(711011)
+    await _wait_until(lambda: len(env.commands("OPEN_UI")) == 1)
+    event_id = await env.emit_master_open(711012)
+
+    env.lui_tuoi_event(event_id, 8.0)        # > max_event_age_ms (5000), < 15000
+    await env.wait_ack()
+    await env.bom()
+
+    assert len(env.pairs()) == 2
+    assert env.alerts("EVENT_TOO_OLD") == []
+
+
+async def test_master_dong_truoc_khi_toi_luot_thi_bo_lang(env: Env) -> None:
+    """Mở ra rồi đóng ngay chỉ tốn phí — và không có gì để cảnh báo."""
+    env.clicker.execution_delay_sec = 0.5
+    await env.emit_master_open(711021)
+    await _wait_until(lambda: len(env.commands("OPEN_UI")) == 1)
+    await env.emit_master_open(711022)
+
+    env.db.set_master_position_status(711022, "CLOSED")
+    await env.wait_ack()
+    await env.bom()
+
+    assert env.hang_doi() == []
+    assert len(env.pairs()) == 1
+    assert env.alerts("UI_OPEN_QUEUE_EXPIRED") == []
+
+
+async def test_roi_running_thi_xoa_hang_doi(env: Env) -> None:
+    env.clicker.execution_delay_sec = 0.5
+    await env.emit_master_open(711031)
+    await _wait_until(lambda: len(env.commands("OPEN_UI")) == 1)
+    await env.emit_master_open(711032)
+    assert len(env.hang_doi()) == 1
+
+    env.db.set_config("run_mode", "PAUSED")
+    await env.bom()
+
+    assert env.hang_doi() == []
+
+
+async def test_hang_doi_day_thi_keu_va_khong_xep_them(env: Env) -> None:
+    env.clicker.execution_delay_sec = 5.0
+    env.db.set_config("ui_open_queue_max_len", "2")
+    for i in range(5):
+        await env.emit_master_open(711040 + i)
+
+    assert len(env.hang_doi()) == 2, "Hang doi khong duoc vuot tran"
+    day = env.alerts("UI_OPEN_QUEUE_FULL")
+    assert len(day) == 2                     # lệnh thứ tư và thứ năm
+    assert day[0]["level"] == "ERROR"
+
+
+# -- ghép mở không phụ thuộc vòng xử lý chậm (rà soát "chốt sai", 2026-09-15) ---------------
+
+async def _gui_event_client_chua_xu_ly(env: Env, position_id: int, comment: str) -> None:
+    """Event mở của EA Client tới Bridge nhưng **chưa** được xử lý — như khi vòng xử lý đang bận."""
+    await env.client.send_event(
+        "position_opened", position_id=position_id, deal_entry="IN", symbol=CLIENT_SYMBOL,
+        direction="SELL", volume_delta=0.5, volume_after=0.5, ticket=position_id, magic=0,
+        comment=comment, order_comment=None, reason=REASON_CLIENT,
+    )
+    await _wait_until(lambda: env.db.query_one(
+        "SELECT 1 FROM event WHERE agent_id = ? AND position_id = ?",
+        (CLIENT_AGENT, position_id)) is not None)
+
+
+def _tao_cap_cho_ghep(env: Env, master_position_id: int, han: str) -> tuple[str, str]:
+    """Dựng tay một cặp `PENDING_OPEN` cùng thông số — hàng đợi D-31 làm việc này thành thường."""
+    command_id = new_command_id()
+    tag = open_tag_for(command_id)
+    env.db.upsert_master_position(master_position_id, agent_id=MASTER_AGENT, symbol=MASTER_SYMBOL,
+                                  direction="BUY", initial_volume=1.0, current_volume=1.0,
+                                  status="OPEN")
+    pair_id = env.db.create_pending_pair(
+        master_position_id, CLIENT_ID, copy_mode="OPPOSITE", master_initial_volume=1.0,
+        effective_multiplier=0.5, client_symbol=CLIENT_SYMBOL, client_direction="SELL",
+        open_tag=tag)
+    env.db.create_command(command_id, CLICKER_AGENT, "OPEN_UI", pair_id=pair_id,
+                          payload_json=json.dumps({"symbol": CLIENT_SYMBOL, "direction": "SELL",
+                                                   "volume": 0.5, "comment": tag}),
+                          deadline_at=han)
+    return pair_id, tag
+
+
+async def test_event_toi_dung_han_nhung_xu_ly_muon_van_ghep_dung_cap(env: Env) -> None:
+    """Cửa sổ đo từ lúc event TỚI Bridge. Bridge bận không được làm cặp đúng rớt khỏi cửa sổ."""
+    env.db.set_config("ui_correlate_grace_ms", "1000")
+    await env.emit_master_open(700031)
+    await env.wait_ack()
+    tag = env.only_pair()["open_tag"]
+
+    qua_khu = utc_now() - timedelta(seconds=30)
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE command SET deadline_at = ? WHERE type = 'OPEN_UI'", (to_iso(qua_khu),))
+    await _gui_event_client_chua_xu_ly(env, 810031, tag)
+    with env.db.transaction() as conn:
+        conn.execute("UPDATE event SET received_at = ? WHERE agent_id = ? AND position_id = ?",
+                     (to_iso(qua_khu - timedelta(seconds=5)), CLIENT_AGENT, 810031))
+    await env.processor.process_pending()
+
+    pair = env.only_pair()
+    assert pair["status"] == "OPEN" and pair["client_position_id"] == 810031
+
+
+async def test_lenh_mo_thu_lai_cung_the_khong_tu_gay_ambiguous(env: Env) -> None:
+    """`_retry_open` tạo lệnh thứ hai CÙNG THẺ cho cùng cặp — đó không phải hai ứng viên."""
+    await env.emit_master_open(700032)
+    await env.wait_ack()
+    pair = env.only_pair()
+    await env.processor._retry_open(pair["pair_id"], env.commands("OPEN_UI")[0], 0)
+    assert len(env.commands("OPEN_UI")) == 2
+
+    position_id = await env.emit_client_open(comment=pair["open_tag"])
+
+    assert env.alerts("UI_CORRELATE_AMBIGUOUS") == []
+    assert env.only_pair()["client_position_id"] == position_id
+
+
+async def test_heuristic_khong_ghep_vi_the_mang_the_cua_cap_khac(env: Env) -> None:
+    """Vị thế mang thẻ của cặp A (đã rớt cửa sổ) mà suy đoán gắn vào cặp B — đúng kiểu chốt sai."""
+    env.db.set_config("ui_fallback_match", "HEURISTIC")
+    env.db.set_config("ui_correlate_grace_ms", "0")
+    tuong_lai = to_iso(utc_now() + timedelta(seconds=30))
+    _, tag_a = _tao_cap_cho_ghep(env, 700041, to_iso(utc_now() - timedelta(seconds=30)))
+    pair_b, _ = _tao_cap_cho_ghep(env, 700042, tuong_lai)
+
+    await env.emit_client_open(comment=tag_a)
+
+    assert env.db.get_pair(pair_b)["client_position_id"] is None, "KHONG duoc gan vao cap B"
+    assert env.alerts("UI_CORRELATE_HEURISTIC") == []
+    assert len(env.alerts("UI_CORRELATE_TAG_OUT_OF_WINDOW")) == 1
+
+
+async def test_heuristic_dem_ca_cap_cung_thong_so_ngoai_cua_so(env: Env) -> None:
+    """Trong cửa sổ còn đúng một cặp không có nghĩa là chỉ một cặp có thể là chủ vị thế này."""
+    env.db.set_config("ui_fallback_match", "HEURISTIC")
+    env.db.set_config("ui_correlate_grace_ms", "0")
+    _tao_cap_cho_ghep(env, 700051, to_iso(utc_now() - timedelta(seconds=30)))
+    pair_b, _ = _tao_cap_cho_ghep(env, 700052, to_iso(utc_now() + timedelta(seconds=30)))
+
+    await env.emit_client_open(comment="")
+
+    assert env.db.get_pair(pair_b)["client_position_id"] is None
+    assert env.alerts("UI_CORRELATE_HEURISTIC") == []
 
 
 # -- canary --------------------------------------------------------------------------------

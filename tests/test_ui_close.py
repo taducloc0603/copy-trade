@@ -170,13 +170,21 @@ class HopThoaiDongGia:
     ticket_sau_khi_dien: int | None = None
     nut_hong: bool = False
     dong_duoc: bool = True
+    #: Volume của vị thế, hiện ở tiêu đề.
+    volume_vi_the: str = "0.01"
+    #: `None` = nút Close nhắc lại đúng `volume_hien`, như MT5. Đặt giá trị để giả nút mang số khác.
+    volume_tren_nut: str | None = None
+    hwnd: int = 0x5150
     ghi_lai: list[str] = field(default_factory=list)
 
     def read_back(self) -> CloseState:
         t = self.ticket if self.ticket_sau_khi_dien is None else self.ticket_sau_khi_dien
+        tren_nut = self.volume_tren_nut or self.volume_hien
         return CloseState(ticket_tieu_de=t, ticket_nut=t, ticket_combo=None,
                           volume=self.volume_doc_lai or self.volume_hien,
-                          symbol="BTCUSD.s, Bitcoin vs US Dollar", nut_text=NUT)
+                          symbol="BTCUSD.s, Bitcoin vs US Dollar",
+                          nut_text=f"Close #{t} buy {tren_nut} BTCUSD.s 78500.01 by Market",
+                          tieu_de=f"Position: #{t} buy {self.volume_vi_the} BTCUSD.s 78500.01")
 
     def set_volume(self, volume: float) -> bool:
         self.ghi_lai.append(f"volume={volume:g}")
@@ -204,9 +212,99 @@ def driver(monkeypatch: pytest.MonkeyPatch) -> Mt5UiDriver:
     bam.da_bam = []
     bam.thanh_cong = True
     monkeypatch.setattr(driver_mod.win32, "post_click", bam)
+    # Mặc định MT5 xử lý kịp hàng đợi. Bài kiểm trường hợp không kịp tự đặt lại.
+    monkeypatch.setattr(driver_mod.win32, "cho_xu_ly_xong", lambda _h, timeout_ms=0: True)
     d = Mt5UiDriver(terminal_title="538217", settle_sec=0)
     d._bam = bam
     return d
+
+
+# Rà soát "chốt sai" 2026-09-15: khe hở giữa lúc kiểm và lúc MT5 xử lý cú bấm, và kết luận
+# `already_closed` từ một phép tìm không sạch.
+
+def test_hang_doi_MT5_khong_xa_duoc_thi_khong_bam(driver: Mt5UiDriver,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """`BM_CLICK` chạy sau mọi message còn tồn. Bấm khi chúng chưa chạy là cược vào thứ tự."""
+    monkeypatch.setattr(driver_mod.win32, "cho_xu_ly_xong", lambda _h, timeout_ms=0: False)
+    hop = HopThoaiDongGia()
+    kq = driver._commit_close(hop, CloseRequest(position_id=TICKET), list_hwnd=777)
+
+    assert kq.status == "rejected" and kq.clicked is False
+    assert driver._bam.da_bam == []
+    assert "cancel" in hop.ghi_lai
+
+
+def test_xa_hang_doi_ca_danh_sach_lan_hop_thoai(driver: Mt5UiDriver,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    da_xa: list[int] = []
+    monkeypatch.setattr(driver_mod.win32, "cho_xu_ly_xong",
+                        lambda h, timeout_ms=0: (da_xa.append(h), True)[1])
+    hop = HopThoaiDongGia()
+    assert driver._commit_close(hop, CloseRequest(position_id=TICKET), list_hwnd=777).status == "ok"
+    assert da_xa == [777, hop.hwnd]
+
+
+def test_nut_close_mang_volume_khac_khi_dong_mot_phan_thi_khong_bam(
+        driver: Mt5UiDriver) -> None:
+    """Nút Close nhắc lại con số sẽ đóng — gần nhất với cái MT5 sẽ làm mà đọc được."""
+    hop = HopThoaiDongGia(volume_tren_nut="0.05")
+    kq = driver._commit_close(hop, CloseRequest(position_id=TICKET, volume=0.02))
+
+    assert kq.status == "rejected" and driver._bam.da_bam == []
+    assert "0.05" in kq.reason
+
+
+def test_dong_han_ma_nut_close_mang_volume_khac_vi_the_thi_khong_bam(
+        driver: Mt5UiDriver) -> None:
+    """MT5 đã từng giữ volume nội bộ qua các lần mở hộp thoại (D-26) — đúng kiểu này."""
+    hop = HopThoaiDongGia(volume_hien="0.03", volume_vi_the="0.05")
+    kq = driver._commit_close(hop, CloseRequest(position_id=TICKET))
+
+    assert kq.status == "rejected" and driver._bam.da_bam == []
+
+
+def test_hop_thoai_mo_tre_hien_cung_ticket_o_hai_dong_thi_xem_lai(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dòng 1 nhận nhầm hộp thoại mở trễ của dòng 0. Không tin lần đọc nào — xem lại cả hai."""
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET, TICKET + 5])
+    goc = driver_mod.cho_so_bo
+    da_tre = {"lan": 0}
+
+    def tre(pid: int, timeout_sec: float = 2.0) -> Any:
+        so_bo = goc(pid, timeout_sec)
+        if so_bo is not None and so_bo.hwnd == HWND_GOC + 1 and da_tre["lan"] == 0:
+            da_tre["lan"] += 1
+            return SoBoGia(hwnd=HWND_GOC + 1, ticket=111, nhat_ky=nhat_ky)
+        return so_bo
+
+    monkeypatch.setattr(driver_mod, "cho_so_bo", tre)
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok" and driver._bam.da_bam == [4242]
+    assert nhat_ky.count("mo dong 1") == 2, "Dong 1 phai duoc mo lai"
+    assert driver._ban_do.get(111) != 1, "Khong duoc ghi ban do tu lan doc khong tin duoc"
+
+
+def test_tim_co_lan_do_treo_ma_khong_thay_thi_KHONG_bao_da_dong(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`already_closed` làm Bridge ghi cặp CLOSED. Từ một phép tìm không sạch thì đó có thể là nói sai."""
+    _gia_lap_treo(monkeypatch, {0: 1}, [111, 222])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "rejected" and kq.clicked is False
+    assert "treo" in kq.reason
+
+
+def test_hop_thoai_sot_trong_luc_tim_ma_khong_thay_thi_KHONG_bao_da_dong(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, 222])
+    con = [SoBoGia(hwnd=HWND_GOC + 9, ticket=TICKET, nhat_ky=nhat_ky)]
+    monkeypatch.setattr(driver_mod, "tim_so_bo", lambda _pid: con.pop() if con else None)
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "rejected"
+    assert "hop thoai sot" in kq.reason
+    assert driver._bam.da_bam == []
 
 
 def test_dong_han_khong_go_lai_volume(driver: Mt5UiDriver) -> None:
@@ -357,11 +455,12 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
 
 def test_tim_thay_o_dong_dau_thi_dung_lai(driver: Mt5UiDriver,
                                           monkeypatch: pytest.MonkeyPatch) -> None:
-    nhat_ky = _gia_lap_tim(monkeypatch, [TICKET, 111, 222])
+    # Ba dòng sắp tăng, đích ở giữa: nhị phân mở dòng 1 trước tiên.
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET, 99_999_999])
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "ok"
-    assert nhat_ky == ["mo dong 0", "doc control dong 0"], \
+    assert nhat_ky == ["mo dong 1", "doc control dong 1"], \
         "Tim thay roi thi khong duoc do tiep, va chi doc control cua DUNG dong da khop"
 
 
@@ -449,31 +548,79 @@ def test_treo_ca_hai_lan_thi_khong_nhap_them_va_khong_ket_luan_da_dong(
     assert da_mo == [0, 0, 1], "Chi duoc nhap lai MOT lan moi dong"
 
 
-# Toi uu 2026-09-12: do bang TIEU DE (khong doc control), va nho dong trung lan truoc.
+# Toi uu 2026-09-12: do bang TIEU DE (khong doc control).
+# Toi uu 2026-09-15: thu tu do theo ban do ticket -> dong va tim nhi phan (clicker/ui/timdong.py).
 
-def test_nho_dong_trung_lan_truoc_de_do_truoc(driver: Mt5UiDriver,
-                                              monkeypatch: pytest.MonkeyPatch) -> None:
-    """Moi dong do truot ton mot lan mo/huy hop thoai — dong trung lan truoc dang duoc thu truoc."""
-    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET])
-    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
-    assert nhat_ky[0] == "mo dong 0"
-
-    nhat_ky.clear()
-    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
-    assert nhat_ky[0] == "mo dong 1", "Lan sau phai do dong da trung truoc tien"
-    assert "mo dong 0" not in nhat_ky
+#: 10 vị thế sắp theo thời gian mở rồi dòng tổng kết Balance — hình dạng thật của tab Trade.
+MUOI_VI_THE: list[int | None] = [*range(TICKET - 8, TICKET + 2), None]
 
 
-def test_doan_sai_dong_thi_van_do_tiep_va_dong_dung_ticket(
+def _cac_dong_da_mo(nhat_ky: list[str]) -> list[int]:
+    return [int(d.split()[-1]) for d in nhat_ky if d.startswith("mo dong ")]
+
+
+def test_dong_vi_the_thu_chin_khong_mo_lan_luot_tu_dong_dau(
         driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Nho dong chi la THU TU. Doan sai chi ton them thoi gian, khong bao gio dong nham."""
-    driver._dong_gan_nhat = 1
+    """Bài của chính sự cố 2026-09-15: bản cũ mở dòng 0, 1, …, 7 rồi mới tới dòng 8."""
+    assert MUOI_VI_THE.index(TICKET) == 8
+    nhat_ky = _gia_lap_tim(monkeypatch, MUOI_VI_THE)
+    kq = driver.close(CloseRequest(position_id=TICKET))
+
+    assert kq.status == "ok" and driver._bam.da_bam == [4242]
+    da_mo = _cac_dong_da_mo(nhat_ky)
+    assert len(da_mo) <= 4, f"Mo {da_mo}"
+    assert "doc control dong 8" in nhat_ky
+    assert [d for d in nhat_ky if d.startswith("doc control")] == ["doc control dong 8"], \
+        "Chi duoc doc control cua dong da khop"
+
+
+def test_nho_ban_do_ticket_de_lan_sau_trung_ngay(driver: Mt5UiDriver,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dò lần đầu đọc được ticket của nhiều dòng; lần đóng sau dùng lại, kể cả sau khi dòng dịch."""
+    tickets = list(MUOI_VI_THE)
+    nhat_ky = _gia_lap_tim(monkeypatch, tickets)
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+
+    # MT5 bỏ dòng vừa đóng hẳn; mọi dòng bên dưới dịch lên một.
+    tickets.pop(8)
+    ticket_cuoi = TICKET + 1                  # trước ở dòng 9, nay ở dòng 8
+    assert driver._ban_do.get(ticket_cuoi) in (None, 8), "Ban do phai dich dong sau khi dong han"
+    if ticket_cuoi in driver._ban_do:
+        nhat_ky.clear()
+        assert driver.close(CloseRequest(position_id=ticket_cuoi)).status == "ok"
+        assert _cac_dong_da_mo(nhat_ky) == [8], "Da biet dong thi phai trung ngay lan mo dau"
+
+    # Một vị thế đã đọc được ở lần dò đầu: dòng 4 (nhị phân mở dòng 5 trước tiên) giữ nguyên chỗ.
+    da_doc = {t: r for t, r in driver._ban_do.items() if r < 8}
+    assert da_doc, "Lan do dau phai de lai it nhat mot muc ban do phia tren"
+    ticket, row = next(iter(da_doc.items()))
+    nhat_ky.clear()
+    assert driver.close(CloseRequest(position_id=ticket)).status == "ok"
+    assert _cac_dong_da_mo(nhat_ky) == [row]
+
+
+def test_dong_mot_phan_khong_lam_dich_ban_do(driver: Mt5UiDriver,
+                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đóng một phần không bỏ dòng khỏi danh sách, nên không được dịch gì cả."""
+    _gia_lap_tim(monkeypatch, MUOI_VI_THE)
+    assert driver.close(CloseRequest(position_id=TICKET, volume=0.01)).status == "ok"
+
+    assert driver._ban_do[TICKET] == 8
+    assert driver._ban_do.get(TICKET + 1, 9) == 9
+
+
+def test_ban_do_sai_thi_van_do_tiep_va_dong_dung_ticket(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bản đồ chỉ là THỨ TỰ. Danh sách đổi giữa hai lần thì tốn thêm thời gian, không đóng nhầm."""
+    driver._ban_do = {TICKET: 1}
     nhat_ky = _gia_lap_tim(monkeypatch, [TICKET, 111])
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "ok" and driver._bam.da_bam == [4242]
     assert nhat_ky[0] == "mo dong 1" and "huy dong 1" in nhat_ky
     assert "doc control dong 0" in nhat_ky
+    # Mục sai {TICKET: 1} bị xoá khi dòng 1 đọc ra 111; đóng hẳn dòng 0 thì 111 dịch lên dòng 0.
+    assert driver._ban_do == {111: 0}
 
 
 # Doc chu cua mot control la SendMessage LIEN TIEN TRINH vao luong giao dien MT5 dang ban. Hai cho

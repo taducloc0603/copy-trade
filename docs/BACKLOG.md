@@ -108,6 +108,12 @@ mà MT5 thật sự đổi nội dung hay không — cùng kiểu nghi ngờ đ�
 
 ### B-15 — Đóng lệnh qua giao diện chậm hơn đường EA khoảng 16 lần
 
+> **2026-09-15 — thứ tự dò.** Người dùng quan sát: có 10 vị thế, đóng cái thứ 9 thì clicker mở lần
+> lượt hộp thoại dòng 0 → 8 rồi mới đóng (~0,3–0,4 giây mỗi dòng trượt, tức thêm 3–4 giây). Nay
+> `clicker/ui/timdong.py` dò theo bản đồ `ticket → dòng` rồi tìm nhị phân: test cho **≤4 lần mở**
+> với mọi vị thế trong 10 dòng sắp tăng (bản cũ: tới 10). **Chưa đo trên VPS** — xem
+> `docs/VIEC-TREN-VPS.md` mục 7, ghi số thật vào đây.
+
 Đo 2026-09-10 trên demo: `CLOSE_UI` **5,1–5,5 giây**, `CLOSE_UI_PARTIAL` **5,8–5,9 giây**, so với
 **342 ms** của đường EA. Clicker xử lý **một lệnh tại một thời điểm** (`link._gate`), nên nó là
 điểm nghẽn của **cả hai** đường — mở và đóng giành nhau cùng một cổng.
@@ -258,6 +264,9 @@ Ghi lại để lần sau không phải đi tìm:
 - ~~Cấp agent/token bằng script tạm trong scratchpad~~ → `python -m bridge.admin`.
 - ~~`UI_OPEN_BUSY` ở mức WARNING~~ → nâng lên **ERROR**: bỏ một lệnh copy là mất hedge, và từ
   Phase 10 chỉ ERROR trở lên mới ra được Telegram.
+- ~~Clicker bận thì **bỏ** lệnh (`UI_OPEN_BUSY`)~~ → xếp hàng `ui_open_queue`, trần 15 giây
+  (D-31, 2026-09-14). Mã alert cũ không còn; thay bằng `UI_OPEN_QUEUE_EXPIRED` /
+  `UI_OPEN_QUEUE_FULL` — chúng chỉ kêu ở chỗ lệnh **thật sự** mất.
 - ~~Bộ migration chưa từng chạy quá version 1~~ → migration `002` đã chạy thật trên
   `data/bridge.db`, version 1 → 2, dữ liệu nguyên vẹn.
 - ~~`run_mode` không bị ép về `PAUSED` khi khởi động~~ → nay ép thật, kèm alert (D-15).

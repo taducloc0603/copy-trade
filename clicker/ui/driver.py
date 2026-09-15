@@ -29,8 +29,9 @@ giới này, nên nó là hợp đồng chứ không phải chi tiết triển k
 72205853 nằm ở dòng nào".
 
 Cái bù lại nằm ở hộp thoại: mở ra rồi thì ticket đọc được từ ba nguồn độc lập. Nên `close()` là
-một **phép tìm có kiểm chứng** — mở dòng 0, đọc ngược ticket, sai thì huỷ và thử dòng 1, đúng mới
-điền volume và bấm.
+một **phép tìm có kiểm chứng** — mở một dòng, đọc ngược ticket, sai thì huỷ và thử dòng khác, đúng
+mới điền volume và bấm. Dòng nào mở trước do `clicker/ui/timdong.py` chọn (bản đồ ticket → dòng, rồi
+tìm nhị phân); nó chỉ đổi thứ tự, không đổi việc mọi dòng đều bị kiểm chứng.
 
 Điều làm phép tìm này an toàn: **mở và huỷ hộp thoại không đặt lệnh nào.** Mọi bước dò đều nằm ở
 phía an toàn của ranh giới D-24, nên một lần dò trượt vẫn là `rejected` đúng nghĩa. Đây không phải
@@ -45,7 +46,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from bridge.logging_setup import get_logger
-from clicker.ui import probe, tradetab, win32
+from clicker.ui import probe, timdong, tradetab, win32
 from clicker.ui.dialog import (
     ClosePositionDialog,
     DialogError,
@@ -260,9 +261,9 @@ class Mt5UiDriver:
         self.on_before_click = on_before_click
         self.settle_sec = settle_sec
         self.close_timeout_sec = close_timeout_sec
-        #: Dòng của lần đóng trúng gần nhất. Chỉ là **thứ tự dò**, không phải kết luận — xem
-        #: `_thu_tu_dong`.
-        self._dong_gan_nhat: int | None = None
+        #: `ticket → dòng` đọc được từ những lần dò trước. Chỉ là **thứ tự dò**, không phải kết
+        #: luận — xem `clicker/ui/timdong.py`.
+        self._ban_do: dict[int, int] = {}
 
     # -- mở lệnh ---------------------------------------------------------------------------
 
@@ -353,16 +354,58 @@ class Mt5UiDriver:
 
         da_gap: list[int | None] = []
         mo_duoc_it_nhat_mot = False
-        for row in self._thu_tu_dong(so_dong):
+        #: Lý do khiến "đã quét hết" không còn đáng tin: một lần dò bị treo, một hộp thoại sót, một
+        #: ticket hiện ở hai dòng. Tìm bẩn mà không thấy thì KHÔNG được nói `already_closed` — kết
+        #: luận đó làm Bridge ghi cặp thành `CLOSED` trong khi vị thế có thể vẫn đang mở.
+        tim_ban: list[str] = []
+        #: ticket → dòng nơi nó được đọc trong **lần tìm này**.
+        thay_o: dict[int, int] = {}
+        # Chỉ quyết định THỨ TỰ mở dòng — mọi dòng vẫn bị đọc ngược ticket bên dưới (D-30).
+        phep_do = timdong.PhepDo(so_dong, request.position_id, self._ban_do)
+        while (row := phep_do.tiep_theo()) is not None:
             # Hộp thoại sót lại từ vòng trước — kể cả một cái mở **chậm hơn** thời gian chờ. MT5
             # lúc đó đang ở vòng lặp modal và cú double-click kế tiếp sẽ không đi tới đâu cả, nên
             # bỏ qua bước này là để cả phần còn lại của vòng lặp dò trong vô vọng.
             sot = tim_so_bo(pid)
             if sot is not None:
+                # Ghi lại TRƯỚC khi huỷ. Một hộp thoại sót là hộp thoại mở trễ của một dòng nào đó,
+                # và nếu nó là đích thì dòng của đích có thể đã bị ghi nhận với ticket khác.
+                tim_ban.append(f"hop thoai sot #{sot.ticket} (hwnd {sot.hwnd:#x})")
                 sot.cancel()
                 sot.wait_closed()
 
             so_bo = self._mo_dong(pid, list_hwnd, row)
+            if self._vua_treo:
+                tim_ban.append(f"dong {row} bi treo")
+                # Message của lần dò treo vẫn được MT5 giao **muộn**. Không mở dòng kế khi chúng
+                # chưa chạy xong — hộp thoại sau có thể nhận nhầm cú nhấp của dòng trước.
+                if not win32.cho_xu_ly_xong(list_hwnd):
+                    if so_bo is not None:
+                        so_bo.cancel()
+                        so_bo.wait_closed()
+                    return Outcome("rejected", f"MT5 khong xu ly xong hang doi sau lan do treo "
+                                               f"o dong {row}", clicked=False)
+            ticket = so_bo.ticket if so_bo is not None else None
+            if so_bo is not None:
+                log.info("Dong %d mo hop thoai #%s (hwnd %#x)", row, ticket, so_bo.hwnd)
+
+            if so_bo is not None and ticket is not None and thay_o.get(ticket, row) != row:
+                # Cùng một ticket ở hai dòng: một trong hai lần đọc là hộp thoại MỞ TRỄ của dòng
+                # khác. Không tin lần nào — cho mở lại cả hai, không ghi bản đồ.
+                dong_cu = thay_o.pop(ticket)
+                tim_ban.append(f"ticket #{ticket} hien o ca dong {dong_cu} va dong {row}")
+                self._ban_do.pop(ticket, None)
+                so_bo.cancel()
+                so_bo.wait_closed()
+                phep_do.ghi_nhan(row, None)
+                phep_do.mo_lai(row)
+                phep_do.mo_lai(dong_cu)
+                continue
+
+            phep_do.ghi_nhan(row, ticket)
+            if ticket is not None:
+                thay_o[ticket] = row
+            timdong.ghi_ban_do(self._ban_do, row, ticket)
             if so_bo is None:
                 # Dòng này không mở hộp thoại nào. Bình thường: danh sách có cả dòng tổng kết
                 # Balance. Đi tiếp chứ không coi là lỗi.
@@ -375,6 +418,7 @@ class Mt5UiDriver:
                 so_bo.wait_closed()
                 continue
 
+            self._log_tim(request.position_id, phep_do)
             doc_tu = time.monotonic()
             hop = ClosePositionDialog.tu_hwnd(so_bo.hwnd)
             log.info("Doc control hop thoai dong (dong %d): %.2fs", row,
@@ -383,9 +427,19 @@ class Mt5UiDriver:
                 so_bo.cancel()
                 so_bo.wait_closed()
                 return Outcome("rejected", "Hop thoai dong khong dung hinh dang", clicked=False)
-            self._dong_gan_nhat = row
-            return self._commit_close(hop, request)
+            ket_qua = self._commit_close(hop, request, list_hwnd)
+            if ket_qua.status == "ok" and request.volume is None:
+                # Đóng hẳn: MT5 bỏ dòng này, mọi dòng bên dưới dịch lên một. Đóng một phần thì
+                # dòng còn nguyên chỗ.
+                timdong.bo_dong(self._ban_do, request.position_id, row)
+            elif ket_qua.status != "ok":
+                # `unknown` / `rejected`: không biết danh sách giờ ra sao. Bỏ mục của vị thế này
+                # thay vì giữ một gợi ý có thể đã sai.
+                self._ban_do.pop(request.position_id, None)
+            return ket_qua
 
+        self._log_tim(request.position_id, phep_do)
+        self._ban_do.pop(request.position_id, None)
         if not mo_duoc_it_nhat_mot:
             # **Không một dòng nào mở được hộp thoại.** Không được kết luận "vị thế đã đóng" từ
             # đây: nó cũng là hình dạng của một giao diện đã ngừng điều khiển được — hộp thoại
@@ -399,6 +453,18 @@ class Mt5UiDriver:
                 "rejected",
                 f"Khong dong nao trong {so_dong} dong mo duoc hop thoai — khong ket luan duoc "
                 f"vi the {request.position_id} con hay het",
+                clicked=False,
+            )
+
+        if tim_ban:
+            # Không thấy, nhưng phép tìm không sạch: có lần đọc có thể thuộc về dòng khác.
+            # `already_closed` ở đây có thể là nói sai — và Bridge sẽ ghi cặp `CLOSED` trong khi vị
+            # thế vẫn đang mở. `rejected` thì đúng (chưa bấm gì), Bridge rơi về EA, và EA đóng
+            # theo đúng ticket, trả `already_closed` thật nếu vị thế đã đóng.
+            return Outcome(
+                "rejected",
+                f"Quet {so_dong} dong khong thay vi the {request.position_id}, nhung phep tim "
+                f"khong sach ({'; '.join(tim_ban)}) — khong ket luan da dong",
                 clicked=False,
             )
 
@@ -416,22 +482,11 @@ class Mt5UiDriver:
             clicked=False,
         )
 
-    def _thu_tu_dong(self, so_dong: int) -> list[int]:
-        """Thứ tự dò: dòng đóng trúng lần trước đứng đầu, rồi tới các dòng còn lại theo thứ tự.
-
-        Danh sách Trade thường giữ nguyên hình dạng giữa hai lần đóng, nên dòng trúng lần trước là
-        phỏng đoán tốt nhất — mà mỗi dòng dò trượt tốn một lần mở/huỷ hộp thoại, còn dòng không mở gì
-        (dòng tổng kết Balance) tốn trọn `PROBE_CLOSE_SEC`.
-
-        Đây **chỉ là thứ tự**, không phải kết luận: dòng nào mở ra cũng bị đọc ngược ticket rồi mới
-        bấm, nên đoán sai chỉ tốn thêm thời gian chứ không đóng nhầm vị thế.
-        """
-        thu_tu = list(range(so_dong))
-        dau = self._dong_gan_nhat
-        if dau is not None and 0 <= dau < so_dong:
-            thu_tu.remove(dau)
-            thu_tu.insert(0, dau)
-        return thu_tu
+    @staticmethod
+    def _log_tim(position_id: int, phep_do: timdong.PhepDo) -> None:
+        """Một dòng log mỗi lần tìm — để đo trên VPS bằng log, không bằng đoán (bài học B-15)."""
+        log.info("Tim vi the %s: %d lan mo / %d dong (%s)", position_id, phep_do.so_lan_mo,
+                 phep_do.so_dong, phep_do.che_do)
 
     def _so_bo_du_phong(self, pid: int) -> HopThoaiDongSoBo | None:
         """Đường dự phòng khi tiêu đề không nhận ra được: quét đầy đủ control **một lần**.
@@ -467,6 +522,9 @@ class Mt5UiDriver:
         thoại có xuất hiện hay không — giá trị trả về chỉ quyết định **có đáng nhấp lại** không.
         """
         so_lan = 1 + self.NHAP_LAI_KHI_TREO
+        #: Có cú nhấp nào của dòng này bị treo không. `close()` đọc cờ này: message của một cú nhấp
+        #: treo vẫn được MT5 giao muộn, nên phép tìm sau đó không còn "sạch" (xem `close`).
+        self._vua_treo = False
         for lan in range(1, so_lan + 1):
             if lan > 1:
                 sot = tim_so_bo(pid)
@@ -477,6 +535,8 @@ class Mt5UiDriver:
             # Lần đầu dùng cách gửi không treo; lần nhấp lại dùng đường cũ đã đo kỹ. Hai cơ chế
             # khác nhau, nên một cái hỏng trên bản MT5 lạ thì cái kia vẫn còn.
             gui = tradetab.mo_hop_thoai_dong(list_hwnd, row, nhanh=(lan == 1))
+            if not gui:
+                self._vua_treo = True
             cho = (self.CHO_SAU_KHI_TREO_SEC if not gui and lan < so_lan
                    else self.PROBE_CLOSE_SEC)
             so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)
@@ -486,12 +546,18 @@ class Mt5UiDriver:
                 return so_bo
         return None
 
-    def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest) -> Outcome:
-        """Điền volume, **đọc lại cả ticket lẫn volume**, rồi mới bấm.
+    def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest,
+                      list_hwnd: int | None = None) -> Outcome:
+        """Điền volume, xả hàng đợi của MT5, **đọc lại ticket và volume từ mọi nguồn**, rồi mới bấm.
 
         Kiểm ticket **lần thứ hai** ở đây chứ không tin lần kiểm lúc tìm: giữa hai thời điểm có
-        một lần gõ phím vào hộp thoại, và thứ đắt nhất có thể xảy ra là đóng nhầm vị thế. Kiểm lại
-        một lần nữa rẻ hơn nhiều so với việc phải tin.
+        một lần gõ phím vào hộp thoại, và thứ đắt nhất có thể xảy ra là đóng nhầm vị thế.
+
+        Và kiểm **sau khi xả hàng đợi** (bổ sung 2026-09-15). `BM_CLICK` là message post: nó chỉ
+        chạy khi luồng giao diện MT5 tới lượt, tức là **sau** mọi message còn tồn — kể cả
+        `SendMessageTimeout` đã hết hạn của một lần dò trước, vốn vẫn được giao muộn. Kiểm ticket
+        trong lúc những thứ đó chưa chạy là kiểm một trạng thái có thể đổi ngay trước cú bấm.
+        `win32.cho_xu_ly_xong` thu hẹp khe hở đó, không đóng được hẳn — xem giới hạn ở đó.
         """
         def bo_cuoc(ly_do: str) -> Outcome:
             hop.cancel()
@@ -503,6 +569,15 @@ class Mt5UiDriver:
                 hop.set_volume(request.volume)
                 time.sleep(self.settle_sec)
 
+            xa_tu = time.monotonic()
+            for hwnd in (list_hwnd, hop.hwnd):
+                if hwnd is not None and not win32.cho_xu_ly_xong(hwnd):
+                    # Chưa bấm gì nên `rejected` là sự thật; Bridge còn đường EA đóng theo đúng
+                    # ticket. Bấm vào một giao diện đang tồn message là đặt cược vào thứ tự xử lý.
+                    return bo_cuoc("MT5 khong xu ly xong hang doi truoc cu bam — khong bam khi "
+                                   "giao dien con message ton")
+            xa_ms = (time.monotonic() - xa_tu) * 1000
+
             doc_lai = hop.read_back()
             if doc_lai.ticket() != request.position_id:
                 return bo_cuoc(f"Hop thoai dang o vi the {doc_lai.ticket()}, "
@@ -510,12 +585,17 @@ class Mt5UiDriver:
             if request.volume is not None and doc_lai.volume_as_float() != request.volume:
                 return bo_cuoc(f"Doc lai lech: volume {doc_lai.volume!r} "
                                f"thay vi {request.volume}")
+            lech = doc_lai.lech_nut_dong(request.position_id, request.volume)
+            if lech is not None:
+                return bo_cuoc(lech)
 
             # Ném `DialogError` nếu nút không đúng hình dạng — vẫn ở phía an toàn của cú bấm.
             button = hop.close_button()
         except DialogError as exc:
             return bo_cuoc(f"Hop thoai dong khong dung hinh dang: {exc}")
 
+        log.info("Bam Close ticket %s (hwnd %#x, xa hang doi %.0f ms)", request.position_id,
+                 hop.hwnd, xa_ms)
         # ==== TỪ ĐÂY TRỞ ĐI KHÔNG CÒN ĐƯỜNG LÙI ====
         if self.on_before_click is not None:
             self.on_before_click()

@@ -296,6 +296,27 @@ def post_command(hwnd: int, command_id: int) -> bool:
     return bool(user32().PostMessageW(wintypes.HWND(hwnd), WM_COMMAND, command_id, 0))
 
 
+WM_NULL = 0x0000
+
+#: Hạn chờ luồng giao diện MT5 xử lý xong những gì đang tồn, ngay trước cú bấm Close.
+CHO_XU_LY_MS = 1500
+
+
+def cho_xu_ly_xong(hwnd: int, timeout_ms: int = CHO_XU_LY_MS) -> bool:
+    """Chờ luồng giao diện sở hữu `hwnd` xử lý xong mọi message **đã gửi** tới trước. `False` = bận.
+
+    `WM_NULL` không làm gì cả, nên `SendMessageTimeout` của nó chỉ trả về khi luồng đó đã rảnh
+    để nhận message mới — tức là mọi `SendMessageTimeout` hết hạn từ trước (vẫn được giao **muộn**)
+    đã chạy xong.
+
+    Giới hạn phải nói thẳng: message **post** (như `WM_LBUTTONDOWN/UP` của phép dò nhanh) nằm ở
+    hàng đợi khác và không có cách nào biết chắc chúng đã được xử lý hết. Hàm này thu hẹp khe hở
+    giữa lúc kiểm ticket và lúc cú bấm được xử lý, không đóng được nó hoàn toàn — nên chỗ gọi vẫn
+    phải đọc lại ticket **sau** khi hàm này trả về.
+    """
+    return _send_timeout(hwnd, WM_NULL, 0, 0, timeout_ms) is not None
+
+
 # -- khảo sát Bước 0: đọc thêm, vẫn không tác động ---------------------------------------------
 #
 # Cả phần dưới đây **chỉ đọc**. Không có `PostMessage`, không `WM_SETTEXT`, không `WM_CHAR`. Nó
