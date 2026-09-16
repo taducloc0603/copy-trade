@@ -29,7 +29,7 @@ log = get_logger(__name__)
 
 PRAGMAS: tuple[str, ...] = (
     "PRAGMA journal_mode = WAL",
-    "PRAGMA synchronous  = NORMAL",
+    "PRAGMA synchronous  = FULL",
     "PRAGMA foreign_keys = ON",
     "PRAGMA busy_timeout = 5000",
 )

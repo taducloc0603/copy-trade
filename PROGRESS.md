@@ -3102,3 +3102,10 @@ sạch. Chưa commit.
   truy vấn thành `SEARCH ... USING INDEX`. Test khoá kế hoạch truy vấn. **Chưa đo lại trên VPS.**
 - Bài học: đổi D-04 sang NORMAL đi trước khi có bằng chứng về nguyên nhân; số đo fsync 5 ms đã không khớp với
   1,4 s bị chặn. Bộ canh vòng sự kiện nên có từ đầu.
+
+**Đo lại trên VPS sau `6b18b1f` (2026-09-16 20:49):** bộ canh vòng sự kiện **0** lần chặn trong 3 phút. Clicker
+xong → Bridge ghi ack: **+11 ms, +12 ms, 0 ms** (trước: +1,27–1,82 s). Master vào lệnh → Client khớp: **0,74 s,
+0,92 s, 1,11 s** (lệnh thứ ba có xếp hàng), trước ~3 s. Ack lệnh đóng liên tiếp cách nhau 0,66 s. Vòng clicker
+0,67–0,72 s giờ là phần lớn thời gian còn lại.
+- **Trả D-04 về `synchronous = FULL`** theo đề xuất, được người chủ dự án đồng ý: nguyên nhân thật là quét toàn bảng,
+  fsync ~5 ms không đáng kể, nên không có lý do đánh đổi độ bền khi mất điện.
