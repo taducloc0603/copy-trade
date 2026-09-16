@@ -3075,3 +3075,17 @@ sạch. Chưa commit.
 2. `AG-CLICKER-MASTER` bị tạo với `account_login = 0` ⇒ `ACCOUNT_MISMATCH` mãi. Đã thêm `bridge.admin sua-agent`
    (`372406a`); trợ lý nay luôn chạy `sua-agent` cho clicker Master sau bước tạo agent, và không cho số tài khoản
    Master bằng 0.
+
+### Tốc độ vào lệnh — đo và đổi `synchronous` sang NORMAL (2026-09-16)
+
+- Log thời gian từng bước (`d439b56`): vòng clicker mở lệnh **0,59–0,72 s** (mở hộp thoại 0,2–0,27, điền 0,09,
+  chờ đóng sau bấm 0,31–0,38); đóng lệnh ~0,7 s. Clicker **không** phải chỗ chậm.
+- Ghép log Bridge/clicker cùng 3 lệnh: clicker xong 35.842 nhưng Bridge ghi ack **37.251 (+1,41 s)**; cùng 30 ms đó
+  Bridge mới ghi event Master EVT-596 (bấm ~35.11) và event Client EVT-492 ⇒ vòng asyncio của Bridge bị chặn rồi
+  đọc dồn. Lệnh sau: +0,35 / +0,33 s; từ ack tới clicker bắt đầu lệnh kế ~0,6 s. Khoảng cách ~3 s giữa các lệnh =
+  vòng clicker + các độ trễ phía Bridge + hàng đợi một-lệnh-đang-bay.
+- Đóng dashboard: không đổi (bác nghi phạm dashboard).
+- Đo commit trên đĩa VPS: FULL trung vị 5,4 ms (max 13), NORMAL ~0 ms. Một lệnh copy gồm hàng chục giao dịch riêng.
+- **Người chủ dự án chọn đổi D-04 sang `synchronous = NORMAL`** (chấp nhận có thể mất vài giao dịch cuối khi VPS
+  mất điện đột ngột). Sửa ở `bridge/db/repo.py`; `schema.sql` đóng băng không đổi. **Chưa đo lại trên VPS** — nếu vẫn
+  còn trễ phía Bridge thì bước tiếp là log thời gian cho vòng xử lý Bridge.

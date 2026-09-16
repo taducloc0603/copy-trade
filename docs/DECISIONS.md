@@ -16,7 +16,7 @@ khi đã có quyết định tường minh của người chủ dự án, và kh
 | D-01 | EA mỏng bằng MQL5 + Bridge bằng Python. Logic nằm hết ở Bridge. |
 | D-02 | Truyền tin bằng NDJSON trên TCP. Mỗi message một dòng kết thúc bằng `\n`. |
 | D-03 | Bridge là TCP server, EA là TCP client. MQL5 không listen được. |
-| D-04 | Database là SQLite chạy cục bộ trên máy Bridge, bật WAL, `synchronous=FULL`. |
+| D-04 | Database là SQLite chạy cục bộ trên máy Bridge, bật WAL, `synchronous=FULL` *(sửa 2026-09-16: `NORMAL`, đổi độ bền khi mất điện lấy tốc độ — xem diễn giải)*. |
 | D-05 | Không dùng cloud database. Xem từ xa bằng cách vào dashboard qua Tailscale. |
 | D-06 | Khoá định danh vị thế là `POSITION_IDENTIFIER`, không phải ticket. |
 | D-07 | *(bản 1, đã thay bằng D-07b)* Lệnh do bot mở phải mang magic number cố định. Không dựa vào trường comment. |
@@ -86,6 +86,14 @@ quyết định, không phải do lựa chọn thiết kế.
 **Lý do:** WAL cho phép đọc (dashboard) song song với ghi (engine). `synchronous = FULL` chậm hơn
 `NORMAL` nhưng đảm bảo giao dịch đã commit sống sót qua mất điện đột ngột. Đây là tiền thật,
 không đánh đổi độ bền lấy tốc độ.
+
+**SỬA 2026-09-16 — đổi sang `synchronous = NORMAL`, người chủ dự án chọn có chủ đích.** Đo trên VPS:
+commit FULL trung vị 5,4 ms (max 13 ms), NORMAL ~0 ms. Bridge gọi SQLite đồng bộ trên một vòng asyncio
+và mỗi thao tác repo là một giao dịch riêng, nên một lệnh copy tốn hàng chục fsync; log cùng ngày cho
+thấy ack của clicker, event Master và event Client bị đọc dồn trễ tới 1,4 giây. Cái giá phải biết: với
+WAL + NORMAL, **Bridge crash không mất gì**, nhưng **VPS mất điện đột ngột có thể mất vài giao dịch cuối**
+(event/command vừa ghi). Đối chiếu (phase 8) phát hiện được sai lệch đó sau khi khởi động lại; nó không
+tự sửa. Setting nằm ở `bridge/db/repo.py` (`schema.sql` đóng băng, PRAGMA ở đó không được migration chạy).
 
 ### D-05 — Không dùng cloud database. Xem từ xa qua dashboard trên Tailscale.
 

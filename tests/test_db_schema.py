@@ -115,9 +115,9 @@ def test_foreign_keys_that_su_duoc_bat(db: Database) -> None:
     assert db.query_one("PRAGMA foreign_keys")[0] == 1
 
 
-def test_journal_mode_wal_va_synchronous_full(db: Database) -> None:
+def test_journal_mode_wal_va_synchronous_normal(db: Database) -> None:
     assert db.query_one("PRAGMA journal_mode")[0].lower() == "wal"
-    assert db.query_one("PRAGMA synchronous")[0] == 2  # 2 = FULL
+    assert db.query_one("PRAGMA synchronous")[0] == 1  # 1 = NORMAL (D-04 sua 2026-09-16)
 
 
 def test_khoa_ngoai_that_su_chan(db: Database) -> None:
