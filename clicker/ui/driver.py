@@ -268,14 +268,28 @@ class Mt5UiDriver:
     # -- mở lệnh ---------------------------------------------------------------------------
 
     def open(self, request: OpenRequest) -> Outcome:
+        # Mốc thời gian từng bước — để đo trên VPS bằng log chứ không đoán (bài học B-15). Vào lệnh
+        # liên tục cách nhau ~3 giây, mà đường mở trước đây không có dòng log thời gian nào.
+        self._moc = {"bat_dau": time.monotonic()}
         health = probe.probe(self.terminal_title)
         if not health or health.hwnd is None:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
+        self._moc["probe"] = time.monotonic()
         try:
             dialog = NewOrderDialog.open(health.hwnd)
         except DialogError as exc:
             return Outcome("rejected", f"Khong mo duoc hop thoai: {exc}", clicked=False)
+        self._moc["mo"] = time.monotonic()
         return self._commit(dialog, request)
+
+    def _log_thoi_gian_mo(self) -> None:
+        m = getattr(self, "_moc", {})
+        moc = [m.get(k) for k in ("bat_dau", "probe", "mo", "dien", "doc_lai", "bam", "dong")]
+        if any(v is None for v in moc):
+            return
+        buoc = [moc[i + 1] - moc[i] for i in range(len(moc) - 1)]
+        log.info("Mo lenh: probe %.2f | mo hop thoai %.2f | dien %.2f | doc lai %.2f | "
+                 "bam %.2f | cho dong sau bam %.2f | tong %.2f", *buoc, moc[-1] - moc[0])
 
     def _commit(self, dialog: NewOrderDialog, request: OpenRequest) -> Outcome:
         """Điền, **đọc lại**, so, rồi mới bấm. Không có đường nào tới nút gửi mà vòng qua đây."""
@@ -295,6 +309,7 @@ class Mt5UiDriver:
             dialog.set_volume(request.volume)
             dialog.set_comment(request.comment)
             time.sleep(self.settle_sec)
+            self._moc_dat("dien")
 
             doc_lai = dialog.read_back()
             lech = []
@@ -309,6 +324,7 @@ class Mt5UiDriver:
             button = dialog.button(request.direction)
         except DialogError as exc:
             return bo_cuoc(f"Hop thoai khong dung hinh dang: {exc}")
+        self._moc_dat("doc_lai")
 
         # ==== TỪ ĐÂY TRỞ ĐI KHÔNG CÒN ĐƯỜNG LÙI ====
         if self.on_before_click is not None:
@@ -317,11 +333,20 @@ class Mt5UiDriver:
             # `PostMessage` chỉ xếp message vào hàng đợi. Thất bại ở đây gần như chắc chắn là
             # chưa bấm, nhưng "gần như chắc chắn" không đủ để cho phép thử lại.
             return Outcome("unknown", "PostMessage that bai, khong ro da bam hay chua")
+        self._moc_dat("bam")
 
-        if not dialog.wait_closed(self.close_timeout_sec):
+        dong = dialog.wait_closed(self.close_timeout_sec)
+        self._moc_dat("dong")
+        self._log_thoi_gian_mo()
+        if not dong:
             return Outcome("unknown", "Hop thoai khong dong sau khi bam", clicked=True)
         return Outcome("ok", f"{request.direction} {request.volume:g} {request.symbol}",
                        clicked=True)
+
+    def _moc_dat(self, ten: str) -> None:
+        moc = getattr(self, "_moc", None)
+        if moc is not None:
+            moc[ten] = time.monotonic()
 
     # -- đóng lệnh -------------------------------------------------------------------------
 
@@ -602,7 +627,11 @@ class Mt5UiDriver:
         if not win32.post_click(button.hwnd):
             return Outcome("unknown", "PostMessage that bai, khong ro da bam hay chua")
 
-        if not hop.wait_closed(self.close_timeout_sec):
+        cho_tu = time.monotonic()
+        dong = hop.wait_closed(self.close_timeout_sec)
+        log.info("Dong lenh %s: cho dong sau bam %.2fs", request.position_id,
+                 time.monotonic() - cho_tu)
+        if not dong:
             return Outcome("unknown", "Hop thoai dong khong dong sau khi bam", clicked=True)
         phan = "toan bo" if request.volume is None else f"{request.volume:g}"
         return Outcome("ok", f"dong {phan} cua vi the {request.position_id}", clicked=True)

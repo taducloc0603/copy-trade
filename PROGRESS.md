@@ -3059,3 +3059,19 @@ NULL vẫn tính để không che vi phạm thật. `admin._in_phan_master` đ�
 
 +2 test (`test_ops.py`): đóng EA trước mốc ⇒ không vi phạm; sau mốc ⇒ vẫn vi phạm. **752 test xanh**, `ruff`
 sạch. Chưa commit.
+
+### TEST-30a ĐẠT trên VPS — đóng tay ở Client ⇒ Master "Placed by manual" (2026-09-15 21:10 giờ VN)
+
+- `CLOSE_UI` → `AG-CLICKER-MASTER`, `ACK_OK`, **2,2 giây**; `master_position 73150961` `close_reason = 0`.
+- Log clicker Master: `Tim vi the 73150961: 1 lan mo / 3 dong (nhi-phan)`, `Bam Close ticket 73150961 (…, xa hang
+  doi 0 ms)` — thứ tự dò nhị phân và xả hàng đợi chạy đúng cả trên terminal Master.
+- `kiem-reason` (bản `372406a`): TEST-23 ĐẠT 118/119; **TEST-30 ĐẠT 8/11**, chỉ tính từ mốc bật UI `13:34:34Z`;
+  3 còn lại rơi về EA lúc clicker Master OFFLINE, đã có alert.
+
+**Hai lỗi trợ lý khiến phải làm tay** (đã sửa trong script, chưa lên VPS):
+1. `tro-ly.ps1` `buoc_dich_vu` thấy dịch vụ `CopyBridge` đã có là bỏ qua cả bước ⇒ tác vụ `ClickerMaster` không bao giờ
+   được đăng ký trên bản cài đang chạy. Nay: dịch vụ đã có + bật đóng Master + chưa có tác vụ ⇒ gọi
+   `tao-dich-vu.ps1 -ChiTacVuClicker` (không đụng dịch vụ) và bật tác vụ.
+2. `AG-CLICKER-MASTER` bị tạo với `account_login = 0` ⇒ `ACCOUNT_MISMATCH` mãi. Đã thêm `bridge.admin sua-agent`
+   (`372406a`); trợ lý nay luôn chạy `sua-agent` cho clicker Master sau bước tạo agent, và không cho số tài khoản
+   Master bằng 0.

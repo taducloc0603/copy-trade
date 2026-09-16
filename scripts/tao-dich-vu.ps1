@@ -30,6 +30,9 @@ param(
     # ban nao khong bat `master_close_route = UI` thi khong can no.
     [int]    $AccountLoginMaster = 0,
     [string] $TerminalTitleMaster = "",
+    # CHI dang ky tac vu ClickerMaster: khong go/cai lai dich vu, khong giet Bridge de thu tu bat
+    # lai, khong hoi mat khau. Cho ban cai DANG CHAY bat duong dong Master ve sau (tro-ly.ps1 goi).
+    [switch] $ChiTacVuClicker,
     [string] $GioBaoTri = "03:00",
     [switch] $BoQuaTacVu,
     [switch] $GoBo
@@ -297,6 +300,16 @@ try {
     $nssm = tim_nssm
 
     if ($GoBo) { go_bo $nssm; exit 0 }
+
+    if ($ChiTacVuClicker) {
+        # Ban cai dang chay: dich vu Bridge giu nguyen, chi them clicker thu hai. Go/cai lai dich vu va
+        # giet Bridge de thu tu bat lai o day la lam gian doan copy lenh cho mot viec khong can.
+        if ($AccountLoginMaster -le 0) {
+            throw "-ChiTacVuClicker can -AccountLoginMaster > 0 (so tai khoan terminal Master)."
+        }
+        dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" $AccountLoginMaster $TerminalTitleMaster
+        exit 0
+    }
 
     dang_ky_dich_vu $nssm
     kiem_tu_bat_lai $nssm

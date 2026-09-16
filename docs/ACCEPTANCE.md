@@ -65,12 +65,12 @@ sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 
 ### TEST-30 — Đóng phía Master qua giao diện (phase 12, D-21c)
 
-**Chưa chạy trên demo.** Code và test tự động đã có; phần dưới là bài phải đo trên VPS trước khi
-tin, vì mọi kết luận về `DEAL_REASON` đều phải đến từ deal thật.
+**TEST-30a đã chạy trên demo (2026-09-15); 30b–30e chưa.** Mọi kết luận về `DEAL_REASON` phải đến từ
+deal thật, nên các bài còn lại vẫn phải đo trên VPS trước khi tin.
 
 | | Phép thử | Đạt khi |
 |---|---|---|
-| TEST-30a | Đóng ở Client, `can_close_master = 1`, `master_close_route = UI` | Master đóng theo, `master_position.close_reason = 0`, lệnh `CLOSE_UI` tới clicker của Master |
+| TEST-30a | Đóng ở Client, `can_close_master = 1`, `master_close_route = UI` | Master đóng theo, `master_position.close_reason = 0`, lệnh `CLOSE_UI` tới clicker của Master. **ĐẠT trên DEMO 2026-09-15 21:10:** `CLOSE_UI` → `AG-CLICKER-MASTER` `ACK_OK` trong **2,2 giây**, vị thế Master `73150961` `close_reason = 0` (Placed by manual), clicker tìm đúng dòng ngay lần mở đầu (`1 lan mo / 3 dong`). `kiem-reason` TEST-30 ĐẠT 8/11 tính từ lúc bật UI; 3 còn lại là lần rơi về EA lúc clicker Master còn OFFLINE, đã có alert. |
 | TEST-30b | Tắt clicker Master rồi đóng ở Client | Master **vẫn đóng** qua EA, alert CRITICAL `CLOSE_MASTER_FELL_BACK_TO_EA`, `kiem-reason` xếp vào "đã có giải thích" |
 | TEST-30c | Cascade với hai Client | Đúng **một** lệnh đóng Master; không có lượt đồng bộ tự kích hoạt |
 | TEST-30d | Đóng khẩn cấp | Thứ tự Client → Master giữ nguyên, deal đóng Master mang `CLIENT` |

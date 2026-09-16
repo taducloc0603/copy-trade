@@ -301,6 +301,12 @@ function buoc_thong_so() {
     )
     $script:BatDongMaster = hoi_co_khong "Bat duong DONG phia Master qua giao dien?" $false
     if ($script:BatDongMaster) {
+        # So tai khoan Master la danh tinh cua clicker thu hai: Bridge so khop no luc bat tay, va
+        # SingleInstance khoa theo no. 0 o day la agent bi tu choi ACCOUNT_MISMATCH mai (VPS 2026-09-15).
+        while ($script:LoginMaster -le 0) {
+            canh "Bat duong dong Master can so tai khoan Master that, dang la $($script:LoginMaster)."
+            $script:LoginMaster = hoi_so "So tai khoan Master"
+        }
         $script:IdClickerMaster = hoi_chuoi "Ten agent Clicker Master" "AG-CLICKER-MASTER"
         $script:TieuDeMaster = hoi_chuoi "Mau tieu de cua so terminal Master" `
                                          ([string] $script:LoginMaster)
@@ -390,6 +396,17 @@ function buoc_agent() {
     if ($script:BatDongMaster) {
         $script:TokenClickerMaster = tao_agent $script:IdClickerMaster 'CLICKER' `
                                                $script:LoginMaster
+        # Agent da co tu truoc co the mang so tai khoan SAI -- VPS 2026-09-15: tao voi 0, Bridge tu choi
+        # clicker Master voi ACCOUNT_MISMATCH moi 3 giay. `tao_agent` bo qua agent da co, nen phai sua
+        # rieng. `sua-agent` idempotent: chay moi lan cho chac.
+        $kq = admin @('sua-agent', $script:IdClickerMaster, '--login', "$($script:LoginMaster)")
+        if ($kq.ma -ne 0) {
+            $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor Red }
+            canh ("sua-agent $($script:IdClickerMaster) that bai -- clicker Master se bi Bridge tu " +
+                  "choi voi ACCOUNT_MISMATCH")
+        } else {
+            ok "$($script:IdClickerMaster): account_login = $($script:LoginMaster)"
+        }
     }
 }
 
@@ -682,6 +699,22 @@ function buoc_dich_vu() {
     )
     if ($BoQuaDichVu) { bo_qua "-BoQuaDichVu"; return }
     if (Get-Service $TenDichVu -ErrorAction SilentlyContinue) {
+        # Dich vu da co KHONG co nghia la moi tac vu da co. Ban cai dang chay ma bat duong dong Master
+        # ve sau thi tac vu ClickerMaster chua bao gio duoc dang ky: truoc 2026-09-15 buoc nay return
+        # ngay o day, route UI da bat ma khong co clicker nao, lenh dong Master roi ve EA.
+        $coTacVu = Get-ScheduledTask -TaskPath '\CopyBridge\' -TaskName 'ClickerMaster' `
+                                     -ErrorAction SilentlyContinue
+        if ($script:BatDongMaster -and -not $coTacVu) {
+            $tao = Join-Path $PSScriptRoot "tao-dich-vu.ps1"
+            if (-not (Test-Path $tao)) { $tao = Join-Path $ThuMuc "scripts\tao-dich-vu.ps1" }
+            if (-not (Test-Path $tao)) { canh "khong thay tao-dich-vu.ps1"; return }
+            & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu -ChiTacVuClicker `
+                   -AccountLoginMaster $script:LoginMaster -TerminalTitleMaster $script:TieuDeMaster
+            if ($LASTEXITCODE -ne 0) { canh "dang ky tac vu ClickerMaster that bai ($LASTEXITCODE)"; return }
+            Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName 'ClickerMaster'
+            ok "da dang ky va bat tac vu ClickerMaster (dich vu $TenDichVu giu nguyen)"
+            return
+        }
         bo_qua "dich vu $TenDichVu da dang ky"; return
     }
     $tao = Join-Path $PSScriptRoot "tao-dich-vu.ps1"

@@ -4,8 +4,9 @@
 ghi kết quả vào `PROGRESS.md`. Việc nào cần chạy trên VPS mà chưa chạy thì phải nằm ở đây, không
 nằm trong trí nhớ ai cả.*
 
-Trạng thái VPS lần cuối (2026-09-13): commit `de38de7`, `CLOSE_UI` 0,77 giây, `kiem-reason` ĐẠT,
-sổ sạch. Mọi thứ bên dưới là **của các bản sau đó** và **chưa bản nào chạy trên VPS**.
+Trạng thái VPS lần cuối (2026-09-15 21:10): commit `372406a`; đường đóng Master qua giao diện đã bật và
+chạy (TEST-30a ĐẠT, `CLOSE_UI` Master 2,2 giây); lũ nối lại do EA gắn trên hai chart đã hết. Các mục
+bên dưới chưa đánh dấu xong là **việc còn mở**.
 
 ---
 
@@ -21,36 +22,15 @@ cd C:\CopyBridge
 
 **Đạt khi:** `git log -1` ra commit mới nhất; mục 4b của `kiem-tra.ps1` xanh; clicker có PID mới.
 
-## 2. Đo ctrlID trên terminal **Master** — cổng chặn của phase 12
+## 2–3. Bật đường đóng Master qua giao diện — ĐÃ XONG 2026-09-15
 
-Chưa đo thì **không được bật** `master_close_route = UI`. Mở tay một lệnh `0.01` trên Master, nhấp
-đúp vào dòng đó trong tab Trade, **không bấm Close**, rồi:
+`master_close_route = UI` từ `13:34:34Z`; `AG-CLICKER-MASTER` ONLINE từ 21:07 giờ VN. Clicker Master
+tìm và bấm đúng vị thế trên terminal Master (`Tim vi the 73150961: 1 lan mo / 3 dong`), nên phép đo
+ctrlID riêng không còn cần. Hai việc phải làm tay vì lỗi trợ lý (đã sửa trong script): đăng ký tác vụ
+`ClickerMaster`, và `bridge.admin sua-agent AG-CLICKER-MASTER --login 538286` (agent bị tạo với số `0`
+⇒ `ACCOUNT_MISMATCH`).
 
-```powershell
-$env:PYTHONPATH = "C:\CopyBridge"
-.\.venv\Scripts\python.exe -m clicker.ui.dump --title <so-tai-khoan-Master> --all-controls
-Remove-Item Env:PYTHONPATH
-```
-
-**Đạt khi:** tab Trade `10328`, nút Close `10410` (bản đang hiện, chữ bắt đầu `Close #`), ô volume
-`10333`, tiêu đề bắt đầu `Position: #`. Lệch bất kỳ số nào → dừng, giữ đường EA cho Master.
-
-## 3. Bật đường đóng Master qua giao diện (phase 12)
-
-```powershell
-.\scripts\tro-ly.ps1
-```
-
-Trả lời **có** ở câu *"Bat duong DONG phia Master qua giao dien?"*, điền tiêu đề cửa sổ terminal
-Master. Trợ lý tự tạo agent, ghi token vào `[clicker_master]`, đăng ký tác vụ `ClickerMaster`, bật
-`cau-hinh-master`. **Không phải chạm vào token.**
-
-**Đạt khi:**
-
-- `bridge.admin cau-hinh-master` in `master_close_route=UI`;
-- có **hai** tiến trình clicker (`kiem-tra.ps1` mục 4);
-- `logs\` có **ba** file đang được ghi: `bridge.log`, `clicker.log`, `clicker_master.log`;
-- terminal Master mở Toolbox ở tab **Trade** và giữ nguyên.
+Điều kiện vận hành từ nay: terminal **Master** luôn mở Toolbox ở tab **Trade**, như Client.
 
 ## 4. TEST-30 — nghiệm thu đường đóng Master (`docs/ACCEPTANCE.md`)
 
