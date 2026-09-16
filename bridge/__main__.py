@@ -24,6 +24,7 @@ from bridge.engine.processor import EventProcessor
 from bridge.logging_setup import get_logger, setup_logging
 from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
+from bridge.watchdog import CanhVongSuKien
 from bridge.web.app import Dashboard, tao_app
 
 log = get_logger(__name__)
@@ -103,6 +104,10 @@ async def run() -> int:
         return 2
     await processor.start()
 
+    # Ghi lại đúng dòng code mỗi khi vòng sự kiện bị chặn quá 0,3 giây (đo VPS 2026-09-16).
+    canh = CanhVongSuKien()
+    await canh.start()
+
     # Dashboard chạy trong cùng tiến trình: nó đọc thẳng SQLite cục bộ và gọi API của tầng
     # engine, nên không cần tiến trình riêng và không có đường nào để hai bên lệch trạng thái.
     dashboard = Dashboard(db, password=config.security.get("dashboard_password"),
@@ -130,6 +135,7 @@ async def run() -> int:
         pass
     finally:
         log.info("Bridge dung lai")
+        await canh.stop()
         await kenh.stop()
         web.should_exit = True
         with contextlib.suppress(asyncio.CancelledError, Exception):
