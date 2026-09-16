@@ -3089,3 +3089,16 @@ sạch. Chưa commit.
 - **Người chủ dự án chọn đổi D-04 sang `synchronous = NORMAL`** (chấp nhận có thể mất vài giao dịch cuối khi VPS
   mất điện đột ngột). Sửa ở `bridge/db/repo.py`; `schema.sql` đóng băng không đổi. **Chưa đo lại trên VPS** — nếu vẫn
   còn trễ phía Bridge thì bước tiếp là log thời gian cho vòng xử lý Bridge.
+
+### Tìm ra chỗ làm vào lệnh chậm: `scan_deadlines` quét toàn bảng `command` mỗi giây (2026-09-16)
+
+- `synchronous = NORMAL` (`550f602`) **không** đổi gì: Bridge vẫn ghi ack trễ 1,27–1,82 s so với lúc clicker xong.
+- Bộ canh vòng sự kiện (`971f6eb`, `bridge/watchdog.py`) bắt được **166 lần** chặn, đều đặn mỗi giây, mỗi lần
+  0,6–1,0 s; stack: `processor._loop` → `dispatcher.scan_deadlines` → `repo.query_all`.
+- `EXPLAIN QUERY PLAN`: `SCAN command`. Index một phần `idx_cmd_inflight ... WHERE status IN ('PENDING','SENT')`
+  không dùng được cho `status = 'SENT'` (SQLite không suy ra). Bảng `command` trên VPS rất lớn sau lũ
+  `REQUEST_SNAPSHOT`. Cùng lỗi ở `scan_correlation_deadlines` (mỗi giây) và `_open_ui_candidates`.
+- Sửa: migration `007` — `idx_cmd_status_han (status, deadline_at)` và `idx_cmd_type_pair (type, pair_id)`; cả ba
+  truy vấn thành `SEARCH ... USING INDEX`. Test khoá kế hoạch truy vấn. **Chưa đo lại trên VPS.**
+- Bài học: đổi D-04 sang NORMAL đi trước khi có bằng chứng về nguyên nhân; số đo fsync 5 ms đã không khớp với
+  1,4 s bị chặn. Bộ canh vòng sự kiện nên có từ đầu.

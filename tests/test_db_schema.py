@@ -352,3 +352,28 @@ def test_migration_004_giu_nguyen_du_lieu_command_cu(tmp_path: Path) -> None:
     khoa = {r[0] for r in conn.execute("SELECT key FROM system_config")}
     assert {"close_degraded_fallback", "ui_close_correlate_grace_ms"} <= khoa
     conn.close()
+
+
+# VPS 2026-09-16: `scan_deadlines` quet toan bang `command` moi giay, chan vong su kien Bridge
+# ~1 giay moi giay (bo canh vong su kien bat duoc). Cac truy van chay dinh ky KHONG duoc quet toan
+# bang `command` nua — bang nay lon theo thoi gian.
+@pytest.mark.parametrize(("ten", "sql", "tham_so"), [
+    ("scan_deadlines",
+     "SELECT * FROM command WHERE status = 'SENT' AND deadline_at IS NOT NULL AND deadline_at < ?",
+     ("9",)),
+    ("scan_correlation_deadlines",
+     "SELECT c.deadline_at, c.target_agent_id, p.pair_id FROM command c "
+     "JOIN pair p ON p.pair_id = c.pair_id WHERE c.type = 'OPEN_UI' AND p.status = 'PENDING_OPEN' "
+     "AND p.client_position_id IS NULL AND COALESCE(p.error_message, '') <> 'UI_CORRELATE_EXPIRED'",
+     ()),
+    ("_open_ui_candidates",
+     "SELECT c.command_id FROM command c JOIN pair p ON p.pair_id = c.pair_id "
+     "WHERE c.type = 'OPEN_UI' AND p.client_id = ? AND p.status = 'PENDING_OPEN' "
+     "AND p.client_position_id IS NULL ORDER BY c.created_at",
+     ("x",)),
+])
+def test_truy_van_dinh_ky_khong_quet_toan_bang_command(db: Database, ten: str, sql: str,
+                                                        tham_so: tuple) -> None:
+    ke_hoach = [r[3] for r in db.query_all("EXPLAIN QUERY PLAN " + sql, tham_so)]
+    quet = [b for b in ke_hoach if b in ("SCAN command", "SCAN c")]
+    assert not quet, f"{ten} quet toan bang command: {ke_hoach}"
