@@ -8,9 +8,9 @@ from clicker.ui.timdong import BAN_DO, NHI_PHAN, TUAN_TU, PhepDo, bo_dong, ghi_b
 
 
 def _chay(tickets: list[int | None], dich: int,
-          ban_do: dict[int, int] | None = None) -> tuple[list[int], PhepDo]:
+          ban_do: dict[int, int] | None = None, bo_cuoi: int = 0) -> tuple[list[int], PhepDo]:
     """Chạy một phép dò trên danh sách giả. Trả về thứ tự dòng đã mở."""
-    phep = PhepDo(len(tickets), dich, ban_do)
+    phep = PhepDo(len(tickets), dich, ban_do, bo_cuoi=bo_cuoi)
     da_mo: list[int] = []
     while (row := phep.tiep_theo()) is not None:
         assert row not in da_mo, f"Mo lai dong {row} lan hai"
@@ -127,3 +127,14 @@ def test_ghi_ban_do_xoa_muc_cu_tro_vao_cung_dong() -> None:
     assert ban_do == {101: 0, 104: 3}
     ghi_ban_do(ban_do, 0, None)
     assert ban_do == {104: 3}
+
+
+def test_bo_cuoi_khong_lay_dong_duoi_lam_diem_giua() -> None:
+    """[vị thế, dòng phụ, Balance]: bản cũ mở dòng 1 (dòng phụ) trước tiên."""
+    da_mo, phep = _chay([101, None, None], 101, bo_cuoi=2)
+    assert da_mo == [0] and phep.thay == 0
+
+
+def test_bo_cuoi_van_mo_het_khi_khong_thay() -> None:
+    da_mo, phep = _chay([101, 102, None, None], 999, bo_cuoi=2)
+    assert phep.thay is None and sorted(da_mo) == [0, 1, 2, 3]

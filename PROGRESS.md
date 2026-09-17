@@ -3119,3 +3119,12 @@ một loạt đóng liên tiếp (dòng 1/3 ×4, dòng 4/6 ×1) — **không** p
 Sửa (`clicker/ui/driver.py`): (1) đóng hẳn xong thì chờ MT5 xoá dòng (đọc số dòng tới khi giảm, tối đa 0,8 s) rồi mới
 trả kết quả; (2) cú nhấp không treo mà không ra hộp thoại chỉ chờ `CHO_KHONG_TREO_SEC = 1.0` (hộp thoại thật luôn hiện
 trong 0,20–0,38 s); nhấp lại sau khi treo vẫn 2,0 s. Không đổi kiểm chứng ticket hay điều kiện `already_closed`.
+
+**Chẩn đoán xong (2026-09-17 09:55–09:56):** nhấp lại đúng dòng hỏng sau 0,2 s vẫn **KHONG mo** (2/2) ⇒ không phải MT5
+cập nhật chậm. Mọi lần dò hỏng đều ở dòng `so_dong − 2` (dòng 1/3 ×5, dòng 4/6 ×1): cuối danh sách tab Trade có **hai**
+dòng không phải vị thế (một dòng phụ rồi dòng Balance), không phải một. Khi chỉ còn vị thế cuối cùng
+(`[vị thế, dòng phụ, Balance]`) phép nhị phân lấy đúng dòng phụ làm điểm giữa.
+
+Sửa: `PhepDo(bo_cuoi=…)` loại các dòng cuối khỏi phép nhị phân (vẫn mở ở lượt quét cuối — `already_closed` không đổi);
+driver mặc định `bo_cuoi = 1` và **tự học** lên tới 3 khi thấy dòng ở đuôi không ra hộp thoại. Bỏ bước nhấp lại chẩn
+đoán (tốn ~1,3 s mỗi lần).

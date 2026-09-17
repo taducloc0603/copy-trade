@@ -37,9 +37,15 @@ TUAN_TU = "tuan-tu"
 class PhepDo:
     """Một lần tìm một vị thế. Dùng: `tiep_theo()` → mở dòng đó → `ghi_nhan()`, lặp tới `None`."""
 
-    def __init__(self, so_dong: int, dich: int, ban_do: dict[int, int] | None = None) -> None:
+    def __init__(self, so_dong: int, dich: int, ban_do: dict[int, int] | None = None,
+                 bo_cuoi: int = 0) -> None:
         self.so_dong = so_dong
         self.dich = dich
+        #: Số dòng **cuối** danh sách đã biết không phải vị thế (dòng phụ, dòng Balance). Không lấy
+        #: làm điểm giữa của phép nhị phân — đích không bao giờ nằm ở đó, và mỗi lần mở một dòng
+        #: như vậy tốn trọn khoảng chờ hộp thoại. Chúng **vẫn** được mở ở lượt quét cuối, nên
+        #: `already_closed` vẫn chỉ kết luận sau khi đã mở hết (FR-18).
+        self.bo_cuoi = max(0, bo_cuoi)
         #: Dòng đã mở (kể cả dòng không ra hộp thoại). Không bao giờ trả lại một dòng hai lần.
         self._da_mo: set[int] = set()
         #: Dòng đã được cho mở lại một lần (xem `mo_lai`).
@@ -121,7 +127,7 @@ class PhepDo:
     def _doan(self) -> tuple[int, int]:
         """Đoạn dòng `[lo, hi]` còn có thể chứa đích, suy từ mọi ticket đã đọc."""
         chieu = self._chieu() or 1
-        lo, hi = 0, self.so_dong - 1
+        lo, hi = 0, self.so_dong - 1 - self.bo_cuoi
         for row, ticket in self._doc.items():
             if (ticket < self.dich) == (chieu == 1):
                 lo = max(lo, row + 1)

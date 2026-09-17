@@ -260,14 +260,9 @@ class Mt5UiDriver:
     #: Sau khi đóng hẳn: chờ tối đa ngần này cho MT5 xoá dòng của vị thế vừa đóng khỏi danh sách.
     #: Đo VPS: đóng liên tiếp cách nhau ~0,8 s thì lệnh sau dò trúng dòng "xác chết" chưa bị xoá.
     CHO_XOA_DONG_SEC = 0.8
-    #: CHẨN ĐOÁN (2026-09-17). Sau khi chờ-xoá-dòng, log VPS vẫn cho một lần dò hỏng ngay sau một lần
-    #: đóng hẳn: danh sách còn 3 dòng, dòng 1 không ra hộp thoại, dù số dòng đã giảm tức thì. Hai giả
-    #: thuyết: (a) MT5 giảm số dòng trước khi dữ liệu trong danh sách cập nhật; (b) cấu trúc danh sách
-    #: khác dự đoán. Nhấp lại **đúng dòng đó** sau một khoảng ngắn phân biệt được hai cái: mở được là
-    #: (a). Chỉ làm khi lần dò rơi vào cửa sổ ngay sau một lần đóng hẳn, nên không tốn gì ở lần dò
-    #: bình thường (kể cả dòng Balance khi quét hết).
-    THU_LAI_SAU_DONG_SEC = 1.5
-    CHO_TRUOC_KHI_THU_LAI_SEC = 0.2
+    #: Trần cho số dòng cuối danh sách được học là "không phải vị thế" (xem `_so_dong_cuoi_khong_mo`).
+    #: Đo VPS 2026-09-17: tab Trade có **hai** dòng như vậy (một dòng phụ rồi dòng Balance).
+    TRAN_DONG_CUOI = 3
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
@@ -281,8 +276,11 @@ class Mt5UiDriver:
         #: `ticket → dòng` đọc được từ những lần dò trước. Chỉ là **thứ tự dò**, không phải kết
         #: luận — xem `clicker/ui/timdong.py`.
         self._ban_do: dict[int, int] = {}
-        #: `time.monotonic()` của lần đóng hẳn gần nhất — mốc cho phép nhấp lại chẩn đoán.
-        self._dong_han_luc: float | None = None
+        #: Số dòng cuối danh sách đã **thấy** không ra hộp thoại (dòng phụ + dòng Balance). Học dần:
+        #: đo VPS 2026-09-17 cho thấy dò hỏng luôn rơi vào dòng `so_dong - 2` — mọi lần đóng vị thế
+        #: cuối cùng, phép nhị phân chọn đúng dòng phụ đó làm điểm giữa và mất ~1,1 s. Chỉ ảnh hưởng
+        #: thứ tự dò, không ảnh hưởng kiểm chứng.
+        self._so_dong_cuoi_khong_mo = 1
 
     # -- mở lệnh ---------------------------------------------------------------------------
 
@@ -405,7 +403,8 @@ class Mt5UiDriver:
         #: ticket → dòng nơi nó được đọc trong **lần tìm này**.
         thay_o: dict[int, int] = {}
         # Chỉ quyết định THỨ TỰ mở dòng — mọi dòng vẫn bị đọc ngược ticket bên dưới (D-30).
-        phep_do = timdong.PhepDo(so_dong, request.position_id, self._ban_do)
+        phep_do = timdong.PhepDo(so_dong, request.position_id, self._ban_do,
+                                 bo_cuoi=self._so_dong_cuoi_khong_mo)
         while (row := phep_do.tiep_theo()) is not None:
             # Hộp thoại sót lại từ vòng trước — kể cả một cái mở **chậm hơn** thời gian chờ. MT5
             # lúc đó đang ở vòng lặp modal và cú double-click kế tiếp sẽ không đi tới đâu cả, nên
@@ -451,8 +450,11 @@ class Mt5UiDriver:
                 thay_o[ticket] = row
             timdong.ghi_ban_do(self._ban_do, row, ticket)
             if so_bo is None:
-                # Dòng này không mở hộp thoại nào. Bình thường: danh sách có cả dòng tổng kết
-                # Balance. Đi tiếp chứ không coi là lỗi.
+                # Dòng này không mở hộp thoại nào. Bình thường: danh sách có dòng phụ và dòng tổng
+                # kết Balance ở cuối. Đi tiếp chứ không coi là lỗi — và nhớ lại nếu nó nằm ở đuôi,
+                # để lần sau phép nhị phân không lấy nó làm điểm giữa.
+                if not self._vua_treo:
+                    self._hoc_dong_cuoi(so_dong, row)
                 continue
             mo_duoc_it_nhat_mot = True
             da_gap.append(so_bo.ticket)
@@ -477,7 +479,6 @@ class Mt5UiDriver:
                 # dòng còn nguyên chỗ.
                 timdong.bo_dong(self._ban_do, request.position_id, row)
                 self._cho_xoa_dong(list_hwnd, so_dong)
-                self._dong_han_luc = time.monotonic()
             elif ket_qua.status != "ok":
                 # `unknown` / `rejected`: không biết danh sách giờ ra sao. Bỏ mục của vị thế này
                 # thay vì giữ một gợi ý có thể đã sai.
@@ -605,28 +606,16 @@ class Mt5UiDriver:
             so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)
             log.info("Do dong %d lan %d: gui=%s, hop thoai %s sau %.2fs", row, lan, gui,
                      "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)
-            if so_bo is None and gui and self._vua_dong_han():
-                return self._thu_lai_dong(pid, list_hwnd, row)
             if so_bo is not None or gui:
                 return so_bo
         return None
 
-    def _vua_dong_han(self) -> bool:
-        return (self._dong_han_luc is not None
-                and time.monotonic() - self._dong_han_luc < self.THU_LAI_SAU_DONG_SEC)
-
-    def _thu_lai_dong(self, pid: int, list_hwnd: int, row: int) -> HopThoaiDongSoBo | None:
-        """Nhấp lại đúng dòng vừa không ra hộp thoại — chỉ ngay sau một lần đóng hẳn (chẩn đoán)."""
-        so_dong_luc_hong = tradetab.so_dong(list_hwnd)
-        time.sleep(self.CHO_TRUOC_KHI_THU_LAI_SEC)
-        bat_dau = time.monotonic()
-        tradetab.mo_hop_thoai_dong(list_hwnd, row, nhanh=True)
-        so_bo = cho_so_bo(pid, self.CHO_KHONG_TREO_SEC) or self._so_bo_du_phong(pid)
-        log.info("CHAN DOAN dong %d khong mo ngay sau khi dong han: so dong %s, nhap lai sau %.1fs "
-                 "-> hop thoai %s sau %.2fs (MO = MT5 cap nhat du lieu cham; KHONG = cau truc khac)",
-                 row, so_dong_luc_hong, self.CHO_TRUOC_KHI_THU_LAI_SEC,
-                 "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)
-        return so_bo
+    def _hoc_dong_cuoi(self, so_dong: int, row: int) -> None:
+        tu_cuoi = so_dong - row
+        if self._so_dong_cuoi_khong_mo < tu_cuoi <= self.TRAN_DONG_CUOI:
+            self._so_dong_cuoi_khong_mo = tu_cuoi
+            log.info("Hoc: %d dong cuoi danh sach khong phai vi the (dong %d/%d khong ra hop thoai)",
+                     tu_cuoi, row, so_dong)
 
     def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest,
                       list_hwnd: int | None = None) -> Outcome:

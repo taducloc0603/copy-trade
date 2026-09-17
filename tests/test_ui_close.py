@@ -458,8 +458,8 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
 
 def test_tim_thay_o_dong_dau_thi_dung_lai(driver: Mt5UiDriver,
                                           monkeypatch: pytest.MonkeyPatch) -> None:
-    # Ba dòng sắp tăng, đích ở giữa: nhị phân mở dòng 1 trước tiên.
-    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET, 99_999_999])
+    # Ba vị thế sắp tăng rồi dòng Balance, đích ở giữa: nhị phân mở dòng 1 trước tiên.
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, TICKET, 99_999_999, None])
     kq = driver.close(CloseRequest(position_id=TICKET))
 
     assert kq.status == "ok"
@@ -915,35 +915,28 @@ def test_dong_mot_phan_khong_cho_xoa_dong(driver: Mt5UiDriver,
 
 
 
-# Chan doan 2026-09-17: dong khong ra hop thoai NGAY SAU mot lan dong han thi nhap lai dung dong do.
+# VPS 2026-09-17: chan doan cho KHONG mo ca hai lan -- dong `so_dong - 2` la dong phu, khong phai vi the.
 
-def test_ngay_sau_dong_han_dong_khong_mo_thi_nhap_lai_dung_dong_do(
-        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
-    driver.CHO_TRUOC_KHI_THU_LAI_SEC = 0
-    lan = {"dong0": 0}
-    tickets: list[int | None] = [TICKET, 222, None]
-    nhat_ky = _gia_lap_tim(monkeypatch, tickets)
-    goc_mo = driver_mod.tradetab.mo_hop_thoai_dong
-
-    def mo(list_hwnd: int, row: int, nhanh: bool = True) -> bool:
-        if row == 1:
-            lan["dong0"] += 1
-            # Lần đầu dữ liệu chưa cập nhật: không ra hộp thoại; lần nhấp lại thì ra.
-            tickets[1] = None if lan["dong0"] == 1 else 222
-        return goc_mo(list_hwnd, row, nhanh)
-
-    monkeypatch.setattr(driver_mod.tradetab, "mo_hop_thoai_dong", mo)
-    driver._dong_han_luc = time.monotonic()
-    kq = driver.close(CloseRequest(position_id=222))
-
-    assert kq.status == "ok"
-    assert [d for d in nhat_ky if d.startswith("mo dong")][:2] == ["mo dong 1", "mo dong 1"]
-
-
-def test_khong_vua_dong_han_thi_khong_nhap_lai(driver: Mt5UiDriver,
-                                               monkeypatch: pytest.MonkeyPatch) -> None:
-    """Dòng Balance khi quét bình thường: không tốn thêm lần nhấp lại."""
-    da_mo, _ = _gia_lap_treo(monkeypatch, {}, [None, TICKET])
-    assert driver._dong_han_luc is None
+def test_hoc_dong_phu_o_duoi_roi_lan_sau_khong_do_trung(driver: Mt5UiDriver,
+                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """Còn 1 vị thế: [vị thế, dòng phụ, Balance]. Bản cũ lấy dòng phụ làm điểm giữa và mất ~1,1 s."""
+    nhat_ky = _gia_lap_tim(monkeypatch, [TICKET, None, None])
     assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
-    assert da_mo == [0, 1]
+    assert [d for d in nhat_ky if d.startswith("mo dong")] == ["mo dong 0"]
+
+
+def test_quet_qua_dong_phu_thi_hoc_duoc_so_dong_cuoi(driver: Mt5UiDriver,
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    assert driver._so_dong_cuoi_khong_mo == 1
+    _gia_lap_tim(monkeypatch, [111, None, None])
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "already_closed"
+    assert driver._so_dong_cuoi_khong_mo == 2
+
+
+def test_dong_cuoi_da_hoc_van_duoc_mo_truoc_khi_ket_luan_da_dong(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    driver._so_dong_cuoi_khong_mo = 2
+    nhat_ky = _gia_lap_tim(monkeypatch, [111, 222, None, None])
+    kq = driver.close(CloseRequest(position_id=TICKET))
+    assert kq.status == "already_closed"
+    assert sorted(int(d.split()[-1]) for d in nhat_ky if d.startswith("mo dong")) == [0, 1, 2, 3]
