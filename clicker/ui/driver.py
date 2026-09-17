@@ -260,6 +260,14 @@ class Mt5UiDriver:
     #: Sau khi đóng hẳn: chờ tối đa ngần này cho MT5 xoá dòng của vị thế vừa đóng khỏi danh sách.
     #: Đo VPS: đóng liên tiếp cách nhau ~0,8 s thì lệnh sau dò trúng dòng "xác chết" chưa bị xoá.
     CHO_XOA_DONG_SEC = 0.8
+    #: CHẨN ĐOÁN (2026-09-17). Sau khi chờ-xoá-dòng, log VPS vẫn cho một lần dò hỏng ngay sau một lần
+    #: đóng hẳn: danh sách còn 3 dòng, dòng 1 không ra hộp thoại, dù số dòng đã giảm tức thì. Hai giả
+    #: thuyết: (a) MT5 giảm số dòng trước khi dữ liệu trong danh sách cập nhật; (b) cấu trúc danh sách
+    #: khác dự đoán. Nhấp lại **đúng dòng đó** sau một khoảng ngắn phân biệt được hai cái: mở được là
+    #: (a). Chỉ làm khi lần dò rơi vào cửa sổ ngay sau một lần đóng hẳn, nên không tốn gì ở lần dò
+    #: bình thường (kể cả dòng Balance khi quét hết).
+    THU_LAI_SAU_DONG_SEC = 1.5
+    CHO_TRUOC_KHI_THU_LAI_SEC = 0.2
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
@@ -273,6 +281,8 @@ class Mt5UiDriver:
         #: `ticket → dòng` đọc được từ những lần dò trước. Chỉ là **thứ tự dò**, không phải kết
         #: luận — xem `clicker/ui/timdong.py`.
         self._ban_do: dict[int, int] = {}
+        #: `time.monotonic()` của lần đóng hẳn gần nhất — mốc cho phép nhấp lại chẩn đoán.
+        self._dong_han_luc: float | None = None
 
     # -- mở lệnh ---------------------------------------------------------------------------
 
@@ -467,6 +477,7 @@ class Mt5UiDriver:
                 # dòng còn nguyên chỗ.
                 timdong.bo_dong(self._ban_do, request.position_id, row)
                 self._cho_xoa_dong(list_hwnd, so_dong)
+                self._dong_han_luc = time.monotonic()
             elif ket_qua.status != "ok":
                 # `unknown` / `rejected`: không biết danh sách giờ ra sao. Bỏ mục của vị thế này
                 # thay vì giữ một gợi ý có thể đã sai.
@@ -594,9 +605,28 @@ class Mt5UiDriver:
             so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)
             log.info("Do dong %d lan %d: gui=%s, hop thoai %s sau %.2fs", row, lan, gui,
                      "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)
+            if so_bo is None and gui and self._vua_dong_han():
+                return self._thu_lai_dong(pid, list_hwnd, row)
             if so_bo is not None or gui:
                 return so_bo
         return None
+
+    def _vua_dong_han(self) -> bool:
+        return (self._dong_han_luc is not None
+                and time.monotonic() - self._dong_han_luc < self.THU_LAI_SAU_DONG_SEC)
+
+    def _thu_lai_dong(self, pid: int, list_hwnd: int, row: int) -> HopThoaiDongSoBo | None:
+        """Nhấp lại đúng dòng vừa không ra hộp thoại — chỉ ngay sau một lần đóng hẳn (chẩn đoán)."""
+        so_dong_luc_hong = tradetab.so_dong(list_hwnd)
+        time.sleep(self.CHO_TRUOC_KHI_THU_LAI_SEC)
+        bat_dau = time.monotonic()
+        tradetab.mo_hop_thoai_dong(list_hwnd, row, nhanh=True)
+        so_bo = cho_so_bo(pid, self.CHO_KHONG_TREO_SEC) or self._so_bo_du_phong(pid)
+        log.info("CHAN DOAN dong %d khong mo ngay sau khi dong han: so dong %s, nhap lai sau %.1fs "
+                 "-> hop thoai %s sau %.2fs (MO = MT5 cap nhat du lieu cham; KHONG = cau truc khac)",
+                 row, so_dong_luc_hong, self.CHO_TRUOC_KHI_THU_LAI_SEC,
+                 "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)
+        return so_bo
 
     def _commit_close(self, hop: ClosePositionDialog, request: CloseRequest,
                       list_hwnd: int | None = None) -> Outcome:
