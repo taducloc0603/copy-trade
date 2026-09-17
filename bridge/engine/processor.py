@@ -89,6 +89,9 @@ class EventProcessor:
         self.dispatcher = dispatcher
         self.poll_interval_sec = poll_interval_sec
         self.deadline_scan_sec = deadline_scan_sec
+        #: Bật khi có event mới hoặc ack mới: vòng xử lý thức dậy ngay thay vì chờ hết
+        #: `poll_interval_sec`. Nhịp thăm dò vẫn giữ làm lưới an toàn.
+        self._co_viec = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
         self._retry_tasks: set[asyncio.Task[None]] = set()
         #: Đã chạy đóng khẩn cấp cho lần vào `EMERGENCY` này chưa. Đặt lại khi rời chế độ,
@@ -116,6 +119,7 @@ class EventProcessor:
         server.on_agent_online = sau_khi_agent_online
 
         server.on_command_acked = self.on_command_acked
+        server.on_event_recorded = self.danh_thuc
         dispatcher.on_timeout = self.on_command_timeout
 
     # -- vòng đời --------------------------------------------------------------------------
@@ -180,12 +184,24 @@ class EventProcessor:
                     await self.check_reconcile(now)
                     last_scan = now
                 if not processed:
-                    await asyncio.sleep(self.poll_interval_sec)
+                    await self._cho_viec()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 log.exception("Loi trong vong xu ly su kien")
                 await asyncio.sleep(self.poll_interval_sec)
+
+    def danh_thuc(self) -> None:
+        """Có event hoặc ack mới — vòng xử lý chạy ngay, không chờ hết nhịp thăm dò."""
+        self._co_viec.set()
+
+    async def _cho_viec(self) -> None:
+        """Chờ tới khi có việc hoặc hết một nhịp thăm dò, cái nào tới trước."""
+        try:
+            await asyncio.wait_for(self._co_viec.wait(), self.poll_interval_sec)
+        except TimeoutError:
+            pass
+        self._co_viec.clear()
 
     # -- xử lý event -----------------------------------------------------------------------
 
@@ -506,6 +522,8 @@ class EventProcessor:
 
     async def on_command_acked(self, command: sqlite3.Row, message: Any) -> None:
         """Hook được `BridgeServer` gọi sau khi ghi ack vào DB."""
+        # Ack OPEN_UI giải phóng cổng một-lệnh-đang-bay: bơm hàng đợi D-31 ngay, không chờ nhịp.
+        self.danh_thuc()
         if command["type"] in LOAI_LENH_DONG:
             if command["pair_id"]:
                 await self.closing.on_close_acked(command, message)

@@ -143,6 +143,10 @@ class BridgeServer:
         self.on_agent_online: Any = None
         #: Đặt bởi `EventProcessor` (phase 6). Được await sau khi ack đã ghi vào DB.
         self.on_command_acked: Any = None
+        #: Đặt bởi `EventProcessor`: gọi (đồng bộ, rẻ) ngay khi một event MỚI vào DB, để vòng xử lý
+        #: thức dậy luôn thay vì chờ hết nhịp thăm dò (đo VPS 2026-09-17: nhịp 0,1 s là 0–100 ms trễ
+        #: mỗi lệnh copy).
+        self.on_event_recorded: Any = None
         #: Mốc (monotonic) các lần một kết nối mới thay kết nối cũ, theo agent. Nằm trong bộ nhớ
         #: là đủ: câu hỏi là "đang giành nhau ngay lúc này không", không phải lịch sử.
         self._lan_thay: dict[str, list[float]] = {}
@@ -533,6 +537,8 @@ class BridgeServer:
         if created:
             log.info("Ghi event %s type=%s seq=%d", message.id, message.type, message.seq,
                      extra={"agent_id": agent_id, "event_id": message.id})
+            if self.on_event_recorded is not None:
+                self.on_event_recorded()
 
     def _advance_last_seq(self, agent_id: str) -> None:
         """Đẩy `last_seq` lên tới `seq` liên tục cao nhất đã ghi được.

@@ -464,3 +464,37 @@ async def test_master_dong_thi_client_dong_theo(env: Env) -> None:
     cap = env.pairs(status="CLOSED")[0]
     assert cap["close_source"] == "MASTER"
     assert env.db.get_master_position(900001)["status"] == "CLOSED"
+
+
+async def test_server_goi_hook_khi_ghi_event_moi_mot_lan_duy_nhat(env: Env) -> None:
+    """Hook đánh thức vòng xử lý chạy khi event MỚI vào DB; bơm trùng không đánh thức lại."""
+    dem: list[int] = []
+    env.server.on_event_recorded = lambda: dem.append(1)
+    eid = await env.emit_open(9101, 0.10)
+    assert dem == [1]
+    env._seq -= 1
+    await env.emit_open(9101, 0.10, event_id=eid)
+    await asyncio.sleep(0.1)
+    assert dem == [1]
+
+
+async def test_processor_noi_hook_danh_thuc_vao_server(env: Env) -> None:
+    assert env.server.on_event_recorded == env.processor.danh_thuc
+
+
+async def test_vong_xu_ly_thuc_day_ngay_khi_duoc_danh_thuc_khong_cho_het_nhip(env: Env) -> None:
+    """Nhịp đặt 5 s: nếu `_cho_viec` còn ngủ theo nhịp thì không thể trả về trong 0,5 s."""
+    env.processor.poll_interval_sec = 5.0
+    env.processor._co_viec.clear()  # ack snapshot lúc agent nối có thể đã bật cờ
+    cho = asyncio.create_task(env.processor._cho_viec())
+    await asyncio.sleep(0.05)
+    assert not cho.done()
+    env.processor.danh_thuc()
+    await asyncio.wait_for(cho, timeout=0.5)
+    assert not env.processor._co_viec.is_set()
+
+
+async def test_vong_xu_ly_van_thuc_day_theo_nhip_khi_khong_ai_danh_thuc(env: Env) -> None:
+    """Nhịp thăm dò còn nguyên làm lưới an toàn (event ghi bằng đường khác, hàng đợi D-31...)."""
+    env.processor.poll_interval_sec = 0.05
+    await asyncio.wait_for(env.processor._cho_viec(), timeout=0.5)
