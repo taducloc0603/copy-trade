@@ -14,7 +14,7 @@ nguyên và hoạt động; cấu hình trống thì kênh im lặng chứ khôn
 `telegram_token` + `telegram_chat_id` vào `config.toml`.
 
 Hệ quả đã được chấp nhận: **không có gì chủ động báo khi hệ thống gặp sự cố.** Cơ chế bù là
-`python -m bridge.admin tinh-hinh` kèm lịch kiểm tay — xem `docs/KE-HOACH-CHAY-THAT.md` mục 1.2.
+`python -m bridge.admin tinh-hinh` kèm lịch kiểm tay — xem `docs/RUNBOOK.md` mục 5.
 
 Đừng ghi việc này thành một món nợ ở lượt rà soát sau.
 

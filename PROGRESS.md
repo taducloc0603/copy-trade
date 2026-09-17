@@ -14,7 +14,9 @@
 | 7 | Luồng đóng lệnh | **xong** | 2026-09-05 |
 | 8 | Mất kết nối và đối chiếu | **xong** | 2026-09-05 |
 | 9 | Dashboard và cấu hình | **phần lớn xong, trang cấu hình mới ở mức đọc** | 2026-09-06 |
-| 10 | Đóng gói, vận hành và nghiệm thu | chưa bắt đầu | |
+| 10 | Đóng gói, vận hành và nghiệm thu | xong | 2026-09-06 |
+| 11 | Sửa lỗi kiểm toán; đóng lệnh Client qua giao diện | xong | 2026-09-06 → 09-10 |
+| 12 | Đóng phía Master qua giao diện | xong (TEST-30a đạt trên VPS 09-15) | 2026-09-14 |
 
 ## Nhật ký
 

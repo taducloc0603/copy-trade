@@ -1,7 +1,7 @@
 # RUNBOOK — vận hành MT5 Copy Bridge
 
-*Chốt ngày 2026-09-06 (Phase 10), cập nhật sau Phase 11. Đọc `docs/DECISIONS.md` trước nếu bạn định sửa hành vi;
-tài liệu này chỉ nói cách **chạy**.*
+*Cập nhật 2026-09-17 (sau phase 12). Cài đặt và cập nhật: [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Đọc
+[DECISIONS.md](DECISIONS.md) trước nếu định sửa hành vi; tài liệu này nói cách **chạy** và **xử lý sự cố**.*
 
 ---
 
@@ -38,8 +38,7 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 
 ## 2. Cấu hình
 
-> Các bước **cài đặt** không nằm ở đây. Chọn tài liệu trong bảng ở đầu
-> [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này chỉ giải thích các khoá cấu hình và **vì sao**
+> Các bước **cài đặt** không nằm ở đây — xem [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này chỉ giải thích các khoá cấu hình và **vì sao**
 > chúng như vậy — thứ bạn cần khi đang vận hành, không phải khi đang cài.
 
 `config.toml` nằm trong `.gitignore`. Các khoá:
@@ -85,10 +84,16 @@ Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA
 
 ## 3. Khởi động và dừng
 
+Trên VPS mọi thứ chạy nền (bảng thành phần ở đầu [CAI-DAT-VPS.md](CAI-DAT-VPS.md)):
+
 ```powershell
-.\.venv\Scripts\python.exe -m bridge                      # Bridge + dashboard
-.\.venv\Scripts\python.exe -m clicker --token <TOKEN> --account-login <so-tai-khoan-Client>
+Restart-Service CopyBridge                                          # Bridge + dashboard
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Stop-ScheduledTask
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Start-ScheduledTask
 ```
+
+Chạy tay để gỡ lỗi (dừng dịch vụ/tác vụ tương ứng trước): `.\.venv\Scripts\python.exe -m bridge`,
+`.\.venv\Scripts\python.exe -m clicker` (đọc mục `[clicker]`), `... -m clicker --muc clicker_master`.
 
 Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
 
@@ -100,7 +105,7 @@ Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
 Bật `RUNNING` trước bước 3 thì event cũ bị từ chối bằng `EVENT_TOO_OLD` thay vì `IGNORED` —
 không sai, nhưng sinh alert nhiễu.
 
-Dừng: `Ctrl+C` (bắt `SIGINT`/`SIGTERM`, đóng sạch và đánh mọi agent về `OFFLINE`).
+Dịch vụ dừng sạch qua Ctrl+C (NSSM gửi sự kiện console), đánh mọi agent về `OFFLINE`.
 
 ---
 
@@ -170,10 +175,11 @@ lưu chưa từng khôi phục thử thì không phải bản sao lưu.
 ```
 
 Nó trả lời đúng một câu hỏi — *có gì cần làm không?* — và thoát khác 0 khi có. Kênh cảnh báo
-ngoài đang **tắt có chủ đích**, nên đây là cách duy nhất bạn biết chuyện đã xảy ra; xem
-`docs/KE-HOACH-CHAY-THAT.md` mục 1.2 để biết lịch kiểm.
+ngoài đang **tắt có chủ đích**, nên đây là cách duy nhất bạn biết chuyện đã xảy ra. Lịch kiểm:
+mỗi lần đăng nhập chạy `scripts\kiem-tra.ps1`; tác vụ `\CopyBridge\TinhHinh` chạy mỗi giờ (cột
+*Last Run Result* khác 0 là có việc).
 
-Log: `logs/bridge.log` (Bridge) và `logs/clicker.log` (clicker), xoay vòng theo ngày, giữ 30
+Log: `logs/bridge.log` (Bridge), `logs/clicker.log` và `logs/clicker_master.log` (hai clicker), xoay vòng theo ngày, giữ 30
 ngày, UTF-8. Có bộ lọc che token — `grep -ri "token" logs/` phải ra rỗng (kiểm ngày 2026-09-06:
 0 dòng trên ~15.000 dòng log). `logs/service-err.log` do NSSM ghi là **toàn bộ output console** của Bridge
 — trùng nội dung với `bridge.log`, không phải chỉ lỗi — cộng thêm những thứ `bridge.log` không
@@ -187,7 +193,7 @@ mọi lần ghi sau đều thử lại và hỏng lại: **cả hai ngừng ghi 
 bình thường. Trên VPS nó làm `bridge.log` đứng im 63 giờ. `kiem-tra.ps1` mục 7 bắt được triệu
 chứng này ("log không đổi trong N phút").
 
-Dashboard `http://<dia-chi-tailscale>:8080` là nơi nhìn trạng thái. Ba thứ nhìn trước tiên:
+Dashboard `http://127.0.0.1:8080` (mở trong VPS) là nơi nhìn trạng thái. Ba thứ nhìn trước tiên:
 `run_mode`, canary của clicker, và số finding đối chiếu đang chờ.
 
 ---
@@ -219,13 +225,10 @@ cho `ctrlID`, class, kích thước và chữ của từng control — đúng b�
 
 ## 5b. Triển khai tất cả trên MỘT VPS
 
-> **Cài đặt bằng script:** [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html) —
-> đầy đủ, kèm quy trình **cập nhật** khi có mã nguồn mới. Bản rút gọn:
-> [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này giải thích **vì sao**, hai tài liệu kia nói **gõ gì**.
+> Các bước cài: [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này giải thích **vì sao**.
 
-Đây là kiến trúc đơn giản nhất và cũng là kiến trúc **khác** với mục 6 bên dưới: Bridge, cả hai
-terminal MT5 và clicker cùng nằm trên một máy. Mục 6 viết cho kiến trúc nhiều máy — khi chạy
-một-VPS thì phần lớn nó **không áp dụng**, nhưng đổi lại có ba rủi ro mới.
+Đây là kiến trúc **duy nhất được hỗ trợ**: Bridge, cả hai terminal MT5 và các clicker cùng nằm trên
+một máy. Đổi lại sự đơn giản là ba rủi ro riêng.
 
 ### Cái gì biến mất
 
@@ -267,77 +270,14 @@ Windows Server thì **4 GB RAM là mức nên có**, 2 GB sẽ chật. CPU 2 nh�
 Bắt buộc: **autologon**, **tắt sleep/hibernate**, và **tắt khoá màn hình tự động** — clicker phải
 sống trong một phiên người dùng đang tồn tại.
 
-### Khác biệt so với mục 6
-
-| Mục 6 nói | Khi chạy một-VPS |
-|---|---|
-| Tailscale ACL cho 8787 | Không cần — agent đi loopback |
-| Firewall chặn 8787/8080 | Thay bằng `host = "127.0.0.1"` |
-| Kiểm bằng máy thứ ba | Không cần, nếu đã bind loopback |
-| Bridge chạy Windows Service | Vẫn nên, để tự bật sau reboot |
-| clicker chạy Scheduled Task theo phiên | **Bắt buộc**, kèm autologon |
-
 ---
 
-## 5c. Cập nhật lên đường ĐÓNG qua giao diện
+## 5c. Đường ĐÓNG qua giao diện — điều kiện và khoá cấu hình
 
-> **Migration `004` dựng lại bảng `command`.** SQLite không sửa được ràng buộc `CHECK`, nên cách
-> duy nhất để nhận thêm hai loại lệnh mới là tạo bảng mới, chép dữ liệu, xoá bảng cũ, đổi tên.
-> Sao lưu trước là **bắt buộc**, không phải khuyến nghị. Việc chép dữ liệu có test riêng
-> (`test_migration_004_giu_nguyen_du_lieu_command_cu`) chạy trên DB **đã có dữ liệu**, nhưng một
-> test không thay được một bản sao lưu.
-
-Migration chạy **tự động** khi Bridge mở database. Không có lệnh chạy tay, và không cần có.
-
-### Thứ tự
-
-```powershell
-# 1. Dung an toan. Cho toi khi khong con gi dang bay.
-.\.venv\Scripts\python.exe -m bridge.admin run-mode PAUSED
-.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh      # phai sach: 0 cap chua dong
-# 2. Tat clicker truoc, roi Bridge (Ctrl+C ca hai).
-# 3. Sao luu TRUOC MIGRATION -- xem canh bao ngay duoi.
-.\.venv\Scripts\python.exe -c "import sqlite3,pathlib,datetime; t=datetime.datetime.now().strftime('%Y%m%d-%H%M%S'); d=pathlib.Path('data/backup'); d.mkdir(parents=True,exist_ok=True); c=sqlite3.connect('data/bridge.db'); c.execute('VACUUM INTO ?', (str(d/f'truoc-004-{t}.db'),)); print('Da sao luu:', d/f'truoc-004-{t}.db')"
-# 4. Lay code moi.
-git pull
-# 5. Bat Bridge mot lan -> migration 004 chay. Kiem version.
-.\.venv\Scripts\python.exe -m bridge
-```
-
-> **Đừng dùng `bridge.admin sao-luu` cho bản sao lưu TRƯỚC migration.** Mọi lệnh `bridge.admin`
-> đều mở database qua `Database(...)`, mà hàm đó mặc định `migrate=True` — nên nó sẽ **chạy
-> migration trước, rồi mới sao lưu bản đã migrate**. Bản sao lưu đó không quay lại được.
->
-> Lệnh ở bước 3 dùng `sqlite3` trần với `VACUUM INTO`: không đi qua `Database`, không chạm
-> migration, và cho ra một file duy nhất đã gộp WAL nên chép đi đâu cũng mở được.
->
-> `bridge.admin sao-luu` vẫn đúng cho mọi việc sao lưu **thường ngày** — chỉ riêng thời điểm này,
-> khi cái cần giữ là trạng thái *trước* khi schema đổi, thì nó không dùng được.
-
-Kiểm migration đã chạy (Bridge vẫn đang bật, mở PowerShell khác):
-
-```powershell
-.\.venv\Scripts\python.exe -c "import sqlite3; c=sqlite3.connect('data/bridge.db'); print(c.execute('SELECT MAX(version) FROM schema_version').fetchone()[0])"
-```
-
-Phải in ra `4`. Nếu không, **dừng lại** — đừng bật `RUNNING` trên một schema nửa vời.
-
-```powershell
-# 6. Bat duong dong qua giao dien cho tung Client. Mac dinh la EA, tuc khong doi gi.
-.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI
-.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01          # xem lai
-# 7. Bat clicker, cho canary xanh tren dashboard.
-# 8. Roi moi chay.
-.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING
-```
-
-Sau phiên đầu tiên có đóng lệnh:
-
-```powershell
-.\.venv\Scripts\python.exe -m bridge.admin kiem-reason
-```
-
-Nay nó soi **cả hai** cột. `TEST-23 DAT: n/n` kèm số deal mở và số deal đóng mới là đạt.
+Bật cho Client: `bridge.admin cau-hinh-client CL-01 --close-route UI` (trợ lý cài đặt bật sẵn).
+Bật cho Master: `bridge.admin cau-hinh-master --clicker-agent AG-CLICKER-MASTER --close-route UI`
+(cần clicker thứ hai — [CAI-DAT-VPS.md](CAI-DAT-VPS.md) mục B3). Sau phiên đầu có đóng lệnh, chạy
+`bridge.admin kiem-reason`: nó soi cả deal mở lẫn deal đóng.
 
 ### Quay lại nếu cần
 
@@ -349,51 +289,28 @@ Chỉ vậy. **Không cần hạ migration** — schema mới tương thích ng�
 đúng đường cũ, im lặng, không alert. Đó là lý do cờ này tồn tại thay vì suy ra từ việc có clicker
 hay không.
 
-### Hai điều kiện vận hành MỚI
+### Hai điều kiện vận hành
 
-1. **Tab Trade của Toolbox phải là tab đang mở** trên terminal Client. Clicker nhận ra danh sách
+1. **Tab Trade của Toolbox phải là tab đang mở** trên terminal Client (và Master nếu bật đường đóng Master). Clicker nhận ra danh sách
    vị thế bằng ctrlID `10328`, và tab không mở thì control đó không `visible`. Bridge **từ chối ồn
    ào** chứ không đoán, nên không có nguy cơ đóng nhầm — nhưng lệnh đóng sẽ rơi về EA và deal đóng
    mang `EXPERT`. Cùng loại giới hạn với B-01 (một symbol mỗi terminal).
 2. **Toolbox không được tắt** (`Ctrl+T` bật lại).
 
-### Hai khoá cấu hình mới
+### Hai khoá cấu hình
 
 | Khoá | Mặc định | Nghĩa |
 |---|---|---|
 | `close_degraded_fallback` | `EA` | Clicker hỏng thì vẫn đóng bằng `OrderSend`, kèm CRITICAL. Đặt `SKIP` là **chấp nhận giữ vị thế trần** thay vì để một deal mang `EXPERT`. |
 | `ui_close_correlate_grace_ms` | `5000` | Cửa sổ Bridge nhận cha cho event đóng do chính nó gây ra. Đặt quá ngắn → bot tự cascade đóng Master. Đặt quá dài → nuốt mất lệnh đóng tay của người dùng. |
 
-## 6. Mạng và bảo mật cho kiến trúc NHIỀU MÁY — **CHƯA LÀM**
+## 6. Kiến trúc nhiều máy — chưa hỗ trợ
 
-> Chạy tất cả trên một VPS thì đọc **mục 5b** thay cho mục này; phần lớn mục 6 không áp
-> dụng, và mục 5b nói rõ chỗ nào thay bằng gì.
-
-> **Hướng dẫn từng bước cho kiến trúc hai máy:**
-> [HUONG-DAN-KHAC-VPS.html](HUONG-DAN-KHAC-VPS.html) — bố trí máy A/máy B, Tailscale, luật
-> firewall, `host = "0.0.0.0"` kèm mật khẩu bắt buộc. Đó là nơi duy nhất mô tả cách bố trí
-> này. Danh sách dưới đây là **những gì chưa ai kiểm chứng**, và tài liệu kia cũng viết theo
-> thiết kế chứ không theo kinh nghiệm chạy thật.
-
-Những mục dưới đây **chưa được thực hiện hay kiểm chứng** ở lượt này vì cần môi trường thật
-(máy thứ ba, VPS, quyền quản trị mạng):
-
-- [ ] Cài Tailscale trên máy Bridge và các node agent; ghi địa chỉ `100.x.y.z` vào đây.
-- [ ] Tailscale ACL: chỉ node agent chạm được 8787, chỉ máy quản trị chạm được 8080.
-- [ ] Firewall Windows: chặn 8787 và 8080 trên **mọi** interface trừ interface Tailscale và
-      loopback. Không bao giờ mở ra Internet công cộng.
-- [ ] Kiểm bằng **máy thứ ba**: cả hai port không truy cập được từ ngoài Tailscale.
-- [x] Đăng ký Bridge làm Windows Service (NSSM hoặc `pywin32`), tự khởi động khi máy bật.
-      — **đã có script** (`scripts/tao-dich-vu.ps1`, dùng NSSM), **chưa kiểm chứng trên VPS thật**.
-- [x] Đăng ký clicker làm **Scheduled Task theo phiên đăng nhập** + autologon + tắt sleep.
-      — **đã có script**, **chưa kiểm chứng trên VPS thật**. Có script không đồng nghĩa đã kiểm
-      chứng, và mục này là danh sách kiểm chứng.
-- [ ] Kiểm: giết tiến trình Bridge → dịch vụ tự bật lại, và bật lại ở `PAUSED`.
-- [ ] Kiểm: Telegram nhận alert CRITICAL trong vài giây; chặn mạng tới Telegram → luồng giao
-      dịch không chậm hay lỗi (đã có test tự động cho vế sau, chưa gửi tin thật lần nào).
-
-> Tailscale xác thực **máy**, không xác thực terminal hay tài khoản MT5 nào đang gửi lệnh. Token
-> ở tầng ứng dụng vẫn bắt buộc, không bỏ được.
+Master, Client và Bridge trên các máy khác nhau **chưa từng chạy thử** và script không hỗ trợ. Nếu
+cần về sau, tối thiểu phải: đặt `host = "0.0.0.0"` **kèm** `dashboard_password` (Bridge từ chối khởi
+động nếu thiếu), chỉ mở 8787/8080 qua mạng riêng (Tailscale ACL + firewall Windows chặn mọi interface
+khác), kiểm từ một máy thứ ba rằng hai cổng không lộ ra Internet, và khai địa chỉ Bridge trong
+*Allow WebRequest* của từng terminal. Tailscale xác thực **máy**, không thay được token của agent.
 
 ---
 
@@ -430,44 +347,45 @@ Những mục dưới đây **chưa được thực hiện hay kiểm chứng** 
 
 ## 8. Trước khi chuyển sang tài khoản thật
 
+**Kết luận hiện tại: chưa GO.** Ba phép đo chỉ VPS làm được vẫn còn nợ:
 
-> **Thêm sau khi đường ĐÓNG chuyển sang giao diện — điều kiện này CHƯA đạt.**
->
-> Cú double-click mở hộp thoại đóng đi bằng `SendMessage` tới window proc, **không** phải
-> `SendInput` bơm vào hàng đợi bàn phím của phiên tương tác. Nên về nguyên lý nó sống qua phiên
-> RDP đã ngắt, giống hệt đường mở. Nhưng **đó là suy luận, chưa phải phép đo** — và bài học của
-> chính dự án này là suy luận về giao diện MT5 sai nhiều hơn đúng.
->
-> Phép đo bắt buộc, chỉ VPS mới làm được (B-08, TEST-19):
->
-> 1. Mở một cặp trên demo qua VPS.
-> 2. **Ngắt phiên RDP** bằng cách đóng cửa sổ Remote Desktop — *không* bấm Sign out, vì Sign out
->    kết thúc phiên và cả clicker lẫn terminal đều chết theo.
-> 3. Đóng lệnh phía Master từ máy khác.
-> 4. Nối lại RDP, kiểm: vị thế Client **đã đóng**, và `kiem-reason` báo `reason = 0` cho deal đóng.
->
-> Đo ra kết quả âm thì đặt `close_route = EA` cho tới khi có hướng khác. Đừng chạy tiền thật với
-> một đường đóng chưa biết có sống qua RDP ngắt hay không.
-> Kế hoạch chi tiết theo thứ tự nên làm nằm ở **`docs/KE-HOACH-CHAY-THAT.md`**. Mục này là bản
-> rút gọn của các điều kiện.
+**B-08 — phiên RDP đã ngắt (chặn).** Mở một cặp, **ngắt RDP bằng cách đóng cửa sổ** (không Sign out),
+đợi vài phút, mở rồi đóng lệnh ở Master từ nơi khác (ví dụ app MT5 trên điện thoại), rồi nối lại và
+đọc database.
 
+| Quan sát | Nghĩa |
+|---|---|
+| Canary đỏ, không có `OPEN_UI` | **An toàn** — Bridge tự dừng copy (D-25) |
+| Canary xanh nhưng không có vị thế Client | **Nguy hiểm** — hệ thống tưởng đang copy mà không |
+| Lệnh đóng rơi về `CLOSE` của EA, có `CLOSE_FELL_BACK_TO_EA` | **An toàn** — vị thế vẫn đóng, chỉ mất `DEAL_REASON_CLIENT` (D-28) |
+| Có `CLOSE_UI` nhưng vị thế Client **không đóng** | **Nguy hiểm nhất** — sổ tưởng đã đóng mà tiền chưa |
+
+Rơi vào ô nguy hiểm thì dừng kế hoạch chạy thật cho tới khi giải xong.
+
+**TEST-19 / B-02 — mất điện đột ngột.** Dùng *force stop* / *hard reset* của nhà cung cấp VPS đúng
+lúc có lệnh đang bay. Bật lại: không mất event, bộ đối chiếu bắt đúng sai lệch.
+
+**B-03 — chạy 24 giờ liên tục.** Ghi RAM các tiến trình và kích thước `bridge.db` + WAL lúc đầu và
+lúc cuối; sáng hôm sau kiểm mỗi file log đều có bản đã xoay theo ngày.
+
+**Bắt đầu bằng cấu hình nhỏ nhất:** một symbol (giới hạn kỹ thuật B-01), volume nhỏ nhất sàn cho
+phép, kiểm `tinh-hinh` mỗi lần đăng nhập và `kiem-reason` + `kiem-dong-sai` mỗi ngày trong tuần đầu.
 
 Đây là điều kiện vận hành, không phải checklist kỹ thuật. Không mục nào được bỏ.
 
 1. **Chạy ổn định trên demo ít nhất một tuần liên tục** trước khi động vào tiền thật.
-2. **Hoàn thành toàn bộ mục 6** ở trên. Hiện chưa mục nào được kiểm chứng.
-3. **Chạy TEST-19 thật** — rút điện hoặc tắt máy ảo đột ngột, rồi kiểm không mất event và bộ đối
+2. **Chạy TEST-19 thật** — rút điện hoặc tắt máy ảo đột ngột, rồi kiểm không mất event và bộ đối
    chiếu bắt đúng sai lệch. Đây là lý do `synchronous = FULL` tồn tại, và hiện nó **chưa từng
    được chứng minh bằng quan sát** (`BACKLOG.md` B-02).
-4. **Đọc điều khoản của cả hai broker** về hedging, bonus, giao dịch nhiều tài khoản và copy
+3. **Đọc điều khoản của cả hai broker** về hedging, bonus, giao dịch nhiều tài khoản và copy
    trading. Một số broker cấm hoặc huỷ lợi nhuận từ các mô hình này.
-5. **Đối chiếu tay khác biệt giữa hai sàn:** tên symbol, contract size, volume tối thiểu và bước
+4. **Đối chiếu tay khác biệt giữa hai sàn:** tên symbol, contract size, volume tối thiểu và bước
    volume, spread và giá báo, thời gian khớp lệnh, giờ giao dịch từng symbol.
-6. **Bắt đầu bằng volume nhỏ nhất có thể và một symbol duy nhất.** Mở rộng dần sau khi quan sát
+5. **Bắt đầu bằng volume nhỏ nhất có thể và một symbol duy nhất.** Mở rộng dần sau khi quan sát
    ít nhất vài chục lệnh.
-7. **Người vận hành phải biết cách bấm dừng khẩn cấp trước khi cần dùng tới nó.** Thử một lần
+6. **Người vận hành phải biết cách bấm dừng khẩn cấp trước khi cần dùng tới nó.** Thử một lần
    trên demo.
-8. Biết rõ những gì **chưa từng chạy trên sàn thật** — `docs/ACCEPTANCE.md` cột "Nguồn", mọi
+7. Biết rõ những gì **chưa từng chạy trên sàn thật** — `docs/ACCEPTANCE.md` cột "Nguồn", mọi
    dòng ghi TEST hoặc KHÔNG.
-9. **Nếu chạy một VPS:** xong bài "phiên RDP đã ngắt" (B-08) và kiểm Algo Trading bật ở cả hai
+8. **Trên VPS:** xong bài "phiên RDP đã ngắt" (B-08) và kiểm Algo Trading bật ở cả hai
    terminal (B-09). Mục 5b nói cách làm.

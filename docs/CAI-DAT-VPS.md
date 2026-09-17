@@ -1,54 +1,79 @@
-# Cài đặt lên VPS Windows
+# Cài đặt và cập nhật trên VPS Windows
 
-## Bốn tài liệu cài đặt — bản nào dành cho bạn
+Tài liệu cài đặt **duy nhất** của dự án. Chọn phần theo tình trạng máy:
 
-| Bạn muốn | Đọc bản |
+| Tình trạng VPS | Đọc |
 |---|---|
-| Cài trên **một** VPS, để script làm hộ — **khuyến nghị** | [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html) |
-| Bản tra cứu ngắn của đường trên, chỉ các lệnh cần gõ | **Bạn đang đọc bản này.** |
-| Cài trên **một** VPS **bằng tay**, để hiểu từng bước đang làm gì | [HUONG-DAN-CUNG-VPS.html](HUONG-DAN-CUNG-VPS.html) |
-| Master và Client ở **hai** VPS khác nhau — **chưa ai chạy thử** | [HUONG-DAN-KHAC-VPS.html](HUONG-DAN-KHAC-VPS.html) |
+| **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống) |
+| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — Máy đã có hệ thống](#phần-b--vps-đã-có-hệ-thống) |
+| Hằng ngày, sau mỗi lần khởi động lại | [Phần C — Vận hành](#phần-c--vận-hành-hằng-ngày) |
 
-Bốn bản đều đi tới cùng một kết quả; khác nhau ở việc script làm hộ bao nhiêu và chạy trên mấy
-máy. Bản này nói **gõ gì**, ngắn gọn. Muốn biết **vì sao** thì đọc
-[RUNBOOK.md](RUNBOOK.md) mục 5b.
+Muốn biết **vì sao** một bước như vậy: [RUNBOOK.md](RUNBOOK.md). Gặp sự cố khi đang chạy: RUNBOOK mục 7.
 
-Kiến trúc ở đây là **tất cả trên một VPS**: Bridge, clicker và cả hai terminal MT5 cùng một máy.
-Agent nối tới Bridge qua `127.0.0.1`, nên không cần Tailscale, không cần luật firewall, không cần
-máy thứ ba để kiểm.
+**Kiến trúc:** tất cả trên **một** VPS — Bridge, hai terminal MT5 (Master, Client) và các clicker.
+Agent nối tới Bridge qua `127.0.0.1`, không cần Tailscale hay luật firewall. Kiến trúc nhiều máy
+**chưa được hỗ trợ**.
 
----
-
-## 0. Trước khi bắt đầu
-
-**Cấu hình máy.** Đo thực tế lúc chạy không tải: mỗi terminal MT5 ~157 MB, Bridge ~49 MB,
-clicker ~4 MB. Cộng Windows Server thì **4 GB RAM là mức nên có**, 2 GB sẽ chật. CPU 2 nhân là đủ
-— đường mở lệnh bị chặn ở tốc độ giao diện MT5 (~600 ms/lệnh), không phải ở CPU. Windows Server
-2019 hoặc 2022.
-
-**Ba thứ bắt buộc phải bật trước, không phải tuỳ chọn** — clicker phải sống trong một phiên người
-dùng đang tồn tại:
-
-1. **Autologon** (`netplwiz`, bỏ tick "Users must enter a user name and password").
-2. **Tắt sleep và hibernate**: `powercfg /change standby-timeout-ac 0` và `powercfg /hibernate off`.
-3. **Tắt khoá màn hình tự động** (Screen saver → On resume, bỏ tick "display logon screen").
-
-Bạn cũng cần quyền Administrator để cài Python và đăng ký dịch vụ.
-
----
-
-## 1. Cài đặt một cú bấm
-
-Mở PowerShell bằng **Run as administrator**:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass -Force
+```
+Terminal Master + EA ─┐                          ┌─ Clicker Client  (mở + đóng lệnh Client qua giao diện)
+                      ├─ TCP 127.0.0.1:8787 ─ Bridge ─┤
+Terminal Client + EA ─┘   (dịch vụ Windows)       └─ Clicker Master  (đóng lệnh Master qua giao diện, tuỳ chọn)
+                                   └─ Dashboard http://127.0.0.1:8080
 ```
 
-### Đường A — VPS trắng, chưa cài gì (khuyến nghị)
+| Thành phần | Chạy dưới dạng | Tên |
+|---|---|---|
+| Bridge + dashboard | Windows Service (NSSM) | `CopyBridge` |
+| Clicker Client | Scheduled Task khi đăng nhập | `\CopyBridge\Clicker` |
+| Clicker Master (tuỳ chọn) | Scheduled Task khi đăng nhập | `\CopyBridge\ClickerMaster` |
+| Bảo trì + sao lưu | Scheduled Task 03:00 hằng ngày | `\CopyBridge\BaoTri` |
+| Kiểm tình hình | Scheduled Task mỗi giờ | `\CopyBridge\TinhHinh` |
 
-Kho là public nên tải thẳng được — không cần git, không cần token, không cần kéo file qua RDP.
-Script tự cài Python, tự cài git, rồi tự clone vào `C:\CopyBridge`.
+> Mọi lệnh bên dưới chạy trong **PowerShell mở bằng Run as administrator**, trong thư mục
+> `C:\CopyBridge` (trừ khi ghi khác). Nếu PowerShell chặn script:
+> `Set-ExecutionPolicy -Scope Process Bypass -Force`.
+
+---
+
+# Phần A — Cài mới trên VPS chưa có hệ thống
+
+## A0. Chuẩn bị máy
+
+**Cấu hình:** Windows Server 2019/2022, **4 GB RAM** (mỗi MT5 ~160 MB, Bridge ~50 MB), 2 CPU.
+
+**Ba việc bắt buộc** — clicker phải sống trong một phiên người dùng đang đăng nhập:
+
+1. **Autologon:** chạy `netplwiz`, bỏ tick *Users must enter a user name and password*.
+2. **Tắt sleep/hibernate:**
+   ```powershell
+   powercfg /change standby-timeout-ac 0
+   powercfg /hibernate off
+   ```
+3. **Tắt khoá màn hình:** Screen saver → bỏ tick *On resume, display logon screen*.
+
+**Hai terminal MT5** (một Master, một Client), đăng nhập sẵn, tài khoản chế độ **Hedging**.
+Cài MT5 thứ hai vào thư mục khác (ví dụ `C:\Program Files\MetaTrader 5 1`).
+
+Trên **mỗi** terminal:
+- Tools → Options → Expert Advisors: tick **Allow WebRequest for listed URL**, thêm `127.0.0.1`.
+  Thiếu dòng này EA không bao giờ lên `ONLINE` (triệu chứng giống sai token).
+- Bật nút **Algo Trading**.
+- Mở **Toolbox** (`Ctrl+T`) và để ở tab **Trade**. Clicker đọc danh sách vị thế ở đây.
+- Terminal **Client**: mở sẵn chart của **symbol sẽ copy** (hộp thoại New Order lấy symbol theo
+  chart; mỗi terminal Client chỉ copy một symbol — B-01).
+
+> **MT5 và clicker phải cùng mức quyền.** Cả hai chạy thường, hoặc cả hai "Run as administrator".
+> Lệch nhau thì Windows chặn mọi thao tác của clicker mà không báo lỗi.
+
+Ghi lại **số tài khoản** Master và Client. Xem nhanh bằng:
+
+```powershell
+Get-Process terminal64 | Select-Object Id, MainWindowTitle
+```
+
+Tiêu đề có dạng `538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — số đầu là số tài khoản.
+
+## A1. Tải mã nguồn và dựng nền
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -57,367 +82,335 @@ Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/mai
 & "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge
 ```
 
-> **Đọc dòng banner đầu tiên.** Nó phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không
-> thấy `(ban ...)` nghĩa là bạn đang chạy một bản `cai-dat.ps1` cũ còn sót trên máy — chạy lại
-> lệnh tải ở trên để đè nó. Bản cũ sẽ báo những lỗi đã được sửa từ lâu, chẳng hạn
-> `khong co winget`.
+Script tự cài Python 3.12 và git nếu thiếu, clone vào `C:\CopyBridge`, tạo `.venv`, cài gói, tạo
+`data\`, `logs\`, tạo `config.toml` (mật khẩu dashboard ngẫu nhiên, in ra một lần), khởi tạo database
+và chạy bộ test (vài phút). Chạy lại bao nhiêu lần cũng được — bước đã xong in `BO QUA`.
 
-### Đường B — máy đã có sẵn git
+Dòng đầu phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không có `(ban ...)` là bạn đang chạy
+một bản script cũ — tải lại.
 
-```powershell
-git clone https://github.com/taducloc0603/copy-trade.git C:\CopyBridge
-C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge
-```
+Tuỳ chọn hay dùng: `-BoQuaTest` (bỏ bộ test), `-BoQuaGit` (thư mục đã chép sẵn qua RDP, không
+clone), `-LamMoiVenv` (tạo lại `.venv`).
 
-### Đường C — chép thư mục qua RDP
-
-Nén thư mục dự án ở máy của bạn (**không** kèm `.venv`, `data`, `logs`), kéo thả qua Remote
-Desktop vào `C:\CopyBridge`, rồi:
-
-```powershell
-C:\CopyBridge\scripts\cai-dat.ps1 -ThuMuc C:\CopyBridge -BoQuaGit
-```
-
-Script tự làm 11 bước: cài Python 3.12 và git nếu thiếu (bằng winget, hoặc tải thẳng bộ cài từ
-python.org và git-scm.com nếu máy không có winget — Windows Server thì gần như luôn không có),
-lấy mã nguồn, tạo `.venv`, `pip install -e ".[dev]"`, tạo `data/` + `logs/`, tạo `config.toml`
-với mật khẩu dashboard ngẫu nhiên, khởi tạo database, chạy bộ test. **Chạy lại bao nhiêu lần
-cũng được** — mọi bước đã xong sẽ in `BO QUA`.
-
-Mật khẩu dashboard được in ra một lần và nằm trong `C:\CopyBridge\config.toml` (đọc lại được — khác
-với token của agent).
-
----
-
-## 2. Trợ lý: một lệnh, hỏi xác nhận từng bước
-
-Trước khi chạy, mở **một cửa sổ PowerShell khác** và lấy sẵn hai tiêu đề cửa sổ MT5 —
-trợ lý sẽ hỏi số tài khoản và chuỗi tiêu đề, cả hai đều nằm trong đó:
-
-```powershell
-Get-Process terminal64 | Select-Object Id, MainWindowTitle
-```
-
-Tiêu đề có dạng `<so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — **số tài khoản
-nằm ngay đầu**. Có sẵn hai dòng đó bên cạnh thì điền một mạch, không phải dừng giữa chừng.
+## A2. Chạy trợ lý cài đặt
 
 ```powershell
 C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge
 ```
 
-Script dẫn qua đúng thứ tự của các mục 3-7 bên dưới: tạo agent, **ghi token clicker thẳng vào**
-`config.toml` (bạn không phải đọc rồi gõ lại một bí mật), tạo dòng client, **đăng ký dịch vụ**
-(Bridge bắt đầu chạy ở đây), biên dịch EA, chờ EA lên `ONLINE`, khai báo ánh xạ symbol, rồi chạy
-`kiem-tra.ps1`. Mỗi bước hỏi trước khi làm, và bước nào xong rồi thì in `BO QUA` —
-**chạy lại bao nhiêu lần cũng được**.
+Trợ lý hỏi xác nhận từng bước, bước đã xong thì bỏ qua. Nó sẽ hỏi:
 
-Nó dừng lại đúng hai chỗ, vì hai việc đó không tự động hoá được: **gắn EA lên chart** trong giao
-diện MT5, và **bấm `RUNNING`**.
+| Câu hỏi | Trả lời |
+|---|---|
+| Magic number | Enter (`770001`) |
+| Số tài khoản Master / Client | Số đã ghi ở A0 |
+| Mẫu tiêu đề cửa sổ terminal Client | Enter (dùng số tài khoản Client) |
+| Tên agent Master / Client / Clicker | Enter (`AG-MASTER`, `AG-CLIENT`, `AG-CLICKER`) |
+| **Bật đường ĐÓNG phía Master qua giao diện?** | **Có** nếu muốn lệnh đóng trên Master hiện *Placed by manual* (cần clicker thứ hai, terminal Master cũng phải để tab Trade) |
+| Mã client | Enter (`CL-01`) |
 
-Các mục dưới đây là chính những việc đó làm bằng tay — đọc nếu bạn muốn hiểu trợ lý đang làm gì,
-hoặc khi cần sửa một bước riêng lẻ.
+Rồi nó tự làm theo thứ tự:
+
+1. Tạo agent và **ghi token clicker thẳng vào `config.toml`** (mục `[clicker]`, `[clicker_master]`).
+2. **In token của `AG-MASTER` và `AG-CLIENT` một lần** — chép lại ngay, dùng ở bước gắn EA.
+3. Tạo client `CL-01` với đường mở và đóng qua giao diện.
+4. Đăng ký dịch vụ `CopyBridge` và các Scheduled Task (hỏi mật khẩu tài khoản autologon — nên nhập).
+   Bridge bắt đầu chạy từ đây, ở `PAUSED`.
+5. Biên dịch hai EA.
+6. **Dừng chờ bạn gắn EA** (A3).
+7. Chờ EA lên `ONLINE`, rồi hỏi **ánh xạ symbol** (Master `XAUUSD` → Client `XAUUSDm`...).
+   Thiếu ánh xạ thì **mọi lệnh Master bị bỏ qua im lặng**.
+8. Chạy `kiem-tra.ps1`.
+
+> **Token hiện đúng một lần**, không vào log. Mất thì cấp lại:
+> `.\.venv\Scripts\python.exe -m bridge.admin cap-token AG-MASTER` rồi dán vào EA.
+> Không bao giờ đưa token clicker lên dòng lệnh.
+
+## A3. Gắn EA (làm tay, trong lúc trợ lý chờ)
+
+1. Chép `ea\CopyBridgeMaster.ex5` vào `MQL5\Experts` của terminal **Master**,
+   `ea\CopyBridgeClient.ex5` vào terminal **Client** (File → Open Data Folder).
+2. Kéo EA lên **đúng MỘT chart** mỗi terminal. Client: chart của symbol đang copy.
+3. Tham số: `AgentToken` = token vừa in; `BridgeHost` = `127.0.0.1`; `BridgePort` = `8787`.
+   Tab Common: tick **Allow Algo Trading**.
+4. Tab **Experts** phải hiện `CopyBridgeMaster khoi dong ...` / `CopyBridgeClient khoi dong ...`.
+
+> **Hai chart cùng gắn EA = hai kết nối cùng token đá nhau liên tục** (đã gây 388 nghìn alert
+> 12→15/09). Kiểm menu **Window** và tab Experts: tên chart trong ngoặc chỉ được có **một**.
+
+Quay lại cửa sổ trợ lý, bấm Enter để đi tiếp.
+
+## A4. Bật các tuỳ chọn copy
+
+```powershell
+$py = ".\.venv\Scripts\python.exe"
+& $py -m bridge.admin cau-hinh-client CL-01                              # xem cấu hình hiện tại
+& $py -m bridge.admin cau-hinh-client CL-01 --copy-mode OPPOSITE         # Master BUY -> Client SELL (SAME = cùng chiều)
+& $py -m bridge.admin cau-hinh-client CL-01 --multiplier 1.0             # hệ số volume
+& $py -m bridge.admin cau-hinh-client CL-01 --can-close-master bat       # đóng tay ở Client -> Master đóng theo
+& $py -m bridge.admin cau-hinh-master                                    # xem đường đóng phía Master
+```
+
+- **Mở lệnh chỉ đi một chiều Master → Client.** Mở tay ở Client không làm Master vào lệnh.
+- **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi
+  `can_close_master` bật (mặc định **tắt**).
+- Đổi cấu hình chỉ áp cho **lệnh mới**; cặp đang mở giữ tỷ lệ cũ.
+
+## A5. Kiểm tra và bật copy
+
+```powershell
+.\scripts\kiem-tra.ps1
+& $py -m bridge.admin liet-ke        # 4 (hoặc 3) agent ONLINE
+& $py -m bridge.admin run-mode RUNNING
+```
+
+Thử trên **demo**, volume nhỏ nhất:
+
+| Thử | Đạt khi |
+|---|---|
+| Mở 1 lệnh ở **Master** | Client có lệnh tương ứng trong ~1 giây, đúng chiều theo `copy_mode` |
+| Đóng lệnh đó ở **Master** | Client đóng theo |
+| Mở lại, đóng ở **Client** (khi `can-close-master bat`) | Master đóng theo; bật đường đóng Master UI thì deal hiện *Placed by manual* |
+| `& $py -m bridge.admin kiem-reason` | `DAT` |
+| `& $py -m bridge.admin kiem-dong-sai` | `[A] [B] [C]` đều 0 |
+
+Xong phần A. Từ giờ theo **Phần C** mỗi lần đăng nhập.
 
 ---
 
-## 3. Tạo agent và cấp token
+# Phần B — VPS đã có hệ thống
 
-Database mới **luôn rỗng**: `data/` nằm trong `.gitignore`, nên bản clone trên VPS không mang theo
-agent nào của máy cũ.
+## B1. Cập nhật lên code mới (việc thường gặp nhất)
 
 ```powershell
 cd C:\CopyBridge
-$py = ".venv\Scripts\python.exe"
-& $py -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login <so-tk-master>
-& $py -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login <so-tk-client>
-& $py -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login <so-tk-client>
-
-& $py -m bridge.admin cap-token AG-MASTER
-& $py -m bridge.admin cap-token AG-CLIENT
-& $py -m bridge.admin cap-token AG-CLICKER
+.\.venv\Scripts\python.exe -m bridge.admin tinh-hinh     # nên 0 cặp đang hedge
+.\scripts\cai-dat.ps1 -CapNhat
 ```
 
-**Token thô hiện đúng một lần** và không đi vào log. Mất thì cấp lại — không có đường đọc lại.
+`-CapNhat` làm theo thứ tự: sao lưu database → ghi commit cũ → dừng dịch vụ → `git pull` → cài lại
+gói → chạy migration và bộ test → **nạp lại cả hai clicker** → bật lại dịch vụ. Cuối cùng in lệnh lùi
+bản.
 
-- Token của `AG-MASTER` và `AG-CLIENT` điền vào tham số `AgentToken` của EA tương ứng.
-- Token của `AG-CLICKER` điền vào mục `[clicker]` trong `config.toml`:
+> **Luôn có `-CapNhat` trên máy đã cài.** Thiếu nó, script từ chối chạy khi dịch vụ đang Running
+> — nếu không, code mới nằm trên đĩa nhưng Bridge và clicker vẫn chạy code cũ.
 
-```toml
-[clicker]
-token = "<token-vua-cap>"
-account_login = <so-tai-khoan-Client>
-terminal_title = "<so-tai-khoan-Client>"
-```
-
-Đừng truyền token của clicker trên dòng lệnh. Dòng lệnh của một tiến trình là thứ **mọi tài khoản
-trên cùng máy** đọc được bằng `Get-CimInstance Win32_Process`, và clicker chạy 24/7.
-
----
-
-
-## 4. Tạo dòng client
-
-Agent `AG-CLIENT` mới chỉ là một kết nối. Cấu hình **nghiệp vụ** của Client — copy ngược hay
-cùng chiều, hệ số volume, và quan trọng nhất là `open_route` — nằm ở một dòng riêng trong bảng
-`client_account`. Không có dòng này thì `anh-xa-symbol` báo `Khong co client CL-01` và không có
-lệnh nào copy được.
+Sau khi cập nhật:
 
 ```powershell
-& $py -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI
+.\scripts\kiem-tra.ps1                                     # mục 4b phải xanh (không còn tiến trình chạy code cũ)
+.\.venv\Scripts\python.exe -m bridge.admin liet-ke         # agent ONLINE lại (clicker cần ~10-45 giây)
+.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING # Bridge khởi động lại luôn về PAUSED
 ```
 
-`--open-route UI` là mặc định và là điều bạn muốn: đường **mở** lệnh đi qua giao diện MT5 để deal
-ra `DEAL_REASON_CLIENT` (D-21), nên nó bắt buộc phải có một agent CLICKER. Đổi về `EA` thì lệnh mở
-đi bằng `OrderSend` và ra `DEAL_REASON_EXPERT`.
-
-Sửa về sau dùng `cau-hinh-client` (xem [RUNBOOK.md](RUNBOOK.md) mục 4), lệnh đó chỉ **sửa** chứ
-không tạo.
-
-### 4a. Muốn deal ĐÓNG trên tài khoản **Master** cũng mang `CLIENT` (tuỳ chọn, D-21c)
-
-Mặc định lệnh đóng vị thế Master đi `OrderSend` của EA, nên deal mang `EXPERT`. Bật đường giao diện
-cho Master chỉ cần khi **bên kiểm tra nhìn cả tài khoản Master**.
-
-Cái giá là **một tiến trình clicker nữa** lái terminal Master, và từ đó terminal Master phải luôn mở
-Toolbox ở tab **Trade** — y hệt điều kiện bên Client.
-
-Cách dễ nhất: chạy `scripts\tro-ly.ps1` và trả lời **có** ở câu hỏi *"Bat duong DONG phia Master qua
-giao dien?"*. Trợ lý tự tạo agent, **ghi token thẳng vào mục `[clicker_master]`** của `config.toml`,
-đăng ký tác vụ `ClickerMaster`, rồi bật cấu hình. **Bạn không phải chạm vào token lần nào.**
-
-Làm tay thì ba bước:
+**Nếu script in cảnh báo đỏ `ea/ thay doi`:** biên dịch lại EA, chép `.ex5` mới vào
+`MQL5\Experts` của từng terminal (như A3), rồi **gỡ EA khỏi chart và gắn lại** với token cũ (đổi
+khung thời gian không nạp lại `.ex5`). Biên dịch không cần mở MetaEditor:
 
 ```powershell
-& $py -m bridge.admin them-agent AG-CLICKER-MASTER --role CLICKER --magic 770001 --login <so-tk-Master>
-# chep token vao muc [clicker_master] cua config.toml (token, account_login, terminal_title)
-& $py -m bridge.admin cau-hinh-master --clicker-agent AG-CLICKER-MASTER --close-route UI
-& C:\CopyBridge\scripts\tao-dich-vu.ps1 -AccountLoginMaster <so-tk-Master> -TerminalTitleMaster "<tieu-de>"
+& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
+& "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"
 ```
 
-Token là **danh tính**, không phải thủ tục: Bridge tìm agent bằng token rồi mới đối chiếu vai trò và
-số tài khoản. Hai clicker dùng chung một token thì Bridge chỉ giữ một kết nối cho danh tính đó, và
-một lệnh đóng dành cho Client có thể được bấm trên terminal Master.
-
----
-
-## 5. Đăng ký dịch vụ và tác vụ
+**Chạy lại clicker bằng tay** (khi nghi clicker chưa nạp code mới):
 
 ```powershell
-C:\CopyBridge\scripts\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin <so-tai-khoan-Client> -TerminalTitle "<so-tai-khoan-Client>"
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Stop-ScheduledTask
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Start-ScheduledTask
 ```
 
-Script sẽ hỏi mật khẩu của tài khoản autologon. Nhập vào thì dịch vụ chạy bằng chính tài khoản đó
-— khuyến nghị, vì khi đó dịch vụ, clicker, tác vụ bảo trì và lệnh bạn gõ tay đều cùng một danh
-tính trên cùng file SQLite. Bỏ trống thì dịch vụ chạy bằng LocalSystem và script tự cấp quyền
-Modify cho bạn trên thư mục dự án.
+**`git pull` hỏng vì có sửa cục bộ:** script dừng và in `git status`. Script không tự `stash` hay
+`reset`. `config.toml`, `data\`, `logs\` nằm ngoài git nên không bao giờ gây xung đột.
 
-Nó tạo bốn thứ:
+## B2. Lùi về bản cũ
 
-| Tên | Loại | Việc |
-|---|---|---|
-| `CopyBridge` | Windows Service (NSSM) | Bridge + dashboard, tự bật khi máy khởi động |
-| `\CopyBridge\Clicker` | Scheduled Task khi đăng nhập | clicker, trễ 90 giây cho MT5 nạp xong chart |
-| `\CopyBridge\BaoTri` | Scheduled Task hằng ngày 03:00 | retention + sao lưu + kiểm chứng bản sao lưu |
-| `\CopyBridge\TinhHinh` | Scheduled Task mỗi giờ | `tinh-hinh`; xem cột *Last Run Result* |
+Script in sẵn commit cũ ở cuối lần cập nhật.
 
-Sau khi đăng ký, script **tự chạy bài kiểm** mà RUNBOOK mục 6 để trống: giết tiến trình Bridge,
-chờ, rồi xác nhận dịch vụ tự bật lại và `run_mode` trở về `PAUSED`.
+**Bản mới không có migration** (không đổi database) — chỉ cần:
 
-Gỡ hết: `C:\CopyBridge\scripts\tao-dich-vu.ps1 -GoBo`
+```powershell
+git -C C:\CopyBridge checkout <commit-cu>
+.\scripts\cai-dat.ps1 -CapNhat -BoQuaGit
+```
 
-> **Mức toàn vẹn của clicker phải ≥ của MT5.** MT5 chạy "Run as administrator" mà clicker chạy
-> thường thì UIPI chặn hết window message: `PostMessage` trả về thành công nhưng **không có gì xảy
-> ra**. Hoặc cả hai đều thường, hoặc cả hai đều nâng quyền.
+`-BoQuaGit` là bắt buộc ở đây: sau `checkout` một commit, `git pull` không chạy được. Khi muốn quay
+lại bản mới nhất: `git -C C:\CopyBridge checkout main` rồi `.\scripts\cai-dat.ps1 -CapNhat`.
 
----
+**Bản mới đã chạy migration** — phải phục hồi database từ bản sao lưu tạo **trước** lần cập nhật
+(`data\backup\bridge-<ngày-giờ>.db`):
 
-## 6. MT5 và EA
+```powershell
+Stop-Service CopyBridge
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Stop-ScheduledTask
+Copy-Item data\bridge.db data\bridge-hong.db
+Copy-Item data\backup\bridge-<ngay-gio>.db data\bridge.db -Force
+Remove-Item data\bridge.db-wal, data\bridge.db-shm -ErrorAction SilentlyContinue   # BẮT BUỘC
+git checkout <commit-cu>
+.\scripts\cai-dat.ps1 -CapNhat -BoQuaGit
+```
 
-> **Bridge phải đang chạy trước khi bạn gắn EA.** Mục 5 ở trên là thứ khởi động nó. EA gắn lên
-> chart khi chưa có ai nghe cổng `8787` sẽ chỉ ngồi thử kết nối, và không có gì lên `ONLINE`.
-> Chạy tay ở một cửa sổ khác cũng được: `.venv\Scripts\python.exe -m bridge`.
+Không xoá `-wal`/`-shm` là trộn database của hai thời điểm. Mọi thứ xảy ra sau bản sao lưu (cặp mới,
+lệnh mới) không còn trong sổ — đối chiếu tay với terminal.
 
-Script không làm hộ phần này.
+## B3. Bật thêm tính năng trên hệ thống đang chạy
 
-1. Cài hai terminal MT5 (một cho Master, một cho Client). Đăng nhập cả hai, tài khoản phải ở chế
-   độ **Hedging**.
-2. Biên dịch EA, không cần mở giao diện MetaEditor:
+**Đóng phía Master qua giao diện** (deal đóng Master hiện *Placed by manual*) — cách dễ nhất là chạy
+lại trợ lý và trả lời **có** ở câu *Bat duong DONG phia Master qua giao dien?*; các bước đã xong sẽ
+tự bỏ qua:
+
+```powershell
+.\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge
+```
+
+Kiểm sau đó:
+
+```powershell
+Get-ScheduledTask -TaskPath '\CopyBridge\' | Select-Object TaskName, State   # có ClickerMaster
+.\.venv\Scripts\python.exe -m bridge.admin liet-ke                           # AG-CLICKER-MASTER ONLINE
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master                   # close_route UI
+```
+
+- Thiếu tác vụ `ClickerMaster`: `.\scripts\tao-dich-vu.ps1 -ChiTacVuClicker -AccountLoginMaster <so-tk-Master> -TerminalTitleMaster "<so-tk-Master>"`
+- Log clicker Master báo `ACCOUNT_MISMATCH`: `.\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER-MASTER --login <so-tk-Master>`
+
+**Đổi chiều copy, hệ số, đóng hai chiều:** các lệnh `cau-hinh-client` ở [A4](#a4-bật-các-tuỳ-chọn-copy).
+
+**Thêm symbol:** `.\.venv\Scripts\python.exe -m bridge.admin anh-xa-symbol CL-01 <symbol-Master> --client-symbol <symbol-Client>`
+(EA Client phải đang chạy, symbol có trong Market Watch). Nhớ: terminal Client chỉ copy symbol của
+chart đang gắn EA.
+
+## B4. Đổi tài khoản MT5
+
+```powershell
+$py = ".\.venv\Scripts\python.exe"
+& $py -m bridge.admin run-mode PAUSED
+& $py -m bridge.admin tinh-hinh                          # phải 0 cặp đang hedge
+& $py -m bridge.admin sua-agent AG-CLIENT  --login <so-tk-moi>
+& $py -m bridge.admin sua-agent AG-CLICKER --login <so-tk-moi>
+```
+
+Rồi sửa `account_login` và `terminal_title` trong mục `[clicker]` của `config.toml` (Notepad, lưu
+**UTF-8 không BOM**), chạy lại clicker (lệnh ở B1). Đổi tài khoản Master thì làm tương tự với
+`AG-MASTER`, `AG-CLICKER-MASTER` và mục `[clicker_master]`. Token giữ nguyên.
+
+## B5. Chuyển sang VPS mới, giữ nguyên dữ liệu
+
+1. Máy cũ: `run-mode PAUSED`, chờ 0 cặp đang hedge, rồi
+   `.\.venv\Scripts\python.exe -m bridge.admin sao-luu` và dừng hết:
    ```powershell
-   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeMaster.mq5" /log:"C:\CopyBridge\logs\compile.log"
-   & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"
+   .\scripts\tao-dich-vu.ps1 -GoBo
    ```
-3. Chép `.ex5` vào `MQL5\Experts` của từng terminal, gắn EA lên chart, điền `AgentToken`
-   (`BridgeHost` để `127.0.0.1`, `BridgePort` để `8787`).
-   **Mỗi terminal gắn EA trên ĐÚNG MỘT chart.** Hai chart cùng token thì hai bản EA đá nhau ra khỏi
-   Bridge mỗi ~1 giây — đã xảy ra thật 2026-09-12→15, bốn ngày, 388 nghìn alert, lệnh đóng gửi cho
-   Master có thể mất. Kiểm bằng menu **Window** (thấy mọi chart) và tab **Experts** (tên chart nằm
-   trong ngoặc, ví dụ `CopyBridgeMaster (ETHUSD.s,H1)` — chỉ được có **một** tên). Phía Client giữ EA
-   trên chart của **symbol đang copy** (hộp thoại New Order lấy symbol theo chart).
-4. **Khai địa chỉ Bridge vào danh sách cho phép**, trên **cả hai** terminal: Tools → Options →
-   Expert Advisors, tick **Allow WebRequest for listed URL** rồi thêm dòng `127.0.0.1`. MT5 chỉ
-   cho EA mở kết nối tới địa chỉ đã khai trước; chưa khai thì EA **không bao giờ lên `ONLINE`**
-   và triệu chứng giống hệt sai token. Không cần tick *Allow DLL imports*.
-5. **Bật nút Algo Trading trên cả hai terminal.**
+2. Chép sang máy mới: bản sao lưu vừa tạo trong `data\backup\` và `config.toml`.
+3. Máy mới: làm **A0** và **A1**, rồi thay database và cấu hình:
+   ```powershell
+   Copy-Item <ban-sao-luu>.db C:\CopyBridge\data\bridge.db -Force
+   Remove-Item C:\CopyBridge\data\bridge.db-wal, C:\CopyBridge\data\bridge.db-shm -ErrorAction SilentlyContinue
+   Copy-Item <config.toml-cu> C:\CopyBridge\config.toml -Force
+   ```
+4. Chạy **A2** (trợ lý thấy agent và client đã có, bỏ qua các bước đó — **đừng cấp lại token**),
+   gắn EA với **token cũ** (A3), rồi A5.
 
-> **Biên dịch lại thì phải GỠ EA khỏi chart rồi GẮN LẠI.** Đổi khung thời gian chỉ gọi lại
-> `OnInit` trên bản đã nạp trong bộ nhớ — MT5 **không** đọc lại `.ex5` từ đĩa. Dấu hiệu nạp đúng
-> bản mới: tab Experts hiện `CopyBridgeMaster khoi dong [co kha nang DONG lenh]`.
+Token nằm trong database (dạng hash) và `config.toml`, nên chép đủ hai thứ này thì EA và clicker
+dùng lại được token cũ. Mất token EA thì `cap-token` rồi dán lại vào EA.
 
-Client chỉ copy được **một symbol** cho mỗi terminal (B-01): hộp thoại New Order lấy symbol theo
-chart đang mở. Mở đúng chart đó và giữ nguyên.
+## B6. Cài lại sạch từ đầu
 
----
-
-## 7. Khai báo ánh xạ symbol
-
-**Đừng bỏ bước này.** Thiếu ánh xạ thì `find_symbol_map` trả `None` và **mọi lệnh Master bị bỏ qua
-trong im lặng** — người cài lần đầu dựng xong toàn hệ thống rồi ngồi nhìn không có gì xảy ra.
+Chỉ khi muốn **xoá hết lịch sử** (cặp, lệnh, alert):
 
 ```powershell
-& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
-& $py -m bridge.admin anh-xa-symbol CL-01          # xem những gì đã khai
+.\scripts\tao-dich-vu.ps1 -GoBo
+Rename-Item C:\CopyBridge C:\CopyBridge-cu-$(Get-Date -Format yyyyMMdd)
 ```
 
-Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
-tường minh chứ không đoán. Lệnh kiểm `symbol_spec` trước khi lưu, nên nó **cần EA Client đang
-chạy** và symbol đã kéo vào Market Watch — đó là lý do bước này nằm cuối, sau cả mục 5 và mục 6.
+Rồi làm lại **Phần A** từ A1. Token cũ mất hiệu lực — gắn lại EA với token mới.
 
 ---
 
-## 8. Việc mỗi lần đăng nhập vào VPS
+# Phần C — Vận hành hằng ngày
+
+**Mỗi lần đăng nhập VPS:**
 
 ```powershell
-C:\CopyBridge\scripts\kiem-tra.ps1
+cd C:\CopyBridge
+.\scripts\kiem-tra.ps1
 ```
 
-Chín mục kiểm; mã thoát bằng số mục hỏng. Mục quan trọng nhất là mục cuối — `bridge.admin
-tinh-hinh` — vì kênh cảnh báo ngoài đang **tắt có chủ đích** và đây là cách duy nhất bạn biết
-chuyện đã xảy ra. (Kênh Telegram có sẵn nhưng để trống: điền `telegram_token` và
-`telegram_chat_id` trong mục `[security]` của `config.toml` thì alert mức ERROR/CRITICAL sẽ được
-gửi ra. Nó **chưa từng được kiểm chứng bằng tin thật** — xem RUNBOOK mục 6.)
+Mục cuối là `tinh-hinh` — cách duy nhất biết chuyện đã xảy ra (không có kênh cảnh báo ngoài).
+Dashboard: `http://127.0.0.1:8080` (chỉ mở được trong VPS; mật khẩu trong `config.toml`).
 
-Rồi bật copy theo **đúng thứ tự ba bước** (RUNBOOK mục 3):
+**Sau mỗi lần VPS hoặc Bridge khởi động lại** — Bridge luôn về `PAUSED` (D-15), có chủ đích:
 
-1. Bridge đã chạy sẵn ở `PAUSED`. Backlog trong outbox của EA chảy vào và được ghi nhận `IGNORED`
-   — đây là cách sạch nhất để dọn hàng đợi mà không sinh lệnh nào.
-2. Kiểm **canary của clicker xanh** trên dashboard trước khi đi tiếp.
-3. Chờ 0 event `PENDING`, rồi mới đặt `RUNNING`.
+1. Kiểm nút **Algo Trading** xanh và Toolbox ở tab **Trade** trên **cả hai** terminal.
+2. `.\.venv\Scripts\python.exe -m bridge.admin liet-ke` — agent `ONLINE`.
+3. `.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING`
 
-Dashboard: `http://127.0.0.1:8080` (chỉ mở được từ trong VPS — đó là chủ đích của
-`host = "127.0.0.1"`). Ba thứ nhìn trước tiên: `run_mode`, canary của clicker, số finding đang chờ.
-
-**Phải bấm `RUNNING` bằng tay sau mỗi lần khởi động lại.** Dịch vụ tự bật lại **không** có nghĩa
-hệ thống đang copy lệnh.
-
----
-
-## 9. Cập nhật
-
-```powershell
-C:\CopyBridge\scripts\cai-dat.ps1 -CapNhat
-```
-
-Nó sao lưu database trước (`VACUUM INTO`, an toàn với WAL), ghi lại commit hiện tại, dừng dịch vụ,
-`git pull --ff-only`, cài lại gói, chạy bộ test, **nạp lại clicker**, bật lại dịch vụ. Nếu `ea/` có
-thay đổi thì nó in cảnh báo đỏ nhắc biên dịch lại và **gắn lại EA**.
-
-> **Luôn có `-CapNhat` trên máy đã cài.** Chạy `cai-dat.ps1` không có nó trên một bản đang chạy
-> vẫn `git pull` và vẫn chạy migration, nhưng **không** sao lưu, **không** dừng dịch vụ và **không**
-> nạp lại gì — code mới nằm trên đĩa, Bridge và clicker vẫn chạy code cũ, migration chạy ngay dưới
-> một Bridge đang `RUNNING`. Đã xảy ra thật trên VPS 2026-09-11. Từ bản script `2026-09-11`,
-> `cai-dat.ps1` **từ chối** chạy khi dịch vụ đang Running mà thiếu `-CapNhat`, và `kiem-tra.ps1`
-> mục 4b cảnh báo khi tiến trình nào chạy từ trước lần đổi code gần nhất.
->
-> Clicker là Scheduled Task chứ không phải dịch vụ, nên `-CapNhat` dừng tiến trình clicker cũ và
-> để `chay-clicker.ps1` tự bật lại bằng code mới (~10 giây), rồi chờ tối đa 45 giây xác nhận. Bản
-> script trước `2026-09-11` **không** làm việc này: clicker cũ nhận lệnh `CLOSE_UI` sẽ từ chối và
-> mọi lệnh đóng rơi về EA kèm alert CRITICAL.
-
-Đường lùi được in ra cuối: `git -C C:\CopyBridge checkout <commit-cũ>` rồi chạy lại.
-
-> **Cập nhật lên bản có đường ĐÓNG qua giao diện (migration `004`).** Client đã có sẵn **giữ
-> `close_route = EA`** — nâng cấp không tự đổi hành vi của Client nào đang chạy. Sau khi cập nhật
-> xong, bật bằng tay rồi xem lại:
->
-> ```powershell
-> cd C:\CopyBridge
-> .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI
-> .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01
-> ```
->
-> Hai điều kiện vận hành mới trên terminal Client: Toolbox **luôn bật** và **đứng ở tab Trade**
-> (B-14). Nếu MT5 trên VPS khác build với lúc đo (MT5 tự cập nhật), đo lại ctrlID bằng
-> `python -m clicker.ui.dump` trước khi tin đường đóng — xem `RUNBOOK.md` mục 5a.
->
-> Migration này dựng lại bảng `command` và là **một chiều**: lùi bản phải phục hồi từ bản sao lưu
-> và xoá cả `-wal` lẫn `-shm` (mục 9.8 của bản hướng dẫn HTML).
-
-Script **không tự `stash`, không tự `reset --hard`**. `git pull` hỏng vì có sửa cục bộ thì nó dừng
-và in `git status` cho bạn xử lý.
-
-> **Bốn tình huống bên dưới không có ở đây**, vì chúng cần nhiều bước và dễ làm hỏng dữ liệu.
-> Đọc chương 9 của
-> [HUONG-DAN-CUNG-VPS-SCRIPT.html](HUONG-DAN-CUNG-VPS-SCRIPT.html#cap-nhat):
->
-> - **Đừng cập nhật khi đang có cặp mở** (9.1) — cửa sổ an toàn là lúc `tinh-hinh` báo 0 cặp
->   hedge. Tạm dừng và chờ trước đã.
-> - **Bản mới đổi cấu trúc database** (9.4) — migration là một chiều, không có đường hạ cấp.
-> - **Bản mới thêm khoá cấu hình** (9.5) — script không bao giờ tự sửa `config.toml` của bạn.
-> - **Lùi bản sau khi migration đã chạy** (9.8, trường hợp B) — phải phục hồi từ bản sao lưu
->   và **xoá cả `-wal` lẫn `-shm`**, nếu không là trộn hai thời điểm khác nhau. `git checkout`
->   một mình **không đủ**.
-
----
-
-## 10. Những gì script KHÔNG làm được
-
-Sáu việc dưới đây in ra ở cuối mỗi lần chạy `cai-dat.ps1`, `tro-ly.ps1` và `kiem-tra.ps1`. Không làm = mất tiền.
-
-1. **Phiên RDP ngắt (B-08) — chưa ai chứng minh.** Toàn bộ đường mở lệnh dựa vào clicker điều
-   khiển giao diện MT5 bằng `PostMessage`. Lập luận "chạy được khi phiên RDP đã ngắt" chưa bao giờ
-   được đo trên VPS thật; `docs/BACKLOG.md` đánh dấu nó **chặn triển khai VPS**. Phải đo trước khi
-   tin: ngắt phiên RDP (đóng cửa sổ, **không** Sign out), mở lệnh trên Master, rồi kiểm **qua
-   database** xem cặp có được tạo không.
-2. **Algo Trading (B-09).** Đường **mở** phía Client đi qua giao diện nên **không cần** Algo
-   Trading; đường **đóng** đi qua EA nên **cần**. Terminal tắt Algo Trading vẫn mở lệnh bình
-   thường rồi mới hỏng lúc đóng — hỏng muộn nhất có thể. Bridge hiện **không nhìn thấy** trạng
-   thái này. Kiểm lại sau mỗi lần VPS khởi động lại hoặc MT5 tự cập nhật.
-3. **Phải bấm `RUNNING` bằng tay sau mỗi lần khởi động lại (D-15).**
-4. **Mỗi terminal Client chỉ copy được một symbol (B-01).**
-5. **MT5 và EA phải làm tay** — và biên dịch lại thì phải gỡ EA khỏi chart rồi gắn lại.
-6. **Mức toàn vẹn của clicker phải ≥ của MT5** (UIPI).
-
-Thêm một rủi ro không phải kỹ thuật: hai tài khoản mở vị thế ngược chiều, cùng symbol, cách nhau
-dưới một giây, **từ cùng một IP** là dấu vết rất dễ nhận. Nhiều broker cấm hoặc huỷ lợi nhuận từ
-mô hình này. Đây là rủi ro **điều khoản**, và nó không hiện ra trong bất kỳ log nào cho tới lúc
-tài khoản bị xử lý. Đọc điều khoản của cả hai broker.
-
----
-
-## 11. Sự cố khi cài
-
-| Hiện tượng | Nguyên nhân | Xử lý |
+| `run_mode` | Mở lệnh mới | Đồng bộ đóng |
 |---|---|---|
-| `Tai bo cai Python that bai` | VPS chặn mạng ra ngoài, hoặc proxy nội bộ | Tải tay bộ cài rồi chạy lại, hoặc trỏ `-UrlPython <link-nội-bộ>` |
-| `Bo cai Python ket thuc voi ma <n>` | Bộ cài silent bị chặn | Chạy tay file `.exe` trong `%TEMP%` để xem nó báo gì; nhớ tích **"Add python.exe to PATH"** |
-| Cài Python xong vẫn báo không gọi được | PATH trong tiến trình PowerShell hiện tại đã cũ | Đóng PowerShell, mở lại, chạy lại script |
-| `git clone that bai` | Repo private | `gh auth login` rồi `gh repo clone`, hoặc `-Repo "https://<PAT>@github.com/..."`, hoặc chép thư mục qua RDP rồi `-BoQuaGit` |
-| `Khong co client CL-01` | Chưa tạo dòng `client_account` | `them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER` (mục 4) |
-| `open_route = UI can clicker_agent_id` | Tạo client mà thiếu `--clicker-agent` | Tạo lại với `--clicker-agent AG-CLICKER` |
-| `.venv san co khong dung duoc` | Chép cả `.venv` qua RDP; đường dẫn tuyệt đối bên trong vẫn trỏ về máy cũ | Chạy lại với `-LamMoiVenv` |
-| `import bridge, clicker` thất bại | Gói cài không ở chế độ editable | `pyproject.toml` chỉ khai báo `packages = ["bridge"]`; phải `pip install -e .` |
-| Bridge từ chối khởi động, lỗi parse TOML | `config.toml` có BOM | Ghi lại bằng UTF-8 **không BOM** |
-| EA không bao giờ lên `ONLINE`, log EA báo lỗi kết nối | Chưa khai địa chỉ Bridge trong Tools → Options → Expert Advisors | Tick **Allow WebRequest for listed URL**, thêm `127.0.0.1` (mục 6 bước 4) |
-| Dịch vụ không lên | Xem `logs\service-err.log` | Thường là `config.toml` sai |
-| Dịch vụ không dừng sạch | `AppStopMethodConsole` bị đổi | Bridge chỉ dừng sạch qua sự kiện Ctrl+C; xem `tao-dich-vu.ps1` |
-| Task Clicker chạy mà không bấm được gì | `LogonType` sai, hoặc UIPI | `LogonType` phải là `Interactive`, không phải `S4U`/`Password`; và mức toàn vẹn clicker phải ≥ MT5 |
-| clicker thoát ngay, mã 2 | Thiếu token / số tài khoản | Điền mục `[clicker]` trong `config.toml` |
-| clicker thoát mã 3 | Đã có một clicker khác lái terminal đó | Đúng thiết kế. Tìm và tắt tiến trình kia |
+| `RUNNING` | có | có |
+| `PAUSE_NEW_ENTRIES` | không | có |
+| `PAUSED` | không | **không** — đóng một bên thì bên kia vẫn mở |
+| `EMERGENCY` | không | đóng tất cả |
+
+Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần trên demo trước khi cần.
+
+**Lệnh hay dùng** (`.\.venv\Scripts\python.exe -m bridge.admin ...`):
+
+| Lệnh | Việc |
+|---|---|
+| `tinh-hinh` | Có gì cần làm không |
+| `liet-ke` | Trạng thái agent |
+| `run-mode [RUNNING\|PAUSE_NEW_ENTRIES\|PAUSED]` | Xem / đặt chế độ |
+| `cau-hinh-client CL-01 [...]` | Xem / sửa cấu hình copy |
+| `cau-hinh-master [...]` | Xem / sửa đường đóng phía Master |
+| `anh-xa-symbol CL-01 [...]` | Xem / khai ánh xạ symbol |
+| `kiem-reason` | Mọi deal của bot mang `DEAL_REASON_CLIENT` |
+| `kiem-dong-sai [--ngay YYYY-MM-DD]` | Có lệnh nào bị đóng nhầm không |
+| `xac-nhan-alert --code <MA> --truoc <moc> [--that]` | Đánh dấu đã xem alert cũ |
+| `sao-luu` | Sao lưu ngay |
+| `cap-token <agent>` / `sua-agent <agent> --login N` | Cấp lại token / sửa số tài khoản |
+
+**Log:** `logs\bridge.log`, `logs\clicker.log`, `logs\clicker_master.log`, `logs\service-err.log`.
+
+**Không bao giờ** sửa database bằng tay, và không đưa token lên dòng lệnh hay ảnh chụp màn hình.
 
 ---
 
-## 12. Trước khi chuyển sang tài khoản thật
+## Những gì script KHÔNG làm được
 
-Xem [RUNBOOK.md](RUNBOOK.md) mục 8 và [KE-HOACH-CHAY-THAT.md](KE-HOACH-CHAY-THAT.md). Tóm tắt:
-chạy ổn định trên demo ít nhất một tuần, xong bài B-08 và B-09, đọc điều khoản của cả hai broker,
-bắt đầu bằng volume nhỏ nhất và một symbol duy nhất, và **thử nút dừng khẩn cấp một lần trên demo
-trước khi cần dùng tới nó**.
+Các script in danh sách này ở cuối mỗi lần chạy (`scripts\canh-bao.txt`). Không làm = có thể mất tiền.
+
+1. **Phiên RDP ngắt (B-08) chưa được đo chính thức.** Ngắt RDP bằng cách **đóng cửa sổ**, không
+   bao giờ *Sign out* (Sign out giết cả MT5 lẫn clicker).
+2. **Algo Trading** phải bật trên cả hai terminal — là lưới cuối khi clicker hỏng.
+3. **Bấm `RUNNING` bằng tay** sau mỗi lần khởi động lại.
+4. **Mỗi terminal Client chỉ copy một symbol** (B-01).
+5. **Cài MT5 và gắn EA phải làm tay**; biên dịch lại EA thì gỡ ra gắn lại.
+6. **Clicker và MT5 cùng mức quyền.**
+
+Rủi ro không phải kỹ thuật: hai tài khoản vào lệnh ngược chiều, cùng symbol, cách nhau dưới một giây,
+**cùng IP** — nhiều broker cấm. Đọc điều khoản của cả hai broker.
+
+## Sự cố khi cài
+
+| Hiện tượng | Xử lý |
+|---|---|
+| `Tai bo cai Python that bai` | VPS chặn mạng ra ngoài. Tải tay bộ cài hoặc `-UrlPython <link>` |
+| Cài Python xong vẫn báo không gọi được | Đóng PowerShell, mở lại, chạy lại script |
+| `Dich vu CopyBridge dang chay ... -CapNhat` | Máy đã có hệ thống: dùng `cai-dat.ps1 -CapNhat` (B1) |
+| `.venv san co khong dung duoc` | Chạy lại với `-LamMoiVenv` |
+| Bridge không khởi động, lỗi TOML | `config.toml` bị lưu có BOM — lưu lại UTF-8 không BOM. Xem `logs\service-err.log` |
+| EA không lên `ONLINE` | Thiếu `127.0.0.1` trong *Allow WebRequest*, sai token, hoặc Bridge chưa chạy |
+| Log EA `REPLACED`, alert `AGENT_DUPLICATE_CONNECTION` | EA gắn trên hai chart — gỡ bớt (A3) |
+| `Khong co client CL-01` | Chưa tạo client — chạy lại trợ lý |
+| Lệnh Master không copy | `run_mode` chưa `RUNNING`, thiếu ánh xạ symbol, hoặc clicker chưa `ONLINE` |
+| Clicker thoát mã 2 | Thiếu `token`/`account_login` trong `[clicker]` của `config.toml` |
+| Clicker thoát mã 3 / `Da co mot clicker khac` | Đã có clicker khác lái terminal đó — đúng thiết kế |
+| Log clicker `ACCOUNT_MISMATCH` | `sua-agent <agent> --login <so-dung>` |
+| Clicker chạy mà không bấm được gì | Lệch mức quyền với MT5, hoặc tác vụ không chạy kiểu *Interactive* |
+| Đóng lệnh báo `Tab Trade ... khong mo` | Chuyển Toolbox về tab Trade |
+| Clicker báo `Hop thoai khong dung hinh dang` | MT5 khác build — đo lại theo RUNBOOK mục 5a |
+
+## Trước khi chuyển sang tài khoản thật
+
+RUNBOOK mục 8. Tóm tắt: chạy ổn định trên demo ít nhất một tuần; đo B-08 (RDP ngắt) và TEST-19 (mất
+điện đột ngột); đọc điều khoản cả hai broker; bắt đầu bằng **một symbol** và volume nhỏ nhất.

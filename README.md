@@ -1,99 +1,68 @@
 # MT5 Copy Bridge
 
 Đồng bộ lệnh giữa hai tài khoản MetaTrader 5 để tạo và quản lý vị thế hedge theo cặp.
-Master mở lệnh thì Client mở lệnh tương ứng (cùng chiều hoặc ngược chiều, volume theo hệ số đã
-chuẩn hoá về bước lot của sàn Client); Master đóng thì Client luôn đóng đúng cặp. Chiều Client
-đóng ngược Master là tuỳ chọn, mặc định TẮT. Mỗi cặp có Pair ID riêng và tra cứu luôn theo
-`position_id`, không bao giờ theo tên symbol. Luật cứng: hệ thống được tự động **ĐÓNG**,
-không được tự động **MỞ**.
 
-Chỉ hỗ trợ tài khoản MT5 chế độ **Hedging**, chỉ Market Order BUY/SELL. Chạy trên Windows.
+- **Mở:** Master mở lệnh thì Client mở lệnh tương ứng — cùng chiều hoặc ngược chiều (`copy_mode`),
+  volume theo hệ số đã làm tròn về bước lot của sàn Client. Chiều mở **chỉ đi Master → Client**.
+- **Đóng:** Master đóng thì Client luôn đóng đúng cặp. Client đóng thì Master đóng theo khi bật
+  `can_close_master` (mặc định tắt).
+- Lệnh mở và đóng phía Client đi qua **giao diện MT5** (clicker), nên deal mang
+  `DEAL_REASON_CLIENT` (*Placed by manual*). Phía Master có thể bật tương tự cho lệnh đóng.
+- Mỗi cặp có Pair ID riêng, tra theo `position_id`, không bao giờ theo tên symbol.
+- Luật cứng: hệ thống được tự động **ĐÓNG**, không được tự động **MỞ** lại.
+
+Chỉ hỗ trợ tài khoản **Hedging**, Market Order BUY/SELL, Windows, tất cả trên một VPS.
 
 ```
-MT5 Master + EA ──TCP/NDJSON──┐
-                              ├──► BRIDGE (Python) ──► SQLite
-MT5 Client + EA ──TCP/NDJSON──┘        │
-                                       └──► Dashboard web (FastAPI + WebSocket)
+MT5 Master + EA ──┐                    ┌── Clicker Client (mở/đóng qua giao diện)
+                  ├── TCP ── BRIDGE ───┤
+MT5 Client + EA ──┘   (Python, SQLite) └── Clicker Master (đóng qua giao diện, tuỳ chọn)
+                              └── Dashboard web
 ```
 
-EA (MQL5) là agent mỏng: bắt sự kiện, thực thi lệnh, gửi heartbeat. Toàn bộ logic nghiệp vụ
-nằm ở Bridge.
+EA (MQL5) là agent mỏng: báo sự kiện, thực thi lệnh, gửi heartbeat. Toàn bộ logic nằm ở Bridge.
 
-## Cài đặt lên VPS — dùng script
+## Cài đặt
 
-Đây là đường cài chính thức. Script tự cài Python và git, lấy mã nguồn, tạo `.venv`, tạo
-`config.toml` với mật khẩu ngẫu nhiên, khởi tạo database và chạy bộ test:
+**[docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md)** — tài liệu cài đặt duy nhất:
 
-```powershell
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/main/scripts/cai-dat.ps1" `
-  -OutFile "$env:USERPROFILE\Desktop\cai-dat.ps1" -UseBasicParsing
-& "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge
-```
+- **Phần A** — VPS chưa có hệ thống: cài mới bằng `scripts\cai-dat.ps1` + `scripts\tro-ly.ps1`.
+- **Phần B** — VPS đã có hệ thống: cập nhật (`cai-dat.ps1 -CapNhat`), lùi bản, bật thêm tính năng,
+  đổi tài khoản, chuyển VPS, cài lại sạch.
+- **Phần C** — vận hành hằng ngày.
 
-Rồi chạy trợ lý, nó hỏi xác nhận từng bước cho tới lúc chạy được:
+## Trạng thái
 
-```powershell
-C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge
-```
+Phase 1–12 xong, chạy trên **demo** (VPS). Bộ test tự động: `pytest` (~770 test) + `ruff check .`.
 
-Chọn tài liệu phù hợp trong [bảng ở đầu docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md).
+> **Chưa dùng cho tiền thật** cho tới khi xong các điều kiện ở [RUNBOOK.md](docs/RUNBOOK.md) mục 8
+> — đáng kể nhất là đo **phiên RDP ngắt** (B-08) và **mất điện đột ngột** (TEST-19).
 
-## Cài tay để phát triển trên máy cá nhân
+## Phát triển trên máy cá nhân
 
-Chỉ dùng khi bạn sửa mã nguồn, **không** phải đường cài lên VPS (cần Python 3.11 trở lên):
+Cần Python 3.11+:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
-copy config.example.toml config.toml   # rồi điền giá trị thật
-```
-
-`config.toml` chứa bí mật và nằm trong `.gitignore`.
-
-## Chạy test
-
-```powershell
+copy config.example.toml config.toml   # rồi điền giá trị thật; file này nằm trong .gitignore
 pytest
 ruff check .
 ```
 
-Phase 1–3 và 6–9 test được không cần MT5 (dùng mock agent). Phase 4, 5, 10 cần terminal MT5
-ở chế độ **demo**.
-
-## Chạy Bridge
-
-Chạy được trên **demo**. Phase 1–8 xong, phase 9 (dashboard) phần lớn xong, phase 10
-(đóng gói và nghiệm thu) chưa bắt đầu — bảng trạng thái ở [PROGRESS.md](PROGRESS.md).
-
-Bridge luôn khởi động ở `PAUSED` và chỉ sang `RUNNING` khi có người bấm nút.
-
-> **Chưa dùng được cho tiền thật.** Kiểm toán độc lập 2026-09-06
-> ([docs/DANH-GIA-TONG-THE.md](docs/DANH-GIA-TONG-THE.md)) kết luận **NO-GO**.
-> Xem [docs/BACKLOG.md](docs/BACKLOG.md) để biết còn lại những gì.
+Phần lớn logic test được bằng mock agent, không cần MT5. EA và clicker cần terminal MT5 **demo**.
 
 ## Tài liệu
 
-Bốn tài liệu cài đặt, chọn một:
-
-- [docs/HUONG-DAN-CUNG-VPS-SCRIPT.html](docs/HUONG-DAN-CUNG-VPS-SCRIPT.html) — **khuyến
-  nghị.** Cài, vận hành và **cập nhật** trên một VPS bằng bộ script `scripts/`. Chi tiết nhất.
-- [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) — bản tra cứu ngắn của tài liệu trên, chỉ các
-  lệnh cần gõ. Đây là bản các script in ra khi có sự cố.
-- [docs/HUONG-DAN-CUNG-VPS.html](docs/HUONG-DAN-CUNG-VPS.html) — cài trên một VPS **bằng
-  tay**, kèm ví dụ và ảnh chụp màn hình. Đọc khi muốn hiểu từng bước đang làm gì.
-- [docs/HUONG-DAN-KHAC-VPS.html](docs/HUONG-DAN-KHAC-VPS.html) — Master và Client ở **hai**
-  VPS khác nhau, qua Tailscale. **Cách bố trí này chưa bao giờ được chạy thử.**
-
-Còn lại:
-
-- [docs/DECISIONS.md](docs/DECISIONS.md) — 20 quyết định thiết kế và lý do. **Đọc trước tiên.**
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — kiến trúc, ranh giới ba vai trò, luồng dữ liệu
-- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — quy ước code
-- [docs/GLOSSARY.md](docs/GLOSSARY.md) — thuật ngữ
-- [plan/](plan/) — kế hoạch triển khai chi tiết, 10 phase
-
-> **Cảnh báo:** đây là phần mềm giao dịch. Không dùng trên tài khoản thật trước khi chạy ổn định
-> trên demo ít nhất một tuần và đọc hết mục "Trước khi chuyển sang tài khoản thật" ở
-> `plan/10-dong-goi-nghiem-thu.md`.
+| Tài liệu | Dùng khi |
+|---|---|
+| [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) | Cài đặt, cập nhật, vận hành hằng ngày |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Giải thích cấu hình, lệnh vận hành, **xử lý sự cố** (mục 7), điều kiện chạy thật (mục 8) |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Các quyết định thiết kế D-01…D-31 và lý do — **đọc trước khi sửa hành vi** |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, ranh giới vai trò, luồng dữ liệu |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Bảng nghiệm thu TEST-01…TEST-31 và nguồn bằng chứng |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | Giới hạn đã biết và việc còn nợ (B-xx) |
+| [docs/CONVENTIONS.md](docs/CONVENTIONS.md), [docs/GLOSSARY.md](docs/GLOSSARY.md) | Quy ước code, thuật ngữ |
+| [plan/](plan/) | Kế hoạch triển khai theo phase (hồ sơ thiết kế, code có trích dẫn) |
+| [PROGRESS.md](PROGRESS.md) | Nhật ký tiến độ và các lần đo |

@@ -609,7 +609,7 @@ function in_buoc_tiep() {
  6. Moi lan dang nhap:
       $ThuMuc\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
 
- Chi tiet tung buoc: docs\CAI-DAT-VPS.md
+ Chi tiet tung buoc: docs\CAI-DAT-VPS.md (Phan A: cai moi, Phan B: may da co he thong)
 "@
     Write-Host ""
     # Duong chay duoc chinh docs/CAI-DAT-VPS.md khuyen nghi -- tai rieng cai-dat.ps1 roi chay de
@@ -623,7 +623,7 @@ function in_buoc_tiep() {
     if ($canhBao) {
         Get-Content $canhBao | ForEach-Object { Write-Host $_ -ForegroundColor Yellow }
     } else {
-        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 10 -- 6 viec script KHONG lam duoc."
+        canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 'Nhung gi script KHONG lam duoc'."
     }
     if (-not $CapNhat) {
         Write-Host ""
