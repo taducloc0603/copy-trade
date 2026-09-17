@@ -251,6 +251,15 @@ class Mt5UiDriver:
     #: chờ thêm 3 giây; cú nhấp lại thì mở. Nên khoảng chờ này chỉ để chắc chắn, không phải để hy
     #: vọng — giữ ngắn, vì nó cộng vào **mỗi** lệnh đóng.
     CHO_SAU_KHI_TREO_SEC = 0.15
+    #: Chờ hộp thoại khi cú nhấp **không** bị treo (message trả lời ngay). Đo trên VPS 2026-09-16/17:
+    #: hộp thoại thật luôn hiện trong 0,20–0,38 s; dòng không ra hộp thoại (dòng Balance, hoặc dòng
+    #: của vị thế vừa đóng mà MT5 chưa kịp xoá) tốn trọn khoảng chờ này. Log thật: 5 lần chờ vô ích
+    #: 2,09–2,12 s khi còn `PROBE_CLOSE_SEC` cho mọi dòng. Hộp thoại mở muộn hơn khoảng này vẫn bị bắt
+    #: ở vòng dò kế tiếp như hộp thoại sót — phép tìm thành bẩn, không kết luận sai.
+    CHO_KHONG_TREO_SEC = 1.0
+    #: Sau khi đóng hẳn: chờ tối đa ngần này cho MT5 xoá dòng của vị thế vừa đóng khỏi danh sách.
+    #: Đo VPS: đóng liên tiếp cách nhau ~0,8 s thì lệnh sau dò trúng dòng "xác chết" chưa bị xoá.
+    CHO_XOA_DONG_SEC = 0.8
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
@@ -457,6 +466,7 @@ class Mt5UiDriver:
                 # Đóng hẳn: MT5 bỏ dòng này, mọi dòng bên dưới dịch lên một. Đóng một phần thì
                 # dòng còn nguyên chỗ.
                 timdong.bo_dong(self._ban_do, request.position_id, row)
+                self._cho_xoa_dong(list_hwnd, so_dong)
             elif ket_qua.status != "ok":
                 # `unknown` / `rejected`: không biết danh sách giờ ra sao. Bỏ mục của vị thế này
                 # thay vì giữ một gợi ý có thể đã sai.
@@ -506,6 +516,21 @@ class Mt5UiDriver:
             f"Khong con vi the {request.position_id} trong {so_dong} dong (gap: {da_gap})",
             clicked=False,
         )
+
+    def _cho_xoa_dong(self, list_hwnd: int, so_dong_truoc: int) -> None:
+        """Chờ MT5 xoá dòng của vị thế vừa đóng hẳn, để lệnh kế tiếp không dò trúng dòng đó.
+
+        Không phải điều kiện đúng/sai: hết hạn thì chỉ log và đi tiếp. Dòng "xác chết" nếu còn thì
+        phép dò sau vẫn bỏ qua đúng (không ra hộp thoại), chỉ tốn thêm `CHO_KHONG_TREO_SEC`.
+        """
+        bat_dau = time.monotonic()
+        het = bat_dau + self.CHO_XOA_DONG_SEC
+        while time.monotonic() < het:
+            hien = tradetab.so_dong(list_hwnd)
+            if hien is None or hien < so_dong_truoc:
+                break
+            time.sleep(0.03)
+        log.info("Cho MT5 xoa dong vua dong: %.2fs", time.monotonic() - bat_dau)
 
     @staticmethod
     def _log_tim(position_id: int, phep_do: timdong.PhepDo) -> None:
@@ -562,8 +587,10 @@ class Mt5UiDriver:
             gui = tradetab.mo_hop_thoai_dong(list_hwnd, row, nhanh=(lan == 1))
             if not gui:
                 self._vua_treo = True
-            cho = (self.CHO_SAU_KHI_TREO_SEC if not gui and lan < so_lan
-                   else self.PROBE_CLOSE_SEC)
+            if not gui:
+                cho = self.CHO_SAU_KHI_TREO_SEC if lan < so_lan else self.PROBE_CLOSE_SEC
+            else:
+                cho = self.CHO_KHONG_TREO_SEC
             so_bo = cho_so_bo(pid, cho) or self._so_bo_du_phong(pid)
             log.info("Do dong %d lan %d: gui=%s, hop thoai %s sau %.2fs", row, lan, gui,
                      "MO" if so_bo is not None else "KHONG mo", time.monotonic() - bat_dau)

@@ -3109,3 +3109,13 @@ xong → Bridge ghi ack: **+11 ms, +12 ms, 0 ms** (trước: +1,27–1,82 s). Ma
 0,67–0,72 s giờ là phần lớn thời gian còn lại.
 - **Trả D-04 về `synchronous = FULL`** theo đề xuất, được người chủ dự án đồng ý: nguyên nhân thật là quét toàn bảng,
   fsync ~5 ms không đáng kể, nên không có lý do đánh đổi độ bền khi mất điện.
+
+### Đóng các lệnh cuối trong một loạt tốn thêm ~2 s (2026-09-17)
+
+Log clicker thật (VPS 16–17/9): **5 lần** `Do dong N lan 1: gui=True, hop thoai KHONG mo sau 2.09–2.12s`, đều ở cuối
+một loạt đóng liên tiếp (dòng 1/3 ×4, dòng 4/6 ×1) — **không** phải dòng Balance ở cuối, mà là dòng của vị thế vừa
+đóng mà MT5 chưa kịp xoá khi lệnh kế tới sau ~0,8 s. Mỗi lần dò trúng tốn trọn `PROBE_CLOSE_SEC = 2.0`.
+
+Sửa (`clicker/ui/driver.py`): (1) đóng hẳn xong thì chờ MT5 xoá dòng (đọc số dòng tới khi giảm, tối đa 0,8 s) rồi mới
+trả kết quả; (2) cú nhấp không treo mà không ra hộp thoại chỉ chờ `CHO_KHONG_TREO_SEC = 1.0` (hộp thoại thật luôn hiện
+trong 0,20–0,38 s); nhấp lại sau khi treo vẫn 2,0 s. Không đổi kiểm chứng ticket hay điều kiện `already_closed`.

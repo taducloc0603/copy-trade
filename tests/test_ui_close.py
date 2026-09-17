@@ -12,6 +12,7 @@ Không cần MT5: mọi thứ ở đây nói chuyện với hộp thoại giả 
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -215,6 +216,8 @@ def driver(monkeypatch: pytest.MonkeyPatch) -> Mt5UiDriver:
     # Mặc định MT5 xử lý kịp hàng đợi. Bài kiểm trường hợp không kịp tự đặt lại.
     monkeypatch.setattr(driver_mod.win32, "cho_xu_ly_xong", lambda _h, timeout_ms=0: True)
     d = Mt5UiDriver(terminal_title="538217", settle_sec=0)
+    # Danh sách giả không tự bớt dòng; bài kiểm việc chờ MT5 xoá dòng tự đặt lại.
+    d.CHO_XOA_DONG_SEC = 0
     d._bam = bam
     return d
 
@@ -862,3 +865,50 @@ def test_hop_thoai_sot_lai_duoc_huy_truoc_moi_dong(
 
     assert da_huy, "Phai huy hop thoai sot lai truoc khi do dong tiep theo"
     assert kq.status == "ok"
+
+
+# VPS 2026-09-16/17: 5 lan "Do dong N lan 1: gui=True, hop thoai KHONG mo sau 2.09s" o cuoi mot loat
+# dong lien tiep -- dong cua vi the vua dong chua bi MT5 xoa, hoac dong Balance.
+
+def test_dong_tra_loi_ngay_ma_khong_mo_hop_thoai_chi_cho_ngan(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, cho = _gia_lap_treo(monkeypatch, {}, [None, TICKET])
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+    assert cho[0] == driver.CHO_KHONG_TREO_SEC
+    assert driver.CHO_KHONG_TREO_SEC < driver.PROBE_CLOSE_SEC
+
+
+def test_nhap_lai_sau_khi_treo_van_cho_du_lau(driver: Mt5UiDriver,
+                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lần nhấp lại sau khi treo giữ khoảng chờ dài: đó là lần cuối trước khi bỏ dòng."""
+    _, cho = _gia_lap_treo(monkeypatch, {0: 5}, [TICKET, None])
+    driver.close(CloseRequest(position_id=TICKET))
+    assert cho[:2] == [driver.CHO_SAU_KHI_TREO_SEC, driver.PROBE_CLOSE_SEC]
+
+
+def test_dong_han_xong_thi_cho_mt5_xoa_dong_roi_moi_tra_ve(
+        driver: Mt5UiDriver, monkeypatch: pytest.MonkeyPatch) -> None:
+    tickets: list[int | None] = [111, TICKET, None]
+    _gia_lap_tim(monkeypatch, tickets)
+    driver.CHO_XOA_DONG_SEC = 1.0
+    lan_doc = {"n": 0}
+
+    def so_dong(_h: int) -> int:
+        lan_doc["n"] += 1
+        # Hai lần đầu (lúc tìm và lần đầu chờ) MT5 chưa xoá; lần thứ ba đã xoá.
+        return 3 if lan_doc["n"] < 3 else 2
+
+    monkeypatch.setattr(driver_mod.tradetab, "so_dong", so_dong)
+    bat_dau = time.monotonic()
+    assert driver.close(CloseRequest(position_id=TICKET)).status == "ok"
+    assert lan_doc["n"] == 3, "Phai doc lai so dong toi khi MT5 xoa dong vua dong"
+    assert time.monotonic() - bat_dau < 0.5, "Xoa xong la di tiep, khong cho het han"
+
+
+def test_dong_mot_phan_khong_cho_xoa_dong(driver: Mt5UiDriver,
+                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    _gia_lap_tim(monkeypatch, [TICKET, None])
+    driver.CHO_XOA_DONG_SEC = 1.0
+    bat_dau = time.monotonic()
+    assert driver.close(CloseRequest(position_id=TICKET, volume=0.01)).status == "ok"
+    assert time.monotonic() - bat_dau < 0.5, "Dong mot phan khong bo dong, khong duoc cho"
