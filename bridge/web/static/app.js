@@ -364,7 +364,13 @@ function khoiAgent(el) {
                                        terminal_title: tieuDe.value });
       tr.insertCell().appendChild(login);
       const o = tr.insertCell();
-      o.append(tieuDe, luu, nhan(UI.agent_terminal_hint, "canh-bao-nho"));
+      // O nhap va nut Luu nam CUNG MOT HANG: nut o dong duoi trong nhu mot nut roi, khong thay
+      // no thuoc ve o nao. Cau giai thich thi xuong dong duoi, vi no la chu chu khong phai
+      // thao tac.
+      const hangO = document.createElement("div");
+      hangO.className = "o-va-nut";
+      hangO.append(tieuDe, luu);
+      o.append(hangO, nhan(UI.agent_terminal_hint, "canh-bao-nho"));
     } else {
       tr.insertCell().textContent = a.account_login || "—";
       tr.insertCell().textContent = "";

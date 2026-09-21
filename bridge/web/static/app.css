@@ -112,3 +112,9 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
    khong bi nham voi nut luu ca khoi. */
 .hang-cau-hinh button { background: transparent; border-color: var(--vien); }
 .khoi-cau-hinh .dong-sai-lech { background: var(--nen); }
+
+/* O nhap + nut Luu cua chinh no tren cung mot hang. Nut nam duoi o nhap trong nhu mot nut roi,
+   khong ai doc ra duoc no luu cai gi. */
+.o-va-nut { display: flex; align-items: center; gap: 8px; }
+.o-va-nut input { margin: 0; }
+.o-va-nut button { white-space: nowrap; }
