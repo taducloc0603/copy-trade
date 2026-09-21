@@ -24,6 +24,8 @@ from bridge.ops import (
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
+    dat_lai_lich_su,
+    dat_lai_toan_bo,
     dat_terminal_clicker,
     don_ban_cu,
     don_log_cu,
@@ -1255,3 +1257,79 @@ def test_doi_rieng_so_tai_khoan_ma_tieu_de_cu_khong_khop_thi_bi_tu_choi(seeded: 
         dat_terminal_clicker(seeded, CLICKER_AGENT, login=538216)
     assert loi.value.ma == "TIEU_DE_KHONG_CO_SO_TK"
     assert seeded.get_agent(CLICKER_AGENT)["account_login"] == 538217
+
+
+# -- đặt lại hệ thống ---------------------------------------------------------------------------
+
+def _dong_het(db: Database) -> None:
+    """Đóng nốt vị thế Master của fixture: đặt lại chỉ chạy khi không còn gì đang mở."""
+    db.upsert_master_position(MASTER_POSITION_ID, agent_id=MASTER_AGENT, symbol="XAUUSD",
+                              direction="BUY", initial_volume=1.0, current_volume=0.0,
+                              status="CLOSED")
+
+
+def _co_du_lieu(db: Database) -> None:
+    """Một ít dữ liệu ở cả hai nhóm: lịch sử và cấu hình."""
+    db.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    pair_id = _cap(db, 9601, status="CLOSED")
+    db.create_alert("WARNING", "TEST", "thu nghiem", pair_id=pair_id)
+    _dong_het(db)
+
+
+def test_dat_lai_du_lieu_xoa_lich_su_va_giu_cau_hinh(seeded: Database, db_path: Path) -> None:
+    _co_du_lieu(seeded)
+    kq = dat_lai_lich_su(seeded, db_path)
+
+    assert seeded.query_all("SELECT 1 FROM pair") == []
+    assert seeded.query_all("SELECT 1 FROM master_position") == []
+    assert seeded.query_all("SELECT 1 FROM alert") == []
+    # Cấu hình còn nguyên: hệ thống chạy tiếp được ngay.
+    assert seeded.get_client_account(CLIENT_ID) is not None
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is not None
+    assert seeded.get_agent(MASTER_AGENT) is not None
+    assert kq["ban_sao"].startswith("bridge-")
+
+
+def test_dat_lai_toan_bo_xoa_ca_cau_hinh_nhung_GIU_agent_va_token(seeded: Database,
+                                                                  db_path: Path) -> None:
+    """Xoá agent chỉ để dọn sổ sách là tự bắt mình dán lại token cho cả hai EA."""
+    _co_du_lieu(seeded)
+    hash_cu = seeded.get_agent(MASTER_AGENT)["token_hash"]
+    seeded.set_config("ui_open_queue_max_len", "99")
+
+    dat_lai_toan_bo(seeded, db_path)
+
+    assert seeded.query_all("SELECT 1 FROM pair") == []
+    assert seeded.get_client_account(CLIENT_ID) is None
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+    assert seeded.get_agent(MASTER_AGENT)["token_hash"] == hash_cu
+    # Khoá hệ thống về đúng mặc định khai trong schema.sql, không phải về rỗng.
+    assert seeded.get_config("run_mode") == "PAUSED"
+    assert seeded.get_config_int("ui_open_queue_max_len", 0) == 20
+    assert seeded.get_config("close_degraded_fallback") == "EA"
+
+
+def test_dat_lai_bi_tu_choi_khi_con_cap_dang_mo(seeded: Database, db_path: Path) -> None:
+    """Xoá sổ sách trong lúc tiền còn trên sàn là cách chắc chắn nhất để không ai biết còn gì mở."""
+    _cap(seeded, 9602)
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_lai_lich_su(seeded, db_path)
+    assert loi.value.ma == "DAT_LAI_CON_DANG_MO"
+    assert seeded.query_all("SELECT 1 FROM pair")
+
+
+def test_dat_lai_bi_tu_choi_khi_chua_dung_dong_bo(seeded: Database, db_path: Path) -> None:
+    seeded.set_config("run_mode", "RUNNING")
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_lai_lich_su(seeded, db_path)
+    assert loi.value.ma == "DAT_LAI_CAN_PAUSED"
+
+
+def test_dat_lai_bi_tu_choi_khi_con_lenh_chua_xong(seeded: Database, db_path: Path) -> None:
+    pair_id = _cap(seeded, 9603, status="CLOSED")
+    _dong_het(seeded)
+    seeded.create_command("CMD-DANG-BAY", CLIENT_AGENT, "CLOSE", pair_id=pair_id,
+                          payload_json="{}")
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_lai_lich_su(seeded, db_path)
+    assert loi.value.ma == "DAT_LAI_CON_LENH_BAY"

@@ -110,7 +110,8 @@ def test_secret_section_khong_lo_gia_tri_qua_repr() -> None:
 # -- F-02: khong duoc phoi dashboard ra ngoai ma khong co mat khau ------------------------------
 
 def test_nghe_moi_interface_ma_khong_mat_khau_thi_tu_choi_khoi_dong(tmp_path: Path) -> None:
-    """Kiểm toán 2026-09-06 gọi `/api/emergency` không cookie và nó đóng 3 cặp.
+    """Kiểm toán 2026-09-06 gọi `/api/emergency` không cookie và nó đóng 3 cặp (đường đó nay đã
+    gỡ — D-33 — nhưng lý do bắt buộc mật khẩu thì không đổi).
 
     Cơ chế "không mật khẩu thì không bắt đăng nhập" là có chủ đích và giữ nguyên; thứ phải chặn
     là **tổ hợp** nghe ra ngoài + không mật khẩu.

@@ -63,6 +63,16 @@ LOI_CAU_HINH = {
                       "chỉ thuộc về một Client — dùng chung là mỗi lệnh Master sinh hai lệnh mở "
                       "trên cùng terminal đó."),
     "THIEU_MA": "Thiếu mã. Điền mã client hoặc tên agent.",
+    "DAT_LAI_CAN_PAUSED": "Đang ở chế độ {run_mode}. Dừng toàn bộ đồng bộ trước khi đặt lại.",
+    "DAT_LAI_CON_DANG_MO": ("Còn {so_cap} cặp và {so_vi_the} vị thế Master đang mở. Xoá sổ "
+                            "sách trong lúc tiền còn nằm trên sàn là cách chắc chắn nhất để "
+                            "không ai biết còn gì đang mở."),
+    "DAT_LAI_CON_LENH_BAY": ("Còn {so_lenh} lệnh chưa xong. Chờ chúng kết thúc rồi hãy đặt "
+                             "lại — xoá giữa lúc một lệnh đang bay để lại một ack không còn "
+                             "chỗ để ghi."),
+    "CUM_TU_SAI": "Gõ chưa đúng cụm xác nhận.",
+    "KIEU_DAT_LAI_LA": "Kiểu đặt lại {kieu} không hợp lệ.",
+    "KHONG_TIM_THAY_MAC_DINH": "Không tìm thấy câu gieo mặc định trong schema.sql.",
     "HE_SO_KHONG_DUONG": "Hệ số volume phải lớn hơn 0, nhận được {gia_tri}.",
     "CHIEU_COPY_LA": "Chiều copy {gia_tri} không hợp lệ.",
     "DUONG_LA": "Giá trị {gia_tri} không hợp lệ cho {truong}.",
@@ -162,11 +172,22 @@ UI = {
     "btn_pause_new": "Tạm dừng lệnh mới",
     "btn_stop_sync": "Dừng toàn bộ đồng bộ",
     "btn_resume": "Bắt đầu copy",
-    "btn_emergency": "Đóng khẩn cấp tất cả",
+
     "confirm_stop_sync": "Dừng toàn bộ đồng bộ sẽ bỏ rơi các cặp đang chạy. Tiếp tục?",
-    "confirm_emergency": "Gõ đúng chuỗi dưới đây để đóng toàn bộ cặp đang quản lý:",
-    "emergency_phrase": "DONG TAT CA",
-    "emergency_wrong": "Chuỗi xác nhận không đúng. Không có lệnh nào được gửi.",
+    "reset_title": "Đặt lại hệ thống",
+    "reset_hint": ("Chỉ làm được khi đang dừng đồng bộ, không còn cặp hay vị thế Master nào mở, "
+                   "và không còn lệnh nào chưa xong. Database được sao lưu trước khi xoá."),
+    "btn_reset_data": "Đặt lại dữ liệu (giữ cấu hình)",
+    "btn_reset_all": "Đặt lại toàn bộ (kể cả cấu hình)",
+    "reset_phrase_data": "DAT LAI DU LIEU",
+    "reset_phrase_all": "DAT LAI TAT CA",
+    "confirm_reset_data": ("Xoá toàn bộ lịch sử giao dịch: cặp lệnh, vị thế Master, event, lệnh đã "
+                           "gửi, cảnh báo, sai lệch. Giữ agent, client, ánh xạ symbol và khoá hệ "
+                           "thống, nên hệ thống chạy tiếp được ngay. Gõ đúng cụm dưới đây:"),
+    "confirm_reset_all": ("Xoá lịch sử giao dịch VÀ cấu hình nghiệp vụ: client, ánh xạ symbol, "
+                          "khoá hệ thống về mặc định. Agent và token được giữ, nên không phải dán "
+                          "lại token vào EA. Gõ đúng cụm dưới đây:"),
+    "reset_done": "Đã đặt lại. Bản sao lưu: {ban_sao}",
 
     "findings_title": "Sai lệch cần xử lý",
     "findings_safe": "An toàn — khắc phục chỉ gồm đóng lệnh hoặc sửa sổ sách",

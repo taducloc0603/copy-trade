@@ -32,6 +32,8 @@ from bridge.ops import (
     LoiCauHinh,
     cap_token,
     dat_duong_dong_master,
+    dat_lai_lich_su,
+    dat_lai_toan_bo,
     dat_terminal_clicker,
     khai_anh_xa,
     sua_client,
@@ -48,9 +50,9 @@ log = get_logger(__name__)
 
 STATIC = Path(__file__).parent / "static"
 
-#: Chuỗi phải gõ đúng để đóng khẩn cấp. **Cố ý không dấu**: bắt gõ tiếng Việt có dấu trong lúc
-#: hoảng, với bộ gõ có thể đang ở chế độ khác, là tự tạo thêm rắc rối.
-EMERGENCY_PHRASE = UI["emergency_phrase"]
+#: Chuỗi phải gõ đúng để đặt lại. **Cố ý không dấu**: một cụm có dấu sẽ phụ thuộc vào bộ gõ đang
+#: ở chế độ nào, và hai cụm **khác nhau** để không ai vừa định xoá dữ liệu lại xoá luôn cấu hình.
+CUM_DAT_LAI = {"lich_su": UI["reset_phrase_data"], "toan_bo": UI["reset_phrase_all"]}
 
 WS_PUSH_SEC = 1.0
 
@@ -235,23 +237,31 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         log.info("Dashboard doi run_mode sang %s", mode)
         return {"ok": True, "mode": mode}
 
-    @app.post("/api/emergency")
-    async def api_emergency(request: Request, sid: str | None = Cookie(None)) -> Any:
-        """Đóng khẩn cấp — chỉ chạy khi gõ đúng chuỗi xác nhận."""
+    @app.post("/api/dat_lai")
+    async def api_dat_lai(request: Request, sid: str | None = Cookie(None)) -> Any:
+        """Đặt lại hệ thống. Hai mức, và cả hai đều bắt gõ đúng một cụm xác nhận riêng.
+
+        Ràng buộc nằm ở `ops`: phải đang `PAUSED`, không còn cặp hay vị thế Master đang mở, không
+        còn lệnh nào chưa xong — và sao lưu trước khi xoá.
+        """
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
-        if (body.get("phrase") or "").strip() != EMERGENCY_PHRASE:
-            log.warning("Bam dong khan cap nhung chuoi xac nhan sai, khong lam gi")
-            return JSONResponse({"error": "wrong_phrase", "message": UI["emergency_wrong"]},
-                                status_code=400)
-        dashboard.db.set_config("run_mode", "EMERGENCY")
-        # Bao ra so lenh da gui cho TUNG VE. Ban cu tra `len(pairs)` — so cap duoc xet — nen no
-        # bao "closed: 3" ke ca khi khong dong duoc gi, va che mat viec phia Master bi bo qua.
-        so = {"client": 0, "master": 0}
-        if dashboard.processor is not None:
-            so = await dashboard.processor.closing.emergency_close_all()
-        return {"ok": True, "closed": so["client"] + so["master"], **so}
+        kieu = body.get("kieu")
+        if kieu not in CUM_DAT_LAI:
+            return _tra_loi(LoiCauHinh("KIEU_DAT_LAI_LA", kieu=kieu))
+        if (body.get("phrase") or "").strip() != CUM_DAT_LAI[kieu]:
+            log.warning("Bam dat lai (%s) nhung cum xac nhan sai, khong lam gi", kieu)
+            return _tra_loi(LoiCauHinh("CUM_TU_SAI"))
+        ham = dat_lai_lich_su if kieu == "lich_su" else dat_lai_toan_bo
+        try:
+            kq = ham(dashboard.db)
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        log.warning("Dashboard dat lai (%s): %s", kieu, kq["da_xoa"])
+        return {"ok": True, "kieu": kieu, **kq}
 
     @app.post("/api/findings/{finding_id}/accept")
     async def api_accept(finding_id: int, sid: str | None = Cookie(None)) -> Any:

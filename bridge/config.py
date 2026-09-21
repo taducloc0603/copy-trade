@@ -161,8 +161,9 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
 
     # Không mật khẩu thì `Dashboard.hop_le()` cho qua MỌI request, kể cả không cookie — đó là
     # lựa chọn có ý thức khi chỉ nghe loopback. Nhưng mặc định cũ là `host = "0.0.0.0"` cộng mật
-    # khẩu rỗng, tức làm đúng theo RUNBOOK sẽ ra một nút đóng khẩn cấp không khoá. Kiểm toán
-    # 2026-09-06 gọi thẳng `/api/emergency` không cookie và nó đóng 3 cặp (F-02).
+    # khẩu rỗng, tức làm đúng theo RUNBOOK sẽ ra một dashboard không khoá. Kiểm toán 2026-09-06
+    # gọi thẳng `/api/emergency` không cookie và nó đóng 3 cặp (F-02). Endpoint đó nay đã gỡ
+    # (D-33), nhưng `run_mode` và mọi nút Lưu cấu hình vẫn nằm sau cùng một cánh cửa.
     if not _la_loopback(host) and not str(security_raw.get("dashboard_password") or "").strip():
         raise ConfigError(
             f"bridge.host = {host!r} nghe tren moi interface nhung "

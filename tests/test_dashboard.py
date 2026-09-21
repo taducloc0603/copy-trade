@@ -25,7 +25,7 @@ from bridge.db.repo import Database
 from bridge.labels_vi import UI
 from bridge.protocol.auth import verify_token
 from bridge.web import views
-from bridge.web.app import EMERGENCY_PHRASE, Dashboard, tao_app
+from bridge.web.app import CUM_DAT_LAI, Dashboard, tao_app
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT
 
 MAT_KHAU = "mat-khau-thu-nghiem"
@@ -90,24 +90,23 @@ async def client(seeded_web: Database) -> AsyncIterator[httpx.AsyncClient]:
 
 # -- nút nguy hiểm ----------------------------------------------------------------------------
 
-async def test_dong_khan_cap_khong_lam_gi_khi_go_sai_chuoi(client: httpx.AsyncClient,
-                                                     seeded_web: Database) -> None:
-    """Ma sát cao nhất dành cho hành động nguy hiểm nhất."""
+async def test_khong_con_duong_dong_khan_cap_nao_tren_dashboard(client: httpx.AsyncClient,
+                                                                seeded_web: Database) -> None:
+    """Đóng khẩn cấp đã rời khỏi dashboard hẳn — cả nút lẫn endpoint (D-33).
+
+    Vẫn đóng tất cả được bằng `bridge.admin run-mode EMERGENCY`; cái bỏ đi là một nút đóng sạch
+    vị thế nằm ngay trên trang.
+    """
     _cap(seeded_web, 900001)
-    truoc = seeded_web.get_config("run_mode")
-
-    r = await client.post("/api/emergency", json={"phrase": "dong tat ca"})   # sai hoa/thuong
-
-    assert r.status_code == 400
-    assert r.json()["error"] == "wrong_phrase"
-    assert seeded_web.get_config("run_mode") == truoc
+    r = await client.post("/api/emergency", json={"phrase": "DONG TAT CA"})
+    assert r.status_code == 404
     assert not seeded_web.query_all("SELECT 1 FROM command"), "Khong duoc sinh command nao"
 
 
-async def test_dong_khan_cap_chuoi_xac_nhan_khong_dau(client: httpx.AsyncClient) -> None:
-    """Bắt gõ tiếng Việt có dấu trong lúc hoảng, với bộ gõ đang ở chế độ khác, là tự tạo rắc rối."""
-    assert EMERGENCY_PHRASE.isascii()
-    assert EMERGENCY_PHRASE == "DONG TAT CA"
+async def test_cum_xac_nhan_dat_lai_khong_dau_va_khac_nhau(client: httpx.AsyncClient) -> None:
+    """Cụm có dấu thì phụ thuộc bộ gõ; hai cụm giống nhau thì nhầm mức này sang mức kia."""
+    assert all(cum.isascii() for cum in CUM_DAT_LAI.values())
+    assert CUM_DAT_LAI["lich_su"] != CUM_DAT_LAI["toan_bo"]
 
 
 async def test_doi_run_mode_sang_gia_tri_la_bi_tu_choi(client: httpx.AsyncClient,
@@ -820,3 +819,54 @@ def test_nut_doi_che_do_nam_tren_thanh_tren_cung(project_root) -> None:
     for nut in ("nut-pause-new", "nut-stop-sync", "nut-resume"):
         assert nut in thanh, nut
     assert "nut-emergency" not in thanh
+    assert "nut-emergency" not in html, "Nut dong khan cap da duoc go khoi dashboard (D-33)"
+
+
+async def test_dat_lai_tu_dashboard_can_dung_cum_xac_nhan(client: httpx.AsyncClient,
+                                                          seeded_web: Database,
+                                                          tmp_path: Path) -> None:
+    """Gõ sai cụm thì không xoá gì — ma sát đặt đúng chỗ hành động không lùi được."""
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    _cap(seeded_web, 900002, status="CLOSED")
+    # Đặt lại chỉ chạy khi không còn gì đang mở — kể cả vị thế Master mà `_cap` tạo ra.
+    seeded_web.upsert_master_position(900002, agent_id=MASTER_AGENT, symbol="XAUUSD",
+                                      direction="BUY", initial_volume=1.0, current_volume=0.0,
+                                      status="CLOSED")
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/dat_lai", json={"kieu": "lich_su", "phrase": "dat lai du lieu"})
+        assert r.status_code == 400
+        assert r.json()["error"] == "CUM_TU_SAI"
+        assert seeded_web.query_all("SELECT 1 FROM pair")
+
+        r = await c.post("/api/dat_lai",
+                         json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
+        assert r.status_code == 200, r.text
+    assert seeded_web.query_all("SELECT 1 FROM pair") == []
+    assert seeded_web.get_client_account(CLIENT_ID) is not None
+
+
+async def test_dat_lai_toan_bo_tu_dashboard_giu_agent(client: httpx.AsyncClient,
+                                                      seeded_web: Database,
+                                                      tmp_path: Path) -> None:
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/dat_lai",
+                         json={"kieu": "toan_bo", "phrase": CUM_DAT_LAI["toan_bo"]})
+        assert r.status_code == 200, r.text
+    assert seeded_web.get_client_account(CLIENT_ID) is None
+    assert seeded_web.get_agent(MASTER_AGENT) is not None
+
+
+async def test_dat_lai_doi_dang_nhap_va_doi_mat_khau_dashboard(seeded_web: Database,
+                                                               tmp_path: Path) -> None:
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:          # chưa đăng nhập
+        r = await c.post("/api/dat_lai",
+                         json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
+        assert r.status_code == 401
+    async with _http(tao_app(Dashboard(seeded_web))) as c:   # không có mật khẩu
+        r = await c.post("/api/dat_lai",
+                         json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
+        assert r.status_code == 403

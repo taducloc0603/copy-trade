@@ -447,9 +447,23 @@ Dashboard: `http://127.0.0.1:8080` (chỉ mở được trong VPS; mật khẩu 
 | `RUNNING` (nút **Bắt đầu copy**) | có | có |
 | `PAUSE_NEW_ENTRIES` (nút **Tạm dừng lệnh mới**) | không | có |
 | `PAUSED` (nút **Dừng toàn bộ đồng bộ**) | không | **không** — đóng một bên thì bên kia vẫn mở |
-| `EMERGENCY` (nút **Đóng khẩn cấp**, cuối tab Tổng quan) | không | đóng tất cả |
+| `EMERGENCY` (**chỉ đặt bằng dòng lệnh**) | không | đóng tất cả |
 
-Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần trên demo trước khi cần.
+Dừng khẩn cấp **không còn nút trên dashboard** (D-33):
+`.\.venv\Scripts\python.exe -m bridge.admin run-mode EMERGENCY`. Thử một lần trên demo trước khi
+cần tới nó.
+
+**Đặt lại hệ thống** nằm ở cuối tab Cấu hình, hai mức, mỗi mức một cụm xác nhận phải gõ tay:
+
+| Nút | Xoá | Giữ |
+|---|---|---|
+| **Đặt lại dữ liệu** (`DAT LAI DU LIEU`) | cặp lệnh, vị thế Master, event, lệnh đã gửi, cảnh báo, sai lệch | agent, token, client, ánh xạ symbol, khoá hệ thống |
+| **Đặt lại toàn bộ** (`DAT LAI TAT CA`) | như trên, **cộng** client và ánh xạ symbol; khoá hệ thống về mặc định | agent và token — nên **không** phải dán lại token vào EA |
+
+Cả hai chỉ chạy khi `run_mode = PAUSED`, không còn cặp hay vị thế Master nào mở, và không còn lệnh
+nào chưa xong. Database được **sao lưu trước khi xoá** (`data\backup\bridge-<ngày-giờ>.db`) — đó là
+đường lùi duy nhất. Dòng lệnh tương đương:
+`bridge.admin dat-lai du-lieu --xac-nhan "DAT LAI DU LIEU"`.
 
 **Lệnh hay dùng** (`.\.venv\Scripts\python.exe -m bridge.admin ...`):
 
@@ -461,6 +475,8 @@ Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần 
 | `cau-hinh-client CL-01 [...]` | Xem / sửa cấu hình copy |
 | `cau-hinh-client CL-01 --hoat-dong tat` | Ngừng copy lệnh mới cho Client đó (cặp đang mở vẫn đóng theo Master) |
 | `xoa-client CL-02` | Xoá hẳn một Client — chỉ khi nó chưa có cặp lệnh nào |
+| `dat-lai du-lieu\|tat-ca --xac-nhan "<cụm>"` | Đặt lại hệ thống (sao lưu trước khi xoá) |
+| `run-mode EMERGENCY` | Đóng tất cả — đường duy nhất sau khi gỡ nút khỏi dashboard |
 | `cau-hinh-master [...]` | Xem / sửa đường đóng phía Master |
 | `anh-xa-symbol CL-01 [...]` | Xem / khai ánh xạ symbol |
 | `kiem-reason` | Mọi deal của bot mang `DEAL_REASON_CLIENT` |

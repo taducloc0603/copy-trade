@@ -556,3 +556,35 @@ vẫn nằm trên sàn. Đó không phải một khoá cấu hình, đó là m�
 mọi request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải
 loopback — nên trên đúng cấu hình đang dùng, một nút cấp token sẽ là đường phát hành danh tính
 không cần xác thực. Sửa cấu hình thì vẫn cho: hỏng thì sửa lại được, còn token là danh tính.
+
+### D-33 — Có nút đặt lại hai mức trên dashboard; gỡ nút đóng khẩn cấp
+
+**Đặt lại.** Sau mỗi đợt thử, sổ sách đầy cặp lệnh và cảnh báo của những lần đã xong, và cách duy
+nhất để dọn là `UPDATE`/`DELETE` tay vào SQLite — đúng thứ dự án cấm. Nên có hai nút, vì có hai
+câu hỏi khác nhau:
+
+* **Đặt lại dữ liệu** — "bắt đầu đếm lại". Xoá lịch sử giao dịch, giữ agent, client, ánh xạ symbol
+  và khoá hệ thống; hệ thống chạy tiếp ngay sau đó.
+* **Đặt lại toàn bộ** — "cấu hình lại từ đầu". Xoá thêm client và ánh xạ, đưa khoá hệ thống về
+  mặc định khai trong `schema.sql`.
+
+**Agent và token được giữ ở cả hai mức.** Xoá chúng chỉ để dọn sổ sách là tự bắt mình mở giao diện
+MT5 dán lại token cho hai EA — việc tay chân duy nhất trong cả quy trình cài đặt, và là chỗ dễ sai
+nhất. Muốn xoá một agent thì `thu-hoi` rồi `them-agent`, có chủ đích từng cái một.
+
+Ba hàng rào, không mức nào bỏ được: **sao lưu trước khi xoá** (một lệnh xoá không có đường lùi thì
+không phải lệnh vận hành); **không xoá khi còn cặp hay vị thế Master đang mở** — xoá sổ sách trong
+lúc tiền còn nằm trên sàn là cách chắc chắn nhất để không ai biết còn gì đang mở; **không xoá khi
+còn lệnh chưa xong và phải đang `PAUSED`**. Mỗi mức một **cụm xác nhận gõ tay riêng**, không dấu:
+nhầm mức này sang mức kia là mất cấu hình mà không định mất.
+
+Khoá hệ thống được gieo lại bằng chính các câu `INSERT OR IGNORE INTO system_config` đọc từ
+`schema.sql` và các migration, chứ không chép danh sách khoá vào code: bản sao thứ hai của sự thật
+sẽ lệch ở lần thêm khoá tiếp theo.
+
+**Gỡ nút đóng khẩn cấp.** Nút này đóng sạch mọi vị thế đang quản lý bằng một cú bấm và một cụm gõ
+tay. Nó nằm trên đúng trang mà người vận hành mở hằng ngày, và mọi thứ còn lại trên trang đó giờ
+đều là việc thường ngày — càng quen tay càng gần tới lần bấm nhầm. Đổi lại, đóng khẩn cấp vẫn còn
+nguyên dưới dạng `bridge.admin run-mode EMERGENCY`: cùng cơ chế, cùng thứ tự Client → Master, chỉ
+khác là phải gõ ra một câu lệnh. Endpoint `/api/emergency` bị gỡ hẳn — để một đường HTTP đóng sạch
+vị thế tồn tại mà không ai dùng thì nó chỉ còn là bề mặt tấn công.

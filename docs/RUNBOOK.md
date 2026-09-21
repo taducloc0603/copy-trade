@@ -15,8 +15,14 @@ Nghĩa là: **sau mỗi lần khởi động lại, phải có người bấm `R
 không phải thiếu sót. Thứ tệ nhất sau một sự cố là hệ thống tự hồi sinh và bắt đầu vào lệnh khi
 chưa ai kịp nhìn màn hình.
 
-**Nút dừng khẩn cấp** nằm ở dashboard, phải gõ đúng cụm `DONG TAT CA` để xác nhận. Người vận
-hành phải biết cách bấm nó **trước khi** cần dùng tới.
+**Đóng khẩn cấp không còn nút trên dashboard** (D-33). Đóng tất cả bằng:
+
+```powershell
+.\.venv\Scripts\python.exe -m bridge.admin run-mode EMERGENCY
+```
+
+Cơ chế bên dưới không đổi — Bridge vẫn đóng Client trước rồi tới Master — chỉ là nó không còn nằm
+sau một cú bấm chuột. Người vận hành phải biết **câu lệnh này** trước khi cần dùng tới nó.
 
 ---
 
@@ -90,8 +96,9 @@ token = "..."
 
 > **Bridge sẽ TỪ CHỐI khởi động** nếu `host` không phải loopback mà `dashboard_password` để
 > trống. Không có mật khẩu thì dashboard không bắt đăng nhập, và khi đó bất kỳ ai chạm được tới
-> cổng 8080 đều bấm được nút đóng khẩn cấp — kiểm toán 2026-09-06 đã gọi `/api/emergency` không
-> kèm cookie và nó đóng sạch 3 cặp. Muốn agent từ máy khác nối vào thì đặt `host = "0.0.0.0"`
+> cổng 8080 đều đổi được `run_mode` — kiểm toán 2026-09-06 đã gọi `/api/emergency` không kèm
+> cookie và nó đóng sạch 3 cặp. Endpoint đó nay đã gỡ (D-33), nhưng lý do bắt buộc mật khẩu thì
+> không đổi: mọi nút Lưu trên trang Cấu hình cũng đòi mật khẩu. Muốn agent từ máy khác nối vào thì đặt `host = "0.0.0.0"`
 > **và** đặt mật khẩu.
 
 Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA (mục 4).
@@ -119,8 +126,8 @@ Chạy tay để gỡ lỗi (dừng dịch vụ/tác vụ tương ứng trước
 `.\.venv\Scripts\python.exe -m clicker` (đọc mục `[clicker]`), `... -m clicker --muc clicker_master`.
 
 Đổi chế độ có hai đường như nhau: ba nút **Tạm dừng lệnh mới / Dừng toàn bộ đồng bộ / Bắt đầu
-copy** ở **đầu trang dashboard** (thấy được ở mọi tab), hoặc `bridge.admin run-mode`. Nút **Đóng
-khẩn cấp** cố ý nằm tách ở cuối tab Tổng quan, viền đỏ.
+copy** ở **đầu trang dashboard** (thấy được ở mọi tab), hoặc `bridge.admin run-mode`. Chế độ
+`EMERGENCY` **chỉ đặt được bằng dòng lệnh** (D-33).
 
 Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
 
@@ -153,6 +160,10 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --hoat-dong tat
 # Xoa han: CHI khi Client chua co cap lenh nao. Co roi thi tat, dung xoa.
 .\.venv\Scripts\python.exe -m bridge.admin xoa-client CL-02
+# Dat lai he thong. Bat go dung cum xac nhan, y het tren dashboard.
+#   du-lieu: xoa lich su giao dich, GIU cau hinh.
+#   tat-ca : xoa them client/anh xa, khoa he thong ve mac dinh. Agent va token VAN GIU.
+.\.venv\Scripts\python.exe -m bridge.admin dat-lai du-lieu --xac-nhan "DAT LAI DU LIEU"
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI  # dong qua giao dien
@@ -423,8 +434,8 @@ phép, kiểm `tinh-hinh` mỗi lần đăng nhập và `kiem-reason` + `kiem-do
    volume, spread và giá báo, thời gian khớp lệnh, giờ giao dịch từng symbol.
 5. **Bắt đầu bằng volume nhỏ nhất có thể và một symbol duy nhất.** Mở rộng dần sau khi quan sát
    ít nhất vài chục lệnh.
-6. **Người vận hành phải biết cách bấm dừng khẩn cấp trước khi cần dùng tới nó.** Thử một lần
-   trên demo.
+6. **Người vận hành phải biết câu lệnh dừng khẩn cấp trước khi cần dùng tới nó**
+   (`bridge.admin run-mode EMERGENCY`). Thử một lần trên demo.
 7. Biết rõ những gì **chưa từng chạy trên sàn thật** — `docs/ACCEPTANCE.md` cột "Nguồn", mọi
    dòng ghi TEST hoặc KHÔNG.
 8. **Trên VPS:** xong bài "phiên RDP đã ngắt" (B-08) và kiểm Algo Trading bật ở cả hai

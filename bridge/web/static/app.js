@@ -92,7 +92,6 @@ function veNutDieuKhien() {
   dat("nut-pause-new", UI.btn_pause_new);
   dat("nut-stop-sync", UI.btn_stop_sync);
   dat("nut-resume", UI.btn_resume);
-  dat("nut-emergency", UI.btn_emergency);
   const ten = { "tong-quan": UI.nav_main, "sai-lech": UI.nav_findings,
                 "cau-hinh": UI.nav_config, "nhat-ky": UI.nav_log };
   document.querySelectorAll(".tab").forEach((t) => { t.textContent = ten[t.dataset.man]; });
@@ -583,6 +582,33 @@ function khoiHeThong(el) {
   el.appendChild(box);
 }
 
+// Dat lai he thong. Hai nut, hai cum xac nhan KHAC NHAU: mot cai xoa du lieu, cai kia xoa ca
+// cau hinh, va nham giua hai cai do la mat cau hinh ma khong dinh mat.
+function khoiDatLai(el) {
+  const box = khoi(UI.reset_title);
+  box.appendChild(nhan(UI.reset_hint, "ghi-chu"));
+
+  const lam = async (kieu, loi, cum) => {
+    const go = await hoiXacNhan(loi + " " + cum, cum);
+    if (go === null) return;
+    const r = await goi("/api/dat_lai",
+                        { method: "POST", body: JSON.stringify({ kieu: kieu, phrase: go }) });
+    if (!r.ok) { alert(r.data.message || r.data.error || ""); return; }
+    alert(UI.reset_done.replace("{ban_sao}", r.data.ban_sao || ""));
+    await taiCauHinh();
+  };
+
+  const nutDuLieu = nut(UI.btn_reset_data, "nguy-hiem");
+  nutDuLieu.onclick = () => lam("lich_su", UI.confirm_reset_data, UI.reset_phrase_data);
+  const nutTatCa = nut(UI.btn_reset_all, "nguy-hiem");
+  nutTatCa.onclick = () => lam("toan_bo", UI.confirm_reset_all, UI.reset_phrase_all);
+
+  const chan = chanKhoi(nutDuLieu);
+  chan.insertBefore(nutTatCa, chan.childNodes[1] || null);
+  box.appendChild(chan);
+  el.appendChild(box);
+}
+
 function khoiFileConfig(el) {
   if (!CAU_HINH.file_config.length) return;
   const box = khoi(UI.cfg_file_title);
@@ -654,6 +680,7 @@ async function taiCauHinh() {
   khoiAnhXa(el);
   khoiHeThong(el);
   khoiFileConfig(el);
+  khoiDatLai(el);
 }
 
 // -- vong day thoi gian thuc ------------------------------------------------------------------
@@ -707,13 +734,5 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!(await hoiXacNhan(loi, null))) return;
     }
     doiMode("RUNNING");
-  };
-  $("nut-emergency").onclick = async () => {
-    const go = await hoiXacNhan(
-      UI.confirm_emergency + " " + UI.emergency_phrase, UI.emergency_phrase);
-    if (go === null) return;
-    const r2 = await goi("/api/emergency", {
-      method: "POST", body: JSON.stringify({ phrase: go }) });
-    if (!r2.ok) alert(r2.data.message || UI.emergency_wrong);
   };
 });

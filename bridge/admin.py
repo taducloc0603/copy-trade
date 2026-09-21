@@ -25,6 +25,8 @@ from bridge.ops import (
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
+    dat_lai_lich_su,
+    dat_lai_toan_bo,
     dat_terminal_clicker,
     doi_login_agent,
     khai_anh_xa,
@@ -67,6 +69,13 @@ CAU_LOI: dict[str, str] = {
     "AGENT_DA_DUNG": ("Agent {agent_id} dang la agent cua Client {client_id}. Mot terminal MT5 "
                       "chi thuoc ve mot Client."),
     "THIEU_MA": "Thieu ma. Dien ma client hoac ten agent.",
+    "DAT_LAI_CAN_PAUSED": "Dang o che do {run_mode}. Dat run-mode PAUSED truoc khi dat lai.",
+    "DAT_LAI_CON_DANG_MO": ("Con {so_cap} cap va {so_vi_the} vi the Master dang mo. Dong het "
+                            "roi hay dat lai."),
+    "DAT_LAI_CON_LENH_BAY": "Con {so_lenh} lenh chua xong. Cho chung xong roi hay dat lai.",
+    "CUM_TU_SAI": "Go chua dung cum xac nhan.",
+    "KIEU_DAT_LAI_LA": "Kieu dat lai {kieu} khong hop le.",
+    "KHONG_TIM_THAY_MAC_DINH": "Khong tim thay cau gieo mac dinh trong schema.sql.",
     "HE_SO_KHONG_DUONG": "volume_multiplier phai duong, nhan duoc {gia_tri}",
     "CHIEU_COPY_LA": "copy_mode {gia_tri} khong hop le (SAME hoac OPPOSITE).",
     "DUONG_LA": "{truong} = {gia_tri} khong hop le (EA hoac UI).",
@@ -559,6 +568,27 @@ def lenh_xoa_client(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_dat_lai(db: Database, args: argparse.Namespace, db_path: Path) -> int:
+    """Đặt lại hệ thống. Bắt gõ đúng cụm xác nhận, y như trên dashboard.
+
+    Hai mức: `du-lieu` xoá lịch sử giao dịch và giữ cấu hình; `tat-ca` xoá thêm client, ánh xạ và
+    đưa khoá hệ thống về mặc định — **agent và token vẫn giữ**.
+    """
+    cum = {"du-lieu": "DAT LAI DU LIEU", "tat-ca": "DAT LAI TAT CA"}[args.muc]
+    if (args.xac_nhan or "").strip() != cum:
+        print(f'Can go dung cum xac nhan: --xac-nhan "{cum}"', file=sys.stderr)
+        return 1
+    ham = dat_lai_lich_su if args.muc == "du-lieu" else dat_lai_toan_bo
+    try:
+        kq = ham(db, db_path)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    for bang, so in kq["da_xoa"].items():
+        print(f"  {bang:<20} xoa {so} dong")
+    print(f"Da dat lai ({args.muc}). Ban sao luu truoc khi xoa: {kq['ban_sao']}")
+    return 0
+
+
 def lenh_run_mode(db: Database, args: argparse.Namespace) -> int:
     if args.gia_tri is None:
         print(db.get_config("run_mode"))
@@ -693,6 +723,12 @@ def build_parser() -> argparse.ArgumentParser:
     ax.add_argument("--tat", action="store_true", help="Tat anh xa nay (dong van con trong bang)")
     ax.add_argument("--xoa", action="store_true", help="Xoa han anh xa nay khoi bang")
 
+    dl = sub.add_parser("dat-lai", help="Xoa lich su (va cau hinh) -- bat go dung cum xac nhan")
+    dl.add_argument("muc", choices=("du-lieu", "tat-ca"),
+                    help="du-lieu: giu cau hinh. tat-ca: xoa ca client/anh xa/khoa he thong")
+    dl.add_argument("--xac-nhan", dest="xac_nhan", required=True,
+                    help='Cum xac nhan: "DAT LAI DU LIEU" hoac "DAT LAI TAT CA"')
+
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
@@ -742,6 +778,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_cau_hinh_master(db, args)
         if args.lenh == "xoa-client":
             return lenh_xoa_client(db, args)
+        if args.lenh == "dat-lai":
+            return lenh_dat_lai(db, args, db_path)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
         if args.lenh == "xac-nhan-alert":

@@ -800,3 +800,141 @@ def sua_khoa_he_thong(db: Database, khoa: str, gia_tri: Any) -> str:
     db.set_config(khoa, moi)
     log.info("Doi khoa he thong %s = %s", khoa, moi)
     return moi
+
+
+# -- đặt lại hệ thống (D-33) --------------------------------------------------------------------
+#
+# Hai mức, vì chúng trả lời hai câu hỏi khác nhau:
+#
+# * **Đặt lại dữ liệu** — "sổ sách đang bẩn vì mấy lượt thử, tôi muốn bắt đầu đếm lại". Xoá lịch
+#   sử giao dịch, giữ nguyên agent, client, ánh xạ symbol và khoá hệ thống, nên hệ thống chạy tiếp
+#   ngay sau đó.
+# * **Đặt lại toàn bộ** — "tôi muốn cấu hình lại từ đầu". Xoá thêm client, ánh xạ và các khoá hệ
+#   thống (về mặc định). **Agent và token được giữ**: xoá chúng nghĩa là phải dán lại token vào cả
+#   hai EA trong giao diện MT5, một việc tay chân chỉ để dọn sổ sách.
+#
+# Ba hàng rào cho cả hai mức, và không mức nào bỏ được:
+#
+# 1. **Sao lưu trước.** Một lệnh xoá không có đường lùi thì không phải lệnh vận hành.
+# 2. **Không xoá khi còn cặp đang mở hoặc vị thế Master đang mở.** Xoá sổ sách trong lúc tiền còn
+#    nằm trên sàn là cách chắc chắn nhất để không ai biết còn gì đang mở.
+# 3. **Không xoá khi còn lệnh chưa xong** (`PENDING`/`SENT`) và **phải đang `PAUSED`**: xoá giữa
+#    lúc một lệnh đang bay để lại một ack không còn chỗ để ghi.
+
+#: Bảng lịch sử giao dịch, **theo đúng thứ tự xoá được** (khoá ngoại đang bật). `ui_open_queue`
+#: trỏ vào `event`, `event` trỏ vào `pair`, `pair` trỏ vào `master_position` — xoá ngược thứ tự này
+#: là SQLite từ chối, và từ chối giữa chừng nghĩa là xoá một nửa.
+BANG_LICH_SU = (
+    "ui_open_queue",
+    "reconcile_finding",
+    "alert",
+    "event",
+    "command",
+    "pair",
+    "pair_id_seq",
+    "master_position",
+    "symbol_spec",
+)
+
+#: Bảng cấu hình, cũng theo thứ tự xoá được. `agent` **không** có ở đây: giữ agent là giữ token,
+#: và giữ token là không phải đụng vào giao diện MT5.
+BANG_CAU_HINH = ("symbol_map", "client_account")
+
+
+def _chan_dat_lai(db: Database) -> None:
+    """Ba hàng rào chung của cả hai mức đặt lại."""
+    che_do = (db.get_config("run_mode", "PAUSED") or "PAUSED").upper()
+    if che_do != "PAUSED":
+        raise LoiCauHinh("DAT_LAI_CAN_PAUSED", run_mode=che_do)
+
+    dang_mo = db.query_one(
+        "SELECT COUNT(*) n FROM pair WHERE status NOT IN ('CLOSED', 'OPEN_FAILED')")["n"]
+    vi_the = db.query_one("SELECT COUNT(*) n FROM master_position WHERE status = 'OPEN'")["n"]
+    if dang_mo or vi_the:
+        raise LoiCauHinh("DAT_LAI_CON_DANG_MO", so_cap=int(dang_mo), so_vi_the=int(vi_the))
+
+    dang_bay = db.query_one(
+        "SELECT COUNT(*) n FROM command WHERE status IN ('PENDING', 'SENT')")["n"]
+    if dang_bay:
+        raise LoiCauHinh("DAT_LAI_CON_LENH_BAY", so_lenh=int(dang_bay))
+
+
+def _xoa_bang(db: Database, bang: tuple[str, ...]) -> dict[str, int]:
+    """Xoá sạch các bảng trong **một** giao dịch. Trả về số dòng đã xoá của từng bảng."""
+    da_xoa: dict[str, int] = {}
+    with db.transaction() as conn:
+        for ten in bang:
+            cur = conn.execute(f"DELETE FROM {ten}")  # noqa: S608 - tên bảng là hằng trong file này
+            if cur.rowcount > 0:
+                da_xoa[ten] = int(cur.rowcount)
+    return da_xoa
+
+
+def _gieo_lai_system_config(db: Database) -> None:
+    """Đặt lại `system_config` về đúng mặc định khai trong `schema.sql` và các migration.
+
+    Lấy thẳng các câu `INSERT OR IGNORE INTO system_config` trong file SQL thay vì chép danh sách
+    khoá vào đây: chép là tạo bản sao thứ hai của sự thật, và bản sao đó sẽ lệch ở lần thêm khoá
+    tiếp theo. `run_mode` vì vậy cũng về `PAUSED` — đúng D-15.
+    """
+    from bridge.db.migrations import SCHEMA_PATH, discover_migrations, split_statements
+
+    def _bo_chu_thich(cau: str) -> str:
+        """Bỏ các dòng chú thích ở đầu câu lệnh.
+
+        `split_statements` giữ nguyên khối chú thích đứng trước mỗi câu, nên so khớp thẳng vào
+        đầu chuỗi sẽ bỏ sót đúng những câu có chú thích — tức là gần hết.
+        """
+        dong = [d for d in cau.splitlines() if d.strip() and not d.strip().startswith("--")]
+        return "\n".join(dong)
+
+    cau_gieo: list[str] = []
+    nguon = [SCHEMA_PATH.read_text(encoding="utf-8")]
+    nguon += [m.read_sql() for m in discover_migrations()]
+    for sql in nguon:
+        for cau in split_statements(sql):
+            than = _bo_chu_thich(cau)
+            if than.upper().startswith("INSERT OR IGNORE INTO SYSTEM_CONFIG"):
+                cau_gieo.append(than)
+    if not cau_gieo:
+        # Không tìm thấy câu gieo nào nghĩa là `schema.sql` đã đổi cách viết — dừng lại thay vì
+        # để `system_config` trống, vì trống nghĩa là mọi giá trị rơi về mặc định trong code và
+        # `run_mode` không còn dòng nào trong bảng.
+        raise LoiCauHinh("KHONG_TIM_THAY_MAC_DINH")
+
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM system_config")
+        for cau in cau_gieo:
+            conn.execute(cau)
+
+
+def dat_lai_lich_su(db: Database, db_path: Path | None = None) -> dict[str, Any]:
+    """Xoá lịch sử giao dịch, **giữ nguyên cấu hình**. Trả về số dòng đã xoá và bản sao lưu.
+
+    Sau lệnh này hệ thống chạy tiếp được ngay: agent, client, ánh xạ symbol và mọi khoá hệ thống
+    còn nguyên, chỉ là sổ sách trống.
+    """
+    _chan_dat_lai(db)
+    # Mặc định sao lưu **đúng database đang mở**, không phải đường dẫn khai trong `config.toml`:
+    # hai thứ đó lệch nhau là bản sao lưu nằm ở một thư mục khác với database vừa bị xoá.
+    ban_sao = sao_luu(db, db_path or db.path)
+    da_xoa = _xoa_bang(db, BANG_LICH_SU)
+    log.warning("DAT LAI du lieu: %s (ban sao luu %s)", da_xoa, ban_sao.name)
+    return {"da_xoa": da_xoa, "ban_sao": ban_sao.name}
+
+
+def dat_lai_toan_bo(db: Database, db_path: Path | None = None) -> dict[str, Any]:
+    """Xoá lịch sử **và** cấu hình nghiệp vụ, đưa khoá hệ thống về mặc định.
+
+    **Agent và token được giữ lại.** Xoá chúng chỉ để dọn sổ sách là tự bắt mình mở giao diện MT5
+    dán lại token cho cả hai EA — việc tay chân duy nhất trong cả quy trình cài đặt, và là chỗ dễ
+    sai nhất. Muốn xoá cả agent thì `thu-hoi` rồi `them-agent` lại, có chủ đích từng cái một.
+    """
+    _chan_dat_lai(db)
+    # Mặc định sao lưu **đúng database đang mở**, không phải đường dẫn khai trong `config.toml`:
+    # hai thứ đó lệch nhau là bản sao lưu nằm ở một thư mục khác với database vừa bị xoá.
+    ban_sao = sao_luu(db, db_path or db.path)
+    da_xoa = _xoa_bang(db, BANG_LICH_SU + BANG_CAU_HINH)
+    _gieo_lai_system_config(db)
+    log.warning("DAT LAI toan bo: %s (ban sao luu %s)", da_xoa, ban_sao.name)
+    return {"da_xoa": da_xoa, "ban_sao": ban_sao.name}
