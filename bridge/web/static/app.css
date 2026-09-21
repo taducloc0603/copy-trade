@@ -118,3 +118,12 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
 .o-va-nut { display: flex; align-items: center; gap: 8px; }
 .o-va-nut input { margin: 0; }
 .o-va-nut button { white-space: nowrap; }
+
+/* Cum nut doi che do tren thanh tren cung: nho hon nut thuong, nhung van du cao de bam bang
+   chuot qua RDP. */
+#dieu-khien-mode { display: inline-flex; gap: 6px; }
+#dieu-khien-mode button { padding: 4px 10px; font-size: 13px; }
+@media (max-width: 640px) {
+  #dieu-khien-mode { width: 100%; }
+  #dieu-khien-mode button { flex: 1; }
+}

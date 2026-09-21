@@ -470,7 +470,7 @@ function khoiThemClient() {
   const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
     .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
 
-  const ma = oChu("");
+  const ma = oChu(CAU_HINH.ma_client_goi_y || "");
   const agent = oChon(null, agentClient.length ? agentClient : [{ gia_tri: "", nhan: "—" }]);
   const clicker = oChon(null, [{ gia_tri: "", nhan: "—" }].concat(clickers));
   const duongMo = oChon("UI", CAU_HINH.chon_duong);

@@ -11,6 +11,7 @@ không chứa nhãn nào, nên thêm một ngôn ngữ hay đổi cách gọi m�
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from bridge.clock import parse_iso
@@ -335,9 +336,21 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
              "chon": list(a) if kieu == "enum" else None}
             for khoa, (kieu, a, b) in KHOA_SUA_DUOC.items()
         ],
+        "ma_client_goi_y": _ma_client_ke_tiep([c["client_id"] for c in clients]),
         "file_config": _mo_ta_file_config(config),
         "preview": xem_truoc_he_so(clients[0]["volume_multiplier"] if clients else 1.0),
     }
+
+
+def _ma_client_ke_tiep(da_co: list[str]) -> str:
+    """Mã client tiếp theo theo đúng dãy `CL-01`, `CL-02`, …
+
+    Gợi ý chứ không ép: ô vẫn sửa được. Nhưng để trống rồi bắt người ta tự nghĩ ra mã là cách
+    chắc chắn có ngày xuất hiện `CL2`, `cl-02` và `CL-2` trong cùng một bảng — mà mã này đi vào
+    mọi lệnh `bridge.admin` về sau.
+    """
+    so = {int(m.group(1)) for m in (re.fullmatch(r"CL-(\d+)", str(c)) for c in da_co) if m}
+    return f"CL-{(max(so) + 1) if so else 1:02d}"
 
 
 def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:

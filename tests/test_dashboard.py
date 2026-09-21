@@ -762,3 +762,31 @@ async def test_xoa_client_chua_co_cap_thi_duoc(client: httpx.AsyncClient,
     r = await client.post("/api/client/CL-02/delete")
     assert r.status_code == 200
     assert seeded_web.get_client_account("CL-02") is None
+
+
+def test_ma_client_ke_tiep_theo_dung_day_CL(db: Database) -> None:
+    """Để trống rồi bắt người ta tự nghĩ mã là cách chắc chắn có ngày thấy `CL2` và `cl-02`."""
+    assert views._ma_client_ke_tiep([]) == "CL-01"
+    assert views._ma_client_ke_tiep(["CL-01"]) == "CL-02"
+    assert views._ma_client_ke_tiep(["CL-01", "CL-09"]) == "CL-10"
+    # Mã không theo dãy thì bỏ qua khi đếm, chứ không làm hỏng gợi ý.
+    assert views._ma_client_ke_tiep(["CL-01", "KHACH-VIP"]) == "CL-02"
+
+
+async def test_trang_cau_hinh_goi_y_ma_client_ke_tiep(client: httpx.AsyncClient) -> None:
+    r = await client.get("/api/config")
+    assert r.json()["ma_client_goi_y"] == "CL-02"
+
+
+def test_nut_doi_che_do_nam_tren_thanh_tren_cung(project_root) -> None:
+    """Ba nút đổi chế độ phải ở chỗ luôn nhìn thấy, không tụt xuống dưới bảng cặp lệnh.
+
+    Nút đóng khẩn cấp thì **không** được lên đó: bấm nhầm nó là đóng hết vị thế.
+    """
+    html = (project_root / "bridge" / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    dau = html.index("<header")
+    cuoi = html.index("</header>")
+    thanh = html[dau:cuoi]
+    for nut in ("nut-pause-new", "nut-stop-sync", "nut-resume"):
+        assert nut in thanh, nut
+    assert "nut-emergency" not in thanh

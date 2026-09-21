@@ -12,6 +12,15 @@
 <header id="thanh-trang-thai">
   <span id="app-title"></span>
   <span id="run-mode" class="badge"></span>
+  <!-- Ba nut doi che do nam NGAY CANH nhan trang thai, tren moi man hinh. Truoc day chung nam
+       cuoi tab Tong quan, duoi bang cap lenh: co bang dai la chung tut xuong duoi man hinh va
+       nguoi van hanh khong tim thay thu can bam nhat. Nut dong khan cap thi KHONG len day --
+       no o lai cuoi trang, tach rieng, vi bam nham no la dong het vi the. -->
+  <span id="dieu-khien-mode">
+    <button id="nut-pause-new"></button>
+    <button id="nut-stop-sync"></button>
+    <button id="nut-resume" class="chinh"></button>
+  </span>
   <span id="agents"></span>
   <span id="dong-ho"></span>
 </header>
@@ -29,14 +38,10 @@
     <h2 id="tieu-de-cap"></h2>
     <table id="bang-cap"><thead><tr id="dau-bang"></tr></thead><tbody></tbody></table>
 
+    <!-- Tach hai cum nut ra hai cho khac han nhau: doi che do la viec thuong ngay (tren thanh
+         tren cung), con dong khan cap thi o day, cuoi trang, vien do. Dat canh nhau la som muon
+         cung co ngay bam nham. -->
     <div class="dieu-khien">
-      <div class="thuong-ngay">
-        <button id="nut-pause-new"></button>
-        <button id="nut-stop-sync"></button>
-        <button id="nut-resume" class="chinh"></button>
-      </div>
-      <!-- Tach khoi cum nut thuong ngay, can ve phia doi dien, vien do:
-           dat canh nhau la som muon cung co ngay bam nham. -->
       <div class="khan-cap">
         <button id="nut-emergency" class="nguy-hiem"></button>
       </div>
