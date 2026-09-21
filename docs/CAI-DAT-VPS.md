@@ -454,12 +454,16 @@ Bỏ bước này thì bước 2 báo `khong xoa duoc ...ex5` — file đang b�
 ### 2. Một lệnh
 
 ```powershell
-cd C:\CopyBridge
-.\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge -ChayThu    # xem truoc, khong cham gi
-.\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge             # go that, phai go dung cum GO BO TAT CA
+Set-Location C:\
+C:\CopyBridge\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge -ChayThu   # xem truoc, khong cham gi
+C:\CopyBridge\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge            # go that, go dung cum GO BO TAT CA
 ```
 
-PowerShell **Administrator**. Script làm, theo đúng thứ tự này:
+PowerShell **Administrator**, và **đứng ở `C:\` chứ không `cd` vào `C:\CopyBridge`**: một thư mục
+đang là thư mục làm việc của cửa sổ PowerShell thì Windows không cho xoá cái gốc của nó — script
+tự xử lý được, nhưng không tạo ra tình huống đó thì gọn hơn.
+
+Script làm, theo đúng thứ tự này:
 
 | Việc | Vì sao phải đúng thứ tự |
 |---|---|
@@ -469,7 +473,7 @@ PowerShell **Administrator**. Script làm, theo đúng thứ tự này:
 | Xoá `CopyBridge*.ex5` và `MQL5\Files\copybridge\` của từng terminal | Thư mục đó giữ `<login>_state.json`, `_outbox.ndjson`, `_commands.ndjson`. Bỏ sót là bản cài mới đọc lại outbox của hệ thống cũ |
 | Xoá `config.toml`, mọi `config.toml.bak-*`, `config.toml.tam` **trước** thư mục | Chúng là **bản rõ** của mật khẩu dashboard và token clicker. Xoá trước thì nếu bước cuối thất bại, bí mật vẫn đã đi rồi |
 | Xoá `Desktop\cai-dat.ps1` và bộ cài trong `%TEMP%` | Bản `cai-dat.ps1` cũ trên Desktop đúng là cái bẫy mục A1 phải cảnh báo |
-| Xoá cả `C:\CopyBridge` | Thất bại (file bị giữ) thì script in đúng câu lệnh chạy tay, **không** báo thành công |
+| Xoá cả `C:\CopyBridge` | Thất bại thì script nói **còn lại gì** (vỏ rỗng, hay còn file — và có còn `config.toml` không), ai đang giữ, và in đúng câu lệnh chạy tay. **Không** báo thành công |
 
 **Không cần chờ EA đẩy hết outbox** như lúc cập nhật (B1): ở đây ta xoá toàn bộ lịch sử nên backlog
 đó không còn nghĩa gì.
@@ -486,6 +490,13 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 Test-Path C:\CopyBridge                                                    # False
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"     # khong ra gi
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0  # khong ra gi
+```
+
+`Test-Path` còn `True` mà thư mục **rỗng** thì máy đã sạch — không còn database, log hay bí mật nào,
+chỉ còn cái vỏ. Xoá nó từ **một cửa sổ PowerShell khác** (cửa sổ nào không đứng trong đó):
+
+```powershell
+Remove-Item -Recurse -Force C:\CopyBridge
 ```
 
 **Token cũ tự mất hiệu lực:** Bridge chỉ giữ **hash** của token trong `agent.token_hash`, nên xoá

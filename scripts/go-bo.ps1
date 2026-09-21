@@ -281,16 +281,57 @@ function xoa_rac_tam() {
 function xoa_thu_muc_cai() {
     tieu_de "Thu muc cai"
     if (-not (Test-Path $ThuMuc)) { ok "$ThuMuc khong ton tai"; return $true }
-    # Ra khoi thu muc truoc khi xoa no: dung o trong thi Windows tu choi.
+
+    # PHAI doi CA HAI thu, khong phai mot:
+    #
+    #   Set-Location             -> vi tri cua PROVIDER PowerShell
+    #   [Environment]::CurrentDirectory -> thu muc lam viec that cua TIEN TRINH
+    #
+    # Set-Location KHONG cap nhat cai thu hai. Va cai thu hai moi la cai Windows dung de tu choi
+    # xoa: neu thu muc lam viec cua tien trinh nam trong $ThuMuc thi `Remove-Item -Recurse` xoa
+    # het NOI DUNG roi that bai o dung THU MUC GOC. Da gap that tren VPS 2026-09-21 -- tai lieu
+    # day `cd C:\CopyBridge` roi moi chay script, nen cai bay nay la duong chay binh thuong.
     Set-Location "C:\"
+    [Environment]::CurrentDirectory = "C:\"
+
     Remove-Item $ThuMuc -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path $ThuMuc) {
-        canh "KHONG xoa duoc $ThuMuc. Con tien trinh giu file. Chay tay sau khi dong MT5:"
-        Write-Host "    Set-Location C:\; Remove-Item -Recurse -Force '$ThuMuc'" -ForegroundColor Yellow
-        return $false
+        # Windows co the con dang tha handle cua cac file vua bi xoa. Thu lai MOT lan truoc khi
+        # ket luan, chu khong bao that bai ngay.
+        Start-Sleep -Seconds 1
+        Remove-Item $ThuMuc -Recurse -Force -ErrorAction SilentlyContinue
     }
-    ok "da xoa $ThuMuc"
-    return $true
+    if (-not (Test-Path $ThuMuc)) { ok "da xoa $ThuMuc"; return $true }
+
+    # Con lai gi? Khac biet giua "chi con cai vo" va "database + config.toml chua xoa" la khac
+    # biet giua may da sach va ban ro mat khau con nam tren dia. Noi thang ra, dung de nguoi doc
+    # tu doan.
+    $conLai = @(Get-ChildItem $ThuMuc -Force -Recurse -ErrorAction SilentlyContinue)
+    if ($conLai.Count -eq 0) {
+        canh "KHONG xoa duoc $ThuMuc, nhung no RONG: khong con database, log hay bi mat nao."
+        Write-Host "    Chi con cai vo thu muc. Xoa no tu MOT CUA SO PowerShell KHAC:" -ForegroundColor Yellow
+    } else {
+        canh "KHONG xoa duoc $ThuMuc, va con $($conLai.Count) muc ben trong:"
+        $conLai | Select-Object -First 5 | ForEach-Object {
+            Write-Host "      $($_.FullName)" -ForegroundColor Yellow
+        }
+        $biMat = @($conLai | Where-Object { $_.Name -like "config.toml*" })
+        if ($biMat.Count -gt 0) {
+            canh ("VAN CON BI MAT tren dia: " + (($biMat | ForEach-Object { $_.Name }) -join ', ') +
+                  " -- do la ban ro cua mat khau dashboard va token clicker. Xoa chung truoc.")
+        }
+        $giu = @(Get-Process -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Path -like "$ThuMuc\*" })
+        if ($giu.Count -gt 0) {
+            canh ("Tien trinh dang giu file: " +
+                  (($giu | ForEach-Object { "$($_.Name) (PID $($_.Id))" }) -join ', '))
+        } else {
+            Write-Host "    Khong thay tien trinh nao chay tu thu muc do. Thu dong MT5 va" -ForegroundColor Yellow
+            Write-Host "    moi cua so dang mo file trong do, roi chay:" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "    Remove-Item -Recurse -Force '$ThuMuc'" -ForegroundColor Yellow
+    return $false
 }
 
 function in_bang_kiem() {
