@@ -153,6 +153,8 @@ món nợ đó đã một lần làm mất token của clicker.
 # Duong DONG phia Master (phase 12). Mac dinh EA; bat UI can clicker thu hai lai terminal Master.
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master                                    # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master --clicker-agent AG-CLICKER-MASTER --close-route UI
+# Anh xa symbol: them, --tat (giu dong de bat lai) hoac --xoa (bo han khoi bang).
+.\.venv\Scripts\python.exe -m bridge.admin anh-xa-symbol CL-01 XAUUSD --xoa
 ```
 
 > **Bật `master_close_route = UI` là thêm một tiến trình và một điều kiện vận hành.** Clicker thứ

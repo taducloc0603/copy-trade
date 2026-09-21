@@ -706,3 +706,18 @@ async def test_css_va_js_khong_duoc_trinh_duyet_giu_cache(client: httpx.AsyncCli
         r = await client.get(duong)
         assert r.status_code == 200, duong
         assert "no-cache" in r.headers.get("cache-control", ""), duong
+
+
+async def test_xoa_anh_xa_tren_dashboard(client: httpx.AsyncClient, seeded_web: Database) -> None:
+    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=0)
+    r = await client.post("/api/symbol_map/delete",
+                          json={"client_id": CLIENT_ID, "master_symbol": "XAUUSD"})
+    assert r.status_code == 200
+    assert seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+
+
+async def test_xoa_anh_xa_khong_co_thi_tra_ma_loi(client: httpx.AsyncClient) -> None:
+    r = await client.post("/api/symbol_map/delete",
+                          json={"client_id": CLIENT_ID, "master_symbol": "KHONG-CO"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "KHONG_CO_ANH_XA"

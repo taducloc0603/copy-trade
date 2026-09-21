@@ -38,6 +38,7 @@ from bridge.ops import (
     tat_anh_xa,
     thu_hoi_token,
     thu_muc_sao_luu,
+    xoa_anh_xa,
 )
 
 VAI_TRO = VAI_TRO_AGENT
@@ -445,6 +446,14 @@ def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
                   f"{'x' if r['enabled'] else '-':<4} {'x' if r['verified_at'] else '-'}")
         return 0
 
+    if args.xoa:
+        try:
+            xoa_anh_xa(db, args.client_id, args.master_symbol)
+        except LoiCauHinh as exc:
+            return _in_loi(exc)
+        print(f"Da XOA anh xa {args.master_symbol}")
+        return 0
+
     if args.tat:
         try:
             tat_anh_xa(db, args.client_id, args.master_symbol)
@@ -654,7 +663,8 @@ def build_parser() -> argparse.ArgumentParser:
     ax.add_argument("client_id")
     ax.add_argument("master_symbol", nargs="?")
     ax.add_argument("--client-symbol", dest="client_symbol")
-    ax.add_argument("--tat", action="store_true", help="Tat anh xa nay")
+    ax.add_argument("--tat", action="store_true", help="Tat anh xa nay (dong van con trong bang)")
+    ax.add_argument("--xoa", action="store_true", help="Xoa han anh xa nay khoi bang")
 
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",

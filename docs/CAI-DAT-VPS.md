@@ -306,7 +306,11 @@ Get-ScheduledTask -TaskPath '\CopyBridge\' | Select-Object TaskName, State   # c
 
 **Đổi chiều copy, hệ số, đóng hai chiều:** trên dashboard, tab Cấu hình → khối Client (xem [A4](#a4-cấu-hình-trên-dashboard)).
 
-**Thêm symbol:** `.\.venv\Scripts\python.exe -m bridge.admin anh-xa-symbol CL-01 <symbol-Master> --client-symbol <symbol-Client>`
+**Thêm symbol:** trên dashboard (tab Cấu hình → Ánh xạ symbol), hoặc
+`.\.venv\Scripts\python.exe -m bridge.admin anh-xa-symbol CL-01 <symbol-Master> --client-symbol <symbol-Client>`.
+Thôi copy một symbol: **Tắt** giữ lại dòng để bật sau, **Xoá** bỏ hẳn khỏi danh sách
+(`--tat` / `--xoa` nếu dùng dòng lệnh). Cặp đang mở không bị ảnh hưởng — đường đóng nhắm
+theo `position_id` chứ không tra bảng ánh xạ.
 (EA Client phải đang chạy, symbol có trong Market Watch). Nhớ: terminal Client chỉ copy symbol của
 chart đang gắn EA.
 

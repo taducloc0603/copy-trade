@@ -39,6 +39,7 @@ from bridge.ops import (
     tao_agent,
     tao_client,
     tat_anh_xa,
+    xoa_anh_xa,
 )
 from bridge.web import views
 
@@ -384,6 +385,19 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         body = await request.json()
         try:
             tat_anh_xa(dashboard.db, body.get("client_id") or "",
+                       (body.get("master_symbol") or "").strip())
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        return {"ok": True}
+
+    @app.post("/api/symbol_map/delete")
+    async def api_xoa_anh_xa(request: Request, sid: str | None = Cookie(None)) -> Any:
+        """Xoá hẳn một ánh xạ. Tắt thì dòng còn đó; xoá thì không còn dấu vết."""
+        if (loi := _chan(sid)) is not None:
+            return loi
+        body = await request.json()
+        try:
+            xoa_anh_xa(dashboard.db, body.get("client_id") or "",
                        (body.get("master_symbol") or "").strip())
         except LoiCauHinh as exc:
             return _tra_loi(exc)

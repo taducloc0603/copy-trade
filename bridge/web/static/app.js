@@ -469,6 +469,8 @@ function khoiAnhXa(el) {
     d.append(nhan(x.client_id + " · " + x.master_symbol + " → " + x.client_symbol),
              nhan(x.enabled ? UI.map_enabled : UI.map_disabled, "canh-bao-nho"));
     if (!x.verified_at) d.appendChild(nhan(UI.map_unverified, "loi"));
+    const nutDong = document.createElement("div");
+    nutDong.className = "o-va-nut";
     if (x.enabled) {
       const b = nut(UI.map_disable);
       b.onclick = async () => {
@@ -476,8 +478,18 @@ function khoiAnhXa(el) {
         await ghiCauHinh("/api/symbol_map/disable",
                          { client_id: x.client_id, master_symbol: x.master_symbol });
       };
-      d.appendChild(b);
+      nutDong.appendChild(b);
     }
+    // Xoa khac Tat: tat thi dong con do de bat lai, xoa thi khong con dau vet. Cho ca hai nut
+    // canh nhau de nguoi dung chon dung cai minh muon, va hop xac nhan noi ro khac biet do.
+    const xoa = nut(UI.map_delete);
+    xoa.onclick = async () => {
+      if (!(await hoiXacNhan(UI.confirm_map_delete, null))) return;
+      await ghiCauHinh("/api/symbol_map/delete",
+                       { client_id: x.client_id, master_symbol: x.master_symbol });
+    };
+    nutDong.appendChild(xoa);
+    d.appendChild(nutDong);
     box.appendChild(d);
   }
 

@@ -696,6 +696,26 @@ def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
     return doi
 
 
+def xoa_anh_xa(db: Database, client_id: str, master_symbol: str) -> None:
+    """Xoá hẳn một ánh xạ khỏi bảng.
+
+    Khác `tat_anh_xa`: tắt thì dòng còn đó (bật lại là chạy, và vẫn nhìn thấy mình từng khai gì),
+    xoá thì không còn dấu vết. Dùng khi một symbol thôi không copy nữa — để lại một danh sách đầy
+    dòng đã tắt thì cái đang bật khó tìm ra giữa đám đó.
+
+    **Cặp đang mở không bị ảnh hưởng:** đường đóng nhắm theo `position_id` chứ không tra bảng này
+    (D-30), nên cặp đã mở vẫn đóng được bình thường. Cái mất là lệnh MỚI của symbol đó không còn
+    được copy.
+    """
+    if db.query_one("SELECT 1 FROM symbol_map WHERE client_id = ? AND master_symbol = ?",
+                    (client_id, master_symbol)) is None:
+        raise LoiCauHinh("KHONG_CO_ANH_XA", master_symbol=master_symbol)
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM symbol_map WHERE client_id = ? AND master_symbol = ?",
+                     (client_id, master_symbol))
+    log.warning("Da XOA anh xa %s cua %s", master_symbol, client_id)
+
+
 def sua_khoa_he_thong(db: Database, khoa: str, gia_tri: Any) -> str:
     """Sửa một khoá `system_config` trong danh sách trắng. Trả về giá trị đã ghi."""
     if khoa not in KHOA_SUA_DUOC:

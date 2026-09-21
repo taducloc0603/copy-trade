@@ -37,6 +37,7 @@ from bridge.ops import (
     tao_client,
     tat_anh_xa,
     thu_hoi_token,
+    xoa_anh_xa,
 )
 from bridge.protocol.auth import hash_token, verify_token
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT, MASTER_POSITION_ID
@@ -1156,3 +1157,23 @@ def test_sua_client_bat_duong_giao_dien_khi_da_co_clicker_thi_luu_duoc(seeded: D
     dong = seeded.get_client_account(CLIENT_ID)
     assert dong["open_route"] == "UI"
     assert dong["clicker_agent_id"] == CLICKER_AGENT
+
+
+def test_xoa_anh_xa_thi_khong_con_dong_nao(seeded: Database) -> None:
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    xoa_anh_xa(seeded, CLIENT_ID, "XAUUSD")
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+
+
+def test_xoa_anh_xa_khong_co_thi_bao_loi_chu_khong_im_lang(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        xoa_anh_xa(seeded, CLIENT_ID, "XAUUSD")
+    assert loi.value.ma == "KHONG_CO_ANH_XA"
+
+
+def test_xoa_anh_xa_khong_dung_toi_cap_dang_mo(seeded: Database) -> None:
+    """Đường đóng nhắm theo `position_id` chứ không tra bảng ánh xạ (D-30)."""
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    pair_id = _cap(seeded, 9301)
+    xoa_anh_xa(seeded, CLIENT_ID, "XAUUSD")
+    assert seeded.get_pair(pair_id)["status"] == "OPEN"

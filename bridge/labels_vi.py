@@ -248,6 +248,10 @@ UI = {
     "map_enabled": "Đang bật",
     "map_disabled": "Đã tắt",
     "confirm_map_disable": "Tắt ánh xạ này thì Master vào lệnh symbol đó sẽ không được copy. Tiếp tục?",
+    "map_delete": "Xoá",
+    "confirm_map_delete": ("Xoá hẳn ánh xạ này khỏi danh sách. Lệnh MỚI của symbol đó sẽ "
+                           "không được copy nữa; cặp đang mở vẫn đóng được bình thường. "
+                           "Muốn giữ lại để bật sau thì bấm Tắt. Tiếp tục?"),
     "btn_verify": "Kiểm tra với sàn",
     "map_unverified": "Chưa kiểm tra — không lưu được",
     "map_verify_failed": "Sàn Client không có symbol này",
