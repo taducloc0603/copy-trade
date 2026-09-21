@@ -28,12 +28,12 @@ EA (MQL5) là agent mỏng: báo sự kiện, thực thi lệnh, gửi heartbeat
 
 - **Phần A** — VPS chưa có hệ thống: cài mới bằng `scripts\cai-dat.ps1` + `scripts\tro-ly.ps1`.
 - **Phần B** — VPS đã có hệ thống: cập nhật (`cai-dat.ps1 -CapNhat`), lùi bản, bật thêm tính năng,
-  đổi tài khoản, chuyển VPS, cài lại sạch.
+  đổi tài khoản, chuyển VPS, thêm Client, và **gỡ sạch** (`scripts\go-bo.ps1`, B7).
 - **Phần C** — vận hành hằng ngày.
 
 ## Trạng thái
 
-Phase 1–12 xong, chạy trên **demo** (VPS). Bộ test tự động: `pytest` (~875 test) + `ruff check .`.
+Phase 1–12 xong, chạy trên **demo** (VPS). Bộ test tự động: `pytest` (~907 test) + `ruff check .`.
 
 > **Chưa dùng cho tiền thật** cho tới khi xong các điều kiện ở [RUNBOOK.md](docs/RUNBOOK.md) mục 8
 > — đáng kể nhất là đo **phiên RDP ngắt** (B-08) và **mất điện đột ngột** (TEST-19).

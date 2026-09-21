@@ -5,7 +5,7 @@ Tài liệu cài đặt **duy nhất** của dự án. Chọn phần theo tình 
 | Tình trạng VPS | Đọc |
 |---|---|
 | **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống) |
-| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 thêm/tắt/xoá Client · B7 cài lại sạch |
+| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 thêm/tắt/xoá Client · B7 gỡ sạch toàn bộ |
 | Hằng ngày, sau mỗi lần khởi động lại | [Phần C — Vận hành](#phần-c--vận-hành-hằng-ngày) |
 
 Muốn biết **vì sao** một bước như vậy: [RUNBOOK.md](RUNBOOK.md). Gặp sự cố khi đang chạy: RUNBOOK mục 7.
@@ -438,16 +438,86 @@ $py = ".\.venv\Scripts\python.exe"
 & $py -m bridge.admin xoa-client CL-02                          # chi khi chua co cap nao
 ```
 
-## B7. Cài lại sạch từ đầu
+## B7. Gỡ sạch toàn bộ
 
-Chỉ khi muốn **xoá hết lịch sử** (cặp, lệnh, alert):
+Dùng khi muốn **thử lại quy trình cài mới**, hoặc dọn máy hẳn. Việc gỡ có **thứ tự bắt buộc** —
+dừng cái đang chạy → xoá file → xoá thư mục — nên đi theo đúng ba bước dưới đây.
+
+### 1. Gỡ EA khỏi chart (làm tay, script không làm được)
+
+Trên **từng** terminal: chuột phải lên chart → *Expert Advisors* → *Remove*. Kiểm tab **Experts**
+không còn dòng `CopyBridge*` nào. Chart nằm trong profile của MT5 nên script không với tới; và gỡ EA
+cũng là cách xoá `AgentToken` khỏi profile đã lưu.
+
+Bỏ bước này thì bước 2 báo `khong xoa duoc ...ex5` — file đang bị MT5 giữ.
+
+### 2. Một lệnh
 
 ```powershell
-.\scripts\tao-dich-vu.ps1 -GoBo
-Rename-Item C:\CopyBridge C:\CopyBridge-cu-$(Get-Date -Format yyyyMMdd)
+cd C:\CopyBridge
+.\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge -ChayThu    # xem truoc, khong cham gi
+.\scripts\go-bo.ps1 -ThuMuc C:\CopyBridge             # go that, phai go dung cum GO BO TAT CA
 ```
 
-Rồi làm lại **Phần A** từ A1. Token cũ mất hiệu lực — gắn lại EA với token mới.
+PowerShell **Administrator**. Script làm, theo đúng thứ tự này:
+
+| Việc | Vì sao phải đúng thứ tự |
+|---|---|
+| Cảnh báo nếu `tinh-hinh` còn mục cần chú ý | Vị thế **thật** trên sàn không biến mất khi xoá database. Đóng tay trong MT5 trước |
+| Gỡ dịch vụ `CopyBridge` và **mọi** tác vụ trong `\CopyBridge\` | Gọi lại `tao-dich-vu.ps1 -GoBo`; xoá luôn thư mục tác vụ mà `Unregister-ScheduledTask` để lại |
+| Giết tiến trình `-m bridge` / `-m clicker` còn sót | Clicker còn sống vẫn **bấm vào cửa sổ MT5**, và còn giữ mutex `Global\CopyBridgeClicker-<mục>` — bản cài mới sẽ thoát **mã 3** mà không ai hiểu vì sao |
+| Xoá `CopyBridge*.ex5` và `MQL5\Files\copybridge\` của từng terminal | Thư mục đó giữ `<login>_state.json`, `_outbox.ndjson`, `_commands.ndjson`. Bỏ sót là bản cài mới đọc lại outbox của hệ thống cũ |
+| Xoá `config.toml`, mọi `config.toml.bak-*`, `config.toml.tam` **trước** thư mục | Chúng là **bản rõ** của mật khẩu dashboard và token clicker. Xoá trước thì nếu bước cuối thất bại, bí mật vẫn đã đi rồi |
+| Xoá `Desktop\cai-dat.ps1` và bộ cài trong `%TEMP%` | Bản `cai-dat.ps1` cũ trên Desktop đúng là cái bẫy mục A1 phải cảnh báo |
+| Xoá cả `C:\CopyBridge` | Thất bại (file bị giữ) thì script in đúng câu lệnh chạy tay, **không** báo thành công |
+
+**Không cần chờ EA đẩy hết outbox** như lúc cập nhật (B1): ở đây ta xoá toàn bộ lịch sử nên backlog
+đó không còn nghĩa gì.
+
+### 3. Kiểm máy đã sạch
+
+Mỗi dòng là một câu lệnh, không phải một lời hứa:
+
+```powershell
+Get-Service CopyBridge -ErrorAction SilentlyContinue                       # khong ra gi
+Get-ScheduledTask -TaskPath '\CopyBridge\' -ErrorAction SilentlyContinue   # khong ra gi
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -match '-m (bridge|clicker)' }              # khong ra gi
+Test-Path C:\CopyBridge                                                    # False
+Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"     # khong ra gi
+Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0  # khong ra gi
+```
+
+**Token cũ tự mất hiệu lực:** Bridge chỉ giữ **hash** của token trong `agent.token_hash`, nên xoá
+database là xoá hết — không phải đi thu hồi ở đâu.
+
+### Cái gì **cố ý** không bị gỡ
+
+| Giữ lại | Vì sao |
+|---|---|
+| Python 3.12, git, NSSM | Bản cài mới cần đúng chúng. Muốn gỡ: `winget uninstall Python.Python.3.12 Git.Git NSSM.NSSM` — chỉ khi máy không dùng cho việc khác |
+| Autologon, tắt sleep/hibernate, tắt khoá màn hình | Mục A0 — bản cài mới **vẫn cần**. Gỡ rồi đặt lại chỉ là chỗ để quên |
+| MT5, các tài khoản, `Allow WebRequest 127.0.0.1`, Algo Trading, Toolbox tab Trade | A3–A5 dùng lại ngay |
+
+Rồi làm lại **Phần A** từ A1. **Nếu A1 in `BO QUA` ở bước nào thì máy chưa sạch** — đó là phép thử
+tốt nhất.
+
+### Chỉ muốn xoá lịch sử, giữ đường lùi
+
+Hai cách nhẹ hơn, không gỡ gì:
+
+* **Đặt lại trên dashboard** (cuối tab Cấu hình, D-33): *Đặt lại dữ liệu* xoá lịch sử giao dịch và
+  giữ cấu hình; *Đặt lại toàn bộ* xoá cả cấu hình nhưng **giữ agent và token**. Database được sao
+  lưu trước khi xoá.
+* **Đổi tên thư mục**, để nguyên mọi thứ làm đường lùi:
+
+  ```powershell
+  .\scripts\tao-dich-vu.ps1 -GoBo
+  Rename-Item C:\CopyBridge C:\CopyBridge-cu-$(Get-Date -Format yyyyMMdd)
+  ```
+
+  Đây **không phải** cách gỡ an toàn: thư mục cũ vẫn giữ `config.toml` và các bản
+  `config.toml.bak-*`, tức bản rõ của mật khẩu và token, cùng tiến trình clicker đang chạy.
 
 ---
 

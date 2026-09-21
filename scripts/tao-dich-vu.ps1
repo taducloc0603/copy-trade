@@ -329,12 +329,15 @@ function dang_ky_mot_clicker([string] $Muc) {
     dang_ky_tac_vu_clicker (ten_tac_vu $Muc) $Muc $login $title
 }
 
-function go_bo([string] $nssm) {
+function go_bo() {
     tieu_de "Go bo"
     $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
     if ($null -ne $dv) {
         if ($dv.Status -eq 'Running') { Stop-Service $TenDichVu }
-        & $nssm remove $TenDichVu confirm | Out-Null
+        # Tim nssm o DAY chu khong o dau script: `tim_nssm` co the TAI VE va CAI NSSM, va lam
+        # viec do trong mot lan `-GoBo` la cai them mot thu vao may dang duoc don. Khong co dich
+        # vu thi khong can nssm.
+        & (tim_nssm) remove $TenDichVu confirm | Out-Null
         ok "da go dich vu $TenDichVu"
     }
     # MOI tac vu Clicker* phai bien mat, khong phai mot danh sach ten cung: bo sot mot cai thi
@@ -357,9 +360,9 @@ try {
     if (-not (la_admin)) {
         throw "Can quyen Administrator. Mo lai PowerShell bang 'Run as administrator'."
     }
-    $nssm = tim_nssm
+    if ($GoBo) { go_bo; exit 0 }
 
-    if ($GoBo) { go_bo $nssm; exit 0 }
+    $nssm = tim_nssm
 
     # Muc phu can dang ky, sau khi gop cong tac tuong thich cu.
     $mucPhu = @($TacVuClicker | Where-Object { $_ -ne "clicker" })
