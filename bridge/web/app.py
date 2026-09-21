@@ -24,6 +24,7 @@ from fastapi import Cookie, FastAPI, Form, Request, WebSocket, WebSocketDisconne
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from bridge.config import ConfigError, sua_config_toml
 from bridge.db.repo import Database
 from bridge.labels_vi import LOI_CAU_HINH, UI
 from bridge.logging_setup import get_logger
@@ -72,8 +73,10 @@ class Dashboard:
                  processor: Any = None, server: Any = None, config: Any = None) -> None:
         self.db = db
         self.password = password
-        #: `Config` đã nạp lúc Bridge khởi động, để trang Cấu hình **hiện** các khoá của
-        #: `config.toml`. Tầng web không tự đọc lại file và không bao giờ ghi vào đó.
+        #: `Config` đã nạp lúc Bridge khởi động. Trang Cấu hình hiện các khoá của `config.toml`
+        #: và sửa được chúng (`/api/file_config`), nhưng **tiến trình đang chạy không nạp lại**:
+        #: cấu hình khởi động nửa nạp nửa không là trạng thái không ai lường được. Giá trị mới có
+        #: hiệu lực khi khởi động lại dịch vụ, và trang nói đúng điều đó.
         self.config = config
         #: `EventProcessor` — để gọi `reconciler` và `closing`. Có thể None khi chỉ xem.
         self.processor = processor
@@ -378,6 +381,37 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         except LoiCauHinh as exc:
             return _tra_loi(exc)
         return {"ok": True, "khoa": body.get("khoa"), "gia_tri": gia_tri}
+
+    @app.post("/api/file_config")
+    async def api_sua_file_config(request: Request, sid: str | None = Cookie(None)) -> Any:
+        """Sửa `config.toml`. Kiểm nội dung mới **trước khi** ghi, và sao lưu bản cũ.
+
+        Một `config.toml` hỏng là một Bridge không khởi động được — và lúc đó không còn dashboard
+        nào để sửa lại. Nên phép kiểm ở đây chạy đúng `parse_config` của đường khởi động, chứ
+        không phải một bản kiểm rút gọn viết riêng cho tầng web.
+        """
+        if (loi := _chan(sid)) is not None:
+            return loi
+        if dashboard.config is None:
+            return _tra_loi(LoiCauHinh("KHONG_CO_FILE_CONFIG"), status=409)
+        body = await request.json()
+        doi = body.get("doi") or {}
+        if not isinstance(doi, dict) or not doi:
+            return _tra_loi(LoiCauHinh("KHONG_CO_GI_DOI"))
+        try:
+            ban_sao = sua_config_toml(Path(dashboard.config.source_path), doi,
+                                      project_root=Path(dashboard.config.project_root))
+        except ConfigError as exc:
+            # Câu của `ConfigError` đã là tiếng Việt và nói rõ khoá nào sai, nên đưa thẳng ra.
+            return JSONResponse({"error": "CONFIG_KHONG_HOP_LE", "message": str(exc)},
+                                status_code=400)
+        except OSError as exc:
+            return JSONResponse({"error": "KHONG_GHI_DUOC_FILE", "message": str(exc)},
+                                status_code=500)
+        # KHÔNG nạp lại vào tiến trình đang chạy: `config.toml` là cấu hình khởi động, nửa nạp
+        # nửa không là trạng thái không ai lường được. Trang báo rõ phải khởi động lại dịch vụ.
+        log.warning("Dashboard sua config.toml: %s", sorted(doi))
+        return {"ok": True, "ban_sao": ban_sao.name, "can_khoi_dong_lai": True}
 
     @app.post("/api/agent")
     async def api_tao_agent(request: Request, sid: str | None = Cookie(None)) -> Any:

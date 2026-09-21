@@ -18,6 +18,7 @@ from bridge.config import (
     SecretSection,
     load_config,
     parse_config,
+    sua_config_toml,
 )
 
 
@@ -153,3 +154,112 @@ def test_thieu_muc_clicker_thi_rong(tmp_path: Path) -> None:
 def test_muc_clicker_khong_phai_bang_thi_loi(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match=r"\[clicker\]"):
         _parse({"clicker": "khong-phai-bang"}, tmp_path)
+
+
+# -- ghi lại config.toml ------------------------------------------------------------------------
+#
+# Một `config.toml` hỏng là một Bridge không khởi động được, và lúc đó không còn dashboard nào để
+# sửa lại. Nên mỗi test dưới đây chốt một cách hỏng cụ thể.
+
+MAU_CONFIG = '''# Cau hinh Bridge. Dong chu thich nay PHAI con nguyen sau khi sua.
+[bridge]
+host = "127.0.0.1"   # chi may nay cham duoc
+port = 8787
+web_port = 8080
+db_path = "data/bridge.db"
+
+[security]
+dashboard_password = "cu"
+telegram_token   = ""
+
+[clicker]
+token = "tok-cu"
+'''
+
+
+def _config(tmp_path: Path) -> Path:
+    duong_dan = tmp_path / "config.toml"
+    duong_dan.write_text(MAU_CONFIG, encoding="utf-8")
+    return duong_dan
+
+
+def test_sua_giu_nguyen_chu_thich_va_thu_tu(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    sua_config_toml(duong_dan, {"bridge.web_port": 8090}, project_root=tmp_path)
+    moi = duong_dan.read_text(encoding="utf-8")
+    assert "web_port = 8090" in moi
+    assert "# Cau hinh Bridge. Dong chu thich nay PHAI con nguyen sau khi sua." in moi
+    assert "# chi may nay cham duoc" in moi
+    assert moi.index("[bridge]") < moi.index("[security]") < moi.index("[clicker]")
+
+
+def test_gia_tri_sai_thi_khong_cham_vao_file(tmp_path: Path) -> None:
+    """Kiểm **trước khi** ghi: cổng trùng nhau là Bridge không khởi động được."""
+    duong_dan = _config(tmp_path)
+    with pytest.raises(ConfigError):
+        sua_config_toml(duong_dan, {"bridge.web_port": 8787}, project_root=tmp_path)
+    assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
+
+
+def test_mo_host_ra_ngoai_ma_khong_co_mat_khau_bi_tu_choi(tmp_path: Path) -> None:
+    """Đúng phép kiểm F-02, chạy ở đây chứ không đợi tới lần khởi động sau."""
+    duong_dan = _config(tmp_path)
+    with pytest.raises(ConfigError):
+        sua_config_toml(duong_dan, {"bridge.host": "0.0.0.0", "security.dashboard_password": ""},
+                        project_root=tmp_path)
+    assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
+
+
+def test_khoa_ngoai_danh_sach_bi_tu_choi(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    with pytest.raises(ConfigError):
+        sua_config_toml(duong_dan, {"bridge.db_path_khac": "x"}, project_root=tmp_path)
+    with pytest.raises(ConfigError):
+        sua_config_toml(duong_dan, {"bridge.port": "8787"}, project_root=tmp_path)
+    assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
+
+
+def test_gia_tri_co_dau_nhay_bi_tu_choi_thay_vi_ghi_ra_toml_sai(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    with pytest.raises(ConfigError):
+        sua_config_toml(duong_dan, {"security.dashboard_password": 'co"nhay'},
+                        project_root=tmp_path)
+    assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
+
+
+def test_tao_ban_sao_luu_truoc_khi_thay(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    ban_sao = sua_config_toml(duong_dan, {"bridge.port": 8788}, project_root=tmp_path)
+    assert ban_sao.exists()
+    assert ban_sao.read_text(encoding="utf-8") == MAU_CONFIG
+    assert "port = 8788" in duong_dan.read_text(encoding="utf-8")
+
+
+def test_them_khoa_chua_co_vao_dung_muc(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    sua_config_toml(duong_dan, {"security.telegram_chat_id": "12345",
+                                "clicker_master.token": "tok-master"},
+                    project_root=tmp_path)
+    doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
+    assert doc["security"]["telegram_chat_id"] == "12345"
+    assert doc["security"]["dashboard_password"] == "cu"
+    assert doc["clicker_master"]["token"] == "tok-master"
+    assert doc["clicker"]["token"] == "tok-cu"
+
+
+def test_khong_ghi_bom_vi_tomllib_mo_file_o_che_do_nhi_phan(tmp_path: Path) -> None:
+    duong_dan = _config(tmp_path)
+    sua_config_toml(duong_dan, {"bridge.port": 8788}, project_root=tmp_path)
+    assert not duong_dan.read_bytes().startswith(b"\xef\xbb\xbf")
+    # Và đọc lại được bằng đúng đường Bridge dùng lúc khởi động.
+    assert load_config(duong_dan).bridge.port == 8788
+
+
+def test_khoa_moi_chen_ngay_sau_khoa_cuoi_cua_muc_khong_dinh_vao_muc_sau(tmp_path: Path) -> None:
+    """Đúng TOML thôi chưa đủ: file này người ta còn đọc bằng mắt."""
+    duong_dan = _config(tmp_path)
+    sua_config_toml(duong_dan, {"security.telegram_chat_id": "12345"}, project_root=tmp_path)
+    dong = duong_dan.read_text(encoding="utf-8").splitlines()
+    vi_tri = dong.index('telegram_chat_id = "12345"')
+    assert dong[vi_tri - 1].startswith("telegram_token")
+    assert dong[vi_tri + 1].strip() == ""

@@ -12,6 +12,7 @@ Trọng tâm không phải bố cục mà là những chỗ giao diện có th�
 from __future__ import annotations
 
 import re
+import tomllib
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -602,3 +603,94 @@ async def test_khai_terminal_cho_agent_khong_phai_clicker_bi_tu_choi(
                           json={"terminal_title": "1"})
     assert r.status_code == 400
     assert r.json()["error"] == "SAI_ROLE"
+
+
+# -- sửa config.toml từ dashboard ---------------------------------------------------------------
+
+MAU_FILE_CONFIG = """# Chu thich PHAI con nguyen.
+[bridge]
+host = "127.0.0.1"
+port = 8787
+web_port = 8080
+db_path = "data/bridge.db"
+
+[security]
+dashboard_password = "mat-khau-thu-nghiem"
+
+[clicker]
+token = "tok"
+"""
+
+
+def _dashboard_co_file(db: Database, tmp_path: Path) -> tuple[Dashboard, Path]:
+    duong_dan = tmp_path / "config.toml"
+    duong_dan.write_text(MAU_FILE_CONFIG, encoding="utf-8")
+    config = parse_config(tomllib.loads(MAU_FILE_CONFIG), source_path=duong_dan,
+                          project_root=tmp_path)
+    return Dashboard(db, password=MAT_KHAU, config=config), duong_dan
+
+
+async def test_sua_config_toml_tu_dashboard_va_giu_chu_thich(seeded_web: Database,
+                                                             tmp_path: Path) -> None:
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/file_config", json={"doi": {"bridge.web_port": 8090}})
+    assert r.status_code == 200
+    assert r.json()["can_khoi_dong_lai"] is True
+    moi = duong_dan.read_text(encoding="utf-8")
+    assert "web_port = 8090" in moi
+    assert "# Chu thich PHAI con nguyen." in moi
+    # Ban cu duoc sao luu canh file.
+    assert list(tmp_path.glob("config.toml.bak-*"))
+
+
+async def test_config_toml_sai_thi_tu_choi_va_khong_cham_vao_file(seeded_web: Database,
+                                                                  tmp_path: Path) -> None:
+    """Kiểm bằng đúng `parse_config` của đường khởi động, không phải một bản rút gọn."""
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/file_config", json={"doi": {"bridge.web_port": 8787}})
+    assert r.status_code == 400
+    assert r.json()["error"] == "CONFIG_KHONG_HOP_LE"
+    assert duong_dan.read_text(encoding="utf-8") == MAU_FILE_CONFIG
+
+
+async def test_khoa_ngoai_danh_sach_khong_ghi_vao_config_toml(seeded_web: Database,
+                                                              tmp_path: Path) -> None:
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/file_config", json={"doi": {"bridge.khoa_la": "x"}})
+    assert r.status_code == 400
+    assert duong_dan.read_text(encoding="utf-8") == MAU_FILE_CONFIG
+
+
+async def test_bi_mat_khong_bao_gio_di_ra_khoi_bridge(seeded_web: Database,
+                                                      tmp_path: Path) -> None:
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.get("/api/config")
+    assert "mat-khau-thu-nghiem" not in r.text
+    assert "tok" not in [d["gia_tri"] for d in r.json()["file_config"]]
+    khoa = {d["khoa"]: d for d in r.json()["file_config"]}
+    assert khoa["security.dashboard_password"]["bi_mat"] is True
+    assert khoa["security.dashboard_password"]["gia_tri"] == UI["cfg_file_masked"]
+    assert khoa["bridge.port"]["gia_tri"] == "8787"
+
+
+async def test_doi_mat_khau_dashboard_tren_ui_thi_ghi_vao_file(seeded_web: Database,
+                                                               tmp_path: Path) -> None:
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/file_config",
+                         json={"doi": {"security.dashboard_password": "mat-khau-moi"}})
+    assert r.status_code == 200
+    doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
+    assert doc["security"]["dashboard_password"] == "mat-khau-moi"
+    # Tien trinh dang chay KHONG nap lai: cau hinh khoi dong nua nap nua khong la trang thai
+    # khong ai luong duoc. Mat khau cu van dung cho toi khi khoi dong lai dich vu.
+    assert dashboard.password == MAT_KHAU

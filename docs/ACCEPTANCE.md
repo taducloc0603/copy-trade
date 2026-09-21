@@ -104,6 +104,8 @@ và sửa được trên dashboard.
 | TEST-32e | Xoá tiêu đề (để trống) rồi chạy lại tác vụ clicker | Clicker thoát mã 4, `logs\clicker-wrapper.log` ghi "chua khai terminal"; khai lại trên dashboard thì nó tự lên |
 | TEST-32f | Thêm ánh xạ symbol sai một ký tự, rồi đúng | Sai thì bị từ chối và **không** lưu; đúng thì lưu kèm mốc "đã kiểm" |
 | TEST-32g | Cấp lại token cho một agent trên dashboard | Token hiện một lần; `grep -ri token logs\` vẫn rỗng |
+| TEST-32h | Sửa `config.toml` trên dashboard: đổi `telegram_chat_id`, rồi thử đặt `web_port` trùng `port` | Lần đầu lưu được, chú thích trong file còn nguyên, có file `config.toml.bak-*`; lần sau bị từ chối và file **không đổi** |
+| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `Restart-Service CopyBridge` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được |
 
 ---
 

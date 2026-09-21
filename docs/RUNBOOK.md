@@ -46,7 +46,7 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 | Nằm ở | Gồm những gì | Sửa bằng |
 |---|---|---|
 | **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
-| **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Mở file trên máy rồi **khởi động lại dịch vụ**. Dashboard chỉ hiện (đã che bí mật), không ghi |
+| **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Dashboard tab **Cấu hình** (kiểm lại rồi mới ghi, sao lưu bản cũ) hoặc mở file. Có hiệu lực **sau khi khởi động lại dịch vụ** |
 
 `config.toml` nằm trong `.gitignore`. Các khoá:
 

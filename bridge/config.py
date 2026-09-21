@@ -13,11 +13,18 @@ Phân biệt hai loại cấu hình, đừng trộn lẫn:
 
 from __future__ import annotations
 
+import os
+import re
 import tomllib
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from bridge.clock import utc_now
+from bridge.logging_setup import get_logger
+
+log = get_logger(__name__)
 
 DEFAULT_CONFIG_FILENAME = "config.toml"
 EXAMPLE_CONFIG_FILENAME = "config.example.toml"
@@ -208,3 +215,138 @@ def load_config(path: Path | str | None = None) -> Config:
         raise ConfigError(f"Không đọc được {config_path}: {exc}") from exc
     root = config_path.parent if path is not None else project_root
     return parse_config(raw, source_path=config_path, project_root=root)
+
+
+# =============================================================================================
+# Ghi lại `config.toml` (D-32, bổ sung 2026-09-21)
+# =============================================================================================
+#
+# Dashboard sửa được file này, nhưng theo đúng ba điều kiện dưới đây — vì một `config.toml` hỏng
+# là một Bridge **không khởi động được**, và lúc đó không còn dashboard nào để sửa lại:
+#
+# 1. **Kiểm trước khi ghi.** Nội dung mới được parse bằng `tomllib` rồi chạy qua `parse_config`
+#    y như lúc khởi động. Không qua được thì file cũ **không bị đụng tới**.
+# 2. **Sao lưu bản cũ** kèm dấu thời gian, trước khi thay.
+# 3. **Sửa tại chỗ từng dòng**, giữ nguyên chú thích và thứ tự. Dựng lại file từ dict sẽ xoá sạch
+#    phần chú thích — thứ duy nhất giải thích vì sao một giá trị được đặt như vậy.
+
+#: Khoá `config.toml` sửa được từ dashboard: `kiểu`, `có phải bí mật không`.
+#:
+#: Bí mật (`True`) **không bao giờ đi ra** khỏi Bridge: API chỉ báo "có giá trị" hay không, và
+#: chuỗi rỗng gửi lên nghĩa là "giữ nguyên" chứ không phải "xoá" — người ta để trống ô mật khẩu
+#: vì không muốn đổi nó, không phải vì muốn bỏ mật khẩu.
+KHOA_FILE_SUA_DUOC: dict[str, tuple[str, bool]] = {
+    "bridge.host": ("str", False),
+    "bridge.port": ("int", False),
+    "bridge.web_port": ("int", False),
+    "bridge.db_path": ("str", False),
+    "security.dashboard_password": ("str", True),
+    "security.telegram_token": ("str", True),
+    "security.telegram_chat_id": ("str", False),
+    "clicker.token": ("str", True),
+    "clicker_master.token": ("str", True),
+}
+
+
+def _dat_gia_tri_toml(dong: str, khoa: str, gia_tri: Any) -> str:
+    """Một dòng `khoa = gia_tri` theo đúng cú pháp TOML."""
+    if isinstance(gia_tri, bool):
+        raise ConfigError(f"{khoa}: không nhận giá trị bool")
+    if isinstance(gia_tri, int):
+        return f"{dong}{khoa} = {gia_tri}"
+    chu = str(gia_tri)
+    if '"' in chu or "\\" in chu or "\n" in chu:
+        # Không tự escape: một token hay mật khẩu chứa dấu nháy là chuyện hiếm tới mức thà từ
+        # chối còn hơn ghi ra một file TOML sai mà người ta chỉ phát hiện lúc Bridge không lên.
+        raise ConfigError(f"{khoa}: giá trị không được chứa dấu nháy kép, xuống dòng hay dấu \\")
+    return f'{dong}{khoa} = "{chu}"'
+
+
+def _sua_van_ban_toml(van_ban: str, doi: Mapping[str, Any]) -> str:
+    """Thay giá trị của từng khoá **tại chỗ**, giữ nguyên chú thích và thứ tự.
+
+    Khoá chưa có thì thêm vào cuối mục của nó; mục chưa có thì thêm mục mới ở cuối file.
+    """
+    dong_cu = van_ban.splitlines()
+    con_lai = dict(doi)
+    muc_hien_tai = ""
+    ket_qua: list[str] = []
+    #: Dòng cuối cùng thuộc về mỗi mục, để chèn khoá mới vào đúng chỗ.
+    cuoi_muc: dict[str, int] = {}
+
+    for dong in dong_cu:
+        tieu_de = re.match(r"^\s*\[([^\]]+)\]\s*$", dong)
+        if tieu_de:
+            muc_hien_tai = tieu_de.group(1).strip()
+        ket_qua.append(dong)
+        # Chỉ nhớ dòng **có nội dung**: nhớ cả dòng trắng cuối mục thì khoá mới bị chèn sau dòng
+        # trắng đó và dính vào tiêu đề mục kế tiếp — đúng TOML nhưng đọc thì như thể nó thuộc mục
+        # sau.
+        if muc_hien_tai and dong.strip():
+            cuoi_muc[muc_hien_tai] = len(ket_qua) - 1
+        if not tieu_de and muc_hien_tai:
+            for khoa, gia_tri in list(con_lai.items()):
+                muc, _, ten = khoa.rpartition(".")
+                if muc != muc_hien_tai:
+                    continue
+                if re.match(rf"^\s*{re.escape(ten)}\s*=", dong):
+                    dau = dong[: len(dong) - len(dong.lstrip())]
+                    ket_qua[-1] = _dat_gia_tri_toml(dau, ten, gia_tri)
+                    del con_lai[khoa]
+
+    for khoa, gia_tri in con_lai.items():
+        muc, _, ten = khoa.rpartition(".")
+        if muc in cuoi_muc:
+            ket_qua.insert(cuoi_muc[muc] + 1, _dat_gia_tri_toml("", ten, gia_tri))
+            for m, vi_tri in cuoi_muc.items():
+                if vi_tri > cuoi_muc[muc]:
+                    cuoi_muc[m] = vi_tri + 1
+            cuoi_muc[muc] += 1
+        else:
+            ket_qua.extend(["", f"[{muc}]", _dat_gia_tri_toml("", ten, gia_tri)])
+            cuoi_muc[muc] = len(ket_qua) - 1
+
+    return "\n".join(ket_qua) + "\n"
+
+
+def sua_config_toml(duong_dan: Path, doi: Mapping[str, Any],
+                    project_root: Path | None = None) -> Path:
+    """Sửa các khoá trong `config.toml`. Trả về đường dẫn bản sao lưu vừa tạo.
+
+    Ném `ConfigError` **trước khi** chạm vào file nếu khoá lạ, kiểu sai, hoặc nội dung mới không
+    qua được đúng phép kiểm mà Bridge chạy lúc khởi động.
+    """
+    if not doi:
+        raise ConfigError("Không có khoá nào để sửa")
+    for khoa, gia_tri in doi.items():
+        if khoa not in KHOA_FILE_SUA_DUOC:
+            raise ConfigError(f"Khoá {khoa} không sửa được ở đây")
+        kieu, _ = KHOA_FILE_SUA_DUOC[khoa]
+        if kieu == "int" and (isinstance(gia_tri, bool) or not isinstance(gia_tri, int)):
+            raise ConfigError(f"{khoa} phải là số nguyên, nhận được {gia_tri!r}")
+        if kieu == "str" and not isinstance(gia_tri, str):
+            raise ConfigError(f"{khoa} phải là chuỗi, nhận được {gia_tri!r}")
+
+    cu = duong_dan.read_text(encoding="utf-8")
+    moi = _sua_van_ban_toml(cu, doi)
+
+    # Phép kiểm y hệt lúc khởi động: cùng `tomllib`, cùng `parse_config`. Một file qua được
+    # `tomllib` vẫn có thể làm Bridge từ chối khởi động (ví dụ mở `host` ra ngoài mà mật khẩu
+    # trống), nên phải chạy cả hai chứ không chỉ parse.
+    try:
+        raw = tomllib.loads(moi)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"Nội dung mới không phải TOML hợp lệ: {exc}") from exc
+    goc = project_root or find_project_root()
+    parse_config(raw, source_path=duong_dan, project_root=goc)
+
+    ban_sao = duong_dan.with_name(
+        f"{duong_dan.name}.bak-{utc_now().strftime('%Y%m%d-%H%M%S')}")
+    ban_sao.write_text(cu, encoding="utf-8", newline="")
+    # Ghi qua file tạm rồi đổi tên: mất điện giữa chừng để lại file cũ nguyên vẹn chứ không để
+    # lại một `config.toml` cụt.
+    tam = duong_dan.with_name(duong_dan.name + ".tam")
+    tam.write_text(moi, encoding="utf-8", newline="")
+    os.replace(tam, duong_dan)
+    log.warning("Da sua %d khoa trong %s, ban cu o %s", len(doi), duong_dan.name, ban_sao.name)
+    return ban_sao

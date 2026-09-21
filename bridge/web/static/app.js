@@ -505,14 +505,56 @@ function khoiFileConfig(el) {
   const box = document.createElement("div");
   box.className = "sai-lech-nhom";
   box.appendChild(tieuDe(UI.cfg_file_title));
-  const bang = document.createElement("table");
-  const than = bang.createTBody();
+  box.appendChild(nhan(UI.cfg_file_restart, "canh-bao-nho"));
+
+  const o = {};
   for (const k of CAU_HINH.file_config) {
-    const tr = than.insertRow();
-    tr.insertCell().textContent = k.khoa;
-    tr.insertCell().textContent = k.gia_tri || "—";
+    if (k.chi_doc) {
+      const d = document.createElement("div");
+      d.className = "hang-cau-hinh";
+      d.append(nhan(k.khoa, "nhan"), nhan(k.gia_tri), nhan(UI.cfg_file_readonly, "loi"));
+      box.appendChild(d);
+      continue;
+    }
+    let dieuKhien;
+    if (k.bi_mat) {
+      // Gia tri bi mat khong bao gio di ra khoi Bridge, nen o nay luon trong: go de THAY,
+      // de trong la giu nguyen. Hien "(da dat)" ben canh de biet dang co gia tri hay chua.
+      dieuKhien = document.createElement("input");
+      dieuKhien.type = "password";
+      dieuKhien.autocomplete = "new-password";
+      dieuKhien.placeholder = k.gia_tri || "";
+    } else {
+      dieuKhien = k.kieu === "int" ? oSo(k.gia_tri, "1") : oChu(k.gia_tri);
+    }
+    o[k.khoa] = { el: dieuKhien, k: k };
+    const d = document.createElement("div");
+    d.className = "hang-cau-hinh";
+    d.append(nhan(k.khoa, "nhan"), dieuKhien);
+    if (k.bi_mat) d.appendChild(nhan(UI.cfg_file_secret_hint, "canh-bao-nho"));
+    box.appendChild(d);
   }
-  box.appendChild(bang);
+
+  const luu = nut(UI.cfg_save, "chinh");
+  luu.onclick = async () => {
+    const doi = {};
+    for (const khoa in o) {
+      const { el: dk, k } = o[khoa];
+      const chu = dk.value.trim();
+      // Bi mat de trong = giu nguyen. Khoa thuong thi gui nguyen van, ke ca chuoi rong
+      // (xoa telegram_chat_id chang han).
+      if (k.bi_mat && !chu) continue;
+      if (!k.bi_mat && chu === String(k.gia_tri || "")) continue;
+      doi[khoa] = k.kieu === "int" ? parseInt(chu, 10) : chu;
+    }
+    if (!Object.keys(doi).length) return;
+    const r = await goi("/api/file_config",
+                        { method: "POST", body: JSON.stringify({ doi: doi }) });
+    if (!r.ok) { alert(r.data.message || r.data.error || ""); return; }
+    alert(UI.cfg_file_saved);
+    await taiCauHinh();
+  };
+  box.appendChild(luu);
   el.appendChild(box);
 }
 

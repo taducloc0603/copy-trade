@@ -401,9 +401,11 @@ Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần 
 **Log:** `logs\bridge.log`, `logs\clicker.log`, `logs\clicker_master.log`, `logs\service-err.log`.
 
 **Cấu hình nằm ở đâu:** cấu hình *nghiệp vụ* (agent, client, ánh xạ symbol, khoá hệ thống) nằm
-trong database và sửa trên dashboard — đổi là có hiệu lực ngay. `config.toml` chỉ giữ thứ cần
-**trước khi** Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker; sửa nó phải mở
-file trên VPS và khởi động lại dịch vụ. Dashboard hiện các khoá đó nhưng không ghi (D-32).
+trong database — sửa trên dashboard là có hiệu lực ngay. `config.toml` giữ thứ cần **trước khi**
+Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker. Dashboard cũng sửa được các
+khoá này (kiểm lại nội dung rồi mới ghi, và sao lưu bản cũ kèm dấu thời gian), nhưng giá trị mới
+chỉ có hiệu lực **sau khi khởi động lại dịch vụ**: `Restart-Service CopyBridge`. Giá trị bí mật
+không bao giờ hiện lại trên màn hình — ô để trống nghĩa là giữ nguyên (D-32).
 
 **Không bao giờ** sửa database bằng tay, và không đưa token lên dòng lệnh hay ảnh chụp màn hình.
 

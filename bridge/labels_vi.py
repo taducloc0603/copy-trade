@@ -62,6 +62,8 @@ LOI_CAU_HINH = {
     "SAN_KHONG_CO_SYMBOL": ("Sàn Client chưa báo có symbol {client_symbol}. Kiểm tra EA Client "
                             "đang chạy và symbol đã kéo vào Market Watch."),
     "KHONG_CO_ANH_XA": "Không có ánh xạ cho {master_symbol}",
+    "KHONG_CO_FILE_CONFIG": "Bridge không nạp config.toml nào nên không có gì để sửa.",
+    "KHONG_CO_GI_DOI": "Không có giá trị nào được đổi.",
     "TIEU_DE_KHONG_CO_SO_TK": ("Tiêu đề {tieu_de} không chứa số tài khoản {login}. "
                                "Cửa sổ MT5 mở đầu bằng số tài khoản, và đó là thứ clicker "
                                "đối chiếu trước khi bấm."),
@@ -199,8 +201,15 @@ UI = {
     "cfg_saved": "Đã lưu",
     "cfg_open_pairs_keep": "{n} cặp đang chạy giữ nguyên tỷ lệ cũ",
     "cfg_system_title": "Khoá hệ thống",
-    "cfg_file_title": "config.toml — chỉ đọc, sửa bằng cách mở file trên VPS",
-    "cfg_file_masked": "(đã che)",
+    "cfg_file_title": "config.toml — cấu hình khởi động",
+    "cfg_file_masked": "(đã đặt)",
+    "cfg_file_restart": ("Sửa ở đây được kiểm lại rồi mới ghi, và bản cũ được sao lưu. "
+                         "Giá trị mới CHỈ có hiệu lực sau khi khởi động lại dịch vụ "
+                         "CopyBridge."),
+    "cfg_file_secret_hint": "Để trống là giữ nguyên. Gõ giá trị mới để thay.",
+    "cfg_file_readonly": ("Bản cài cũ còn giá trị trong file — file THẮNG database. Xoá "
+                          "dòng này trong config.toml để dùng giá trị khai trên dashboard."),
+    "cfg_file_saved": "Đã lưu. Khởi động lại dịch vụ CopyBridge để có hiệu lực.",
     "cfg_master_close_title": "Đường đóng phía Master",
     "cfg_master_clicker": "Clicker lái terminal Master",
     "cfg_master_route": "Kênh đóng lệnh phía Master",

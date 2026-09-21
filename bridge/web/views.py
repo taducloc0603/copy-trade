@@ -14,6 +14,7 @@ import json
 from typing import Any
 
 from bridge.clock import parse_iso
+from bridge.config import KHOA_FILE_SUA_DUOC
 from bridge.db.repo import Database
 from bridge.labels_vi import (
     AGENT_ROLE,
@@ -353,37 +354,39 @@ def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:
     }
 
 
-def _mo_ta_file_config(config: Any) -> list[dict[str, str]]:
-    """Các khoá `config.toml` đang có hiệu lực, **chỉ đọc** và đã che bí mật.
+def _mo_ta_file_config(config: Any) -> list[dict[str, Any]]:
+    """Các khoá `config.toml` đang có hiệu lực. Sửa được, nhưng **chỉ có hiệu lực sau khi khởi
+    động lại dịch vụ** — nhãn `cfg_file_restart` nói đúng điều đó trên trang.
 
-    Dashboard không bao giờ ghi `config.toml`: mấy khoá này chỉ được đọc lúc Bridge khởi động, nên
-    một nút "Lưu" ở đây sẽ hứa điều nó không làm được. Hiện chúng ra là để trả lời câu hỏi "máy
-    đang chạy bằng cấu hình nào" mà không phải mở file qua RDP.
-
-    Giá trị bí mật **không** đi qua JSON. Chỉ báo có hay không: biết `dashboard_password` đang
-    trống là thông tin vận hành cần thiết, còn biết nó là gì thì không.
+    Giá trị bí mật **không bao giờ** đi qua JSON: chỉ báo có hay không. Biết `dashboard_password`
+    đang trống là thông tin vận hành cần thiết, còn biết nó là gì thì không — và một mật khẩu đã
+    đi ra khỏi tiến trình là một mật khẩu nằm trong cache trình duyệt.
     """
     if config is None:
         return []
-    def _co(muc: Any, khoa: str) -> str:
-        return UI["cfg_file_masked"] if (muc or {}).get(khoa) else ""
 
-    return [
-        {"khoa": "bridge.host", "gia_tri": str(config.bridge.host)},
-        {"khoa": "bridge.port", "gia_tri": str(config.bridge.port)},
-        {"khoa": "bridge.web_port", "gia_tri": str(config.bridge.web_port)},
-        {"khoa": "bridge.db_path", "gia_tri": str(config.bridge.db_path)},
-        {"khoa": "security.dashboard_password", "gia_tri": _co(config.security,
-                                                               "dashboard_password")},
-        {"khoa": "security.telegram_token", "gia_tri": _co(config.security, "telegram_token")},
-        {"khoa": "clicker.token", "gia_tri": _co(config.clicker, "token")},
-        {"khoa": "clicker.account_login",
-         "gia_tri": str((config.clicker or {}).get("account_login", "") or "")},
-        {"khoa": "clicker.terminal_title",
-         "gia_tri": str((config.clicker or {}).get("terminal_title", "") or "")},
-        {"khoa": "clicker_master.token", "gia_tri": _co(config.clicker_master, "token")},
-        {"khoa": "clicker_master.account_login",
-         "gia_tri": str((config.clicker_master or {}).get("account_login", "") or "")},
-        {"khoa": "clicker_master.terminal_title",
-         "gia_tri": str((config.clicker_master or {}).get("terminal_title", "") or "")},
-    ]
+    def _gia_tri(khoa: str) -> Any:
+        muc, _, ten = khoa.rpartition(".")
+        if muc == "bridge":
+            return getattr(config.bridge, ten)
+        return (getattr(config, muc, None) or {}).get(ten, "")
+
+    dong = []
+    for khoa, (kieu, bi_mat) in KHOA_FILE_SUA_DUOC.items():
+        gia_tri = _gia_tri(khoa)
+        dong.append({
+            "khoa": khoa,
+            "kieu": kieu,
+            "bi_mat": bi_mat,
+            # Bí mật: chỉ nói CÓ hay KHÔNG, không bao giờ nói là gì.
+            "gia_tri": (UI["cfg_file_masked"] if gia_tri else "") if bi_mat else str(gia_tri or ""),
+        })
+    # Hai khoá dưới đây không sửa ở đây: chúng đã chuyển vào database (D-32) và chỉ còn hiện ra
+    # để người vận hành thấy bản cài cũ còn sót giá trị trong file — mà file thì THẮNG database.
+    for muc in ("clicker", "clicker_master"):
+        for ten in ("account_login", "terminal_title"):
+            gia_tri = (getattr(config, muc, None) or {}).get(ten, "")
+            if gia_tri:
+                dong.append({"khoa": f"{muc}.{ten}", "kieu": "str", "bi_mat": False,
+                             "chi_doc": True, "gia_tri": str(gia_tri)})
+    return dong

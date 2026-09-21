@@ -512,8 +512,15 @@ cấu hình gì — và đó là loại không-biết dẫn tới quyết địn
   clicker), `client_account`, `symbol_map`, `system_config`. Sửa được trên dashboard, có hiệu lực
   ngay vì mọi khoá ở đây đều được đọc lại mỗi lần dùng.
 * **`config.toml`** chỉ giữ thứ **phải có trước khi Bridge chạy**: cổng, đường dẫn DB, mật khẩu
-  dashboard, và token của clicker. Dashboard **hiện** chúng (đã che bí mật) nhưng **không bao giờ
-  ghi**: một nút "Lưu" ở đó sẽ hứa điều nó không làm được, vì các khoá này chỉ đọc lúc khởi động.
+  dashboard, và token của clicker. Dashboard **sửa được** chúng, nhưng theo ba điều kiện — vì một
+  `config.toml` hỏng là một Bridge không khởi động được, và lúc đó không còn dashboard nào để sửa
+  lại: (1) nội dung mới chạy qua đúng `parse_config` của đường khởi động **trước khi** ghi, không
+  qua được thì file cũ không bị đụng tới; (2) bản cũ được **sao lưu** kèm dấu thời gian; (3) sửa
+  **tại chỗ từng dòng**, giữ nguyên chú thích — dựng lại file từ dict sẽ xoá sạch phần giải thích
+  vì sao một giá trị được đặt như vậy. Giá trị bí mật **không bao giờ đi ra khỏi Bridge**: API chỉ
+  báo "đã đặt" hay chưa, và ô để trống nghĩa là *giữ nguyên*. Tiến trình đang chạy **không nạp
+  lại**: cấu hình khởi động nửa nạp nửa không là trạng thái không ai lường được, nên trang nói
+  thẳng là phải khởi động lại dịch vụ.
 * **Ràng buộc nằm ở `bridge/ops.py`, không ở tầng web và không ở CLI.** Hai đường vào cùng gọi một
   bộ hàm; lỗi là một **mã** ASCII, CLI dịch sang câu không dấu còn dashboard dịch qua
   `labels_vi.py` (D-16). Trước đó phép kiểm nằm lẫn với `print` trong `admin.py`, nên tầng web
