@@ -140,7 +140,7 @@ def cap_token(db: Database, agent_id: str) -> str:
     """
     agent = db.get_agent(agent_id)
     if agent is None:
-        raise ValueError(f"Khong co agent {agent_id}")
+        raise LoiCauHinh("KHONG_CO_AGENT", agent_id=agent_id)
     token = generate_token()
     with db.transaction() as conn:
         conn.execute(
@@ -179,7 +179,7 @@ def doi_login_agent(db: Database, agent_id: str, login: int) -> bool:
     điều dự án cấm — nên phải có lệnh có tên.
     """
     if login <= 0:
-        raise ValueError(f"So tai khoan phai duong, nhan duoc {login}")
+        raise LoiCauHinh("LOGIN_KHONG_DUONG", login=login)
     if db.get_agent(agent_id) is None:
         return False
     with db.transaction() as conn:
@@ -444,3 +444,236 @@ def _da_giai_thich(pair: Any, cot: list[str]) -> bool:
     """
     return (cot == ["client_close_reason"]
             and (pair["error_message"] or "") == "CLOSE_FELL_BACK_TO_EA")
+
+
+# -- cấu hình nghiệp vụ ------------------------------------------------------------------------
+#
+# Phần dưới đây là **cùng một bộ ràng buộc** cho cả hai đường vào: `bridge.admin` và dashboard.
+# Trước đó chúng nằm lẫn với `print` trong `admin.py`, nên tầng web không gọi lại được và lựa chọn
+# duy nhất là viết lại — tức là sớm muộn hai đường vào sẽ kiểm khác nhau, và cái lỏng hơn mới là
+# cái thật. Ở đây không có `print`: lỗi là `LoiCauHinh` mang một MÃ, người gọi tự dịch (CLI dịch
+# sang câu không dấu, dashboard dịch qua `labels_vi.py` — D-16).
+
+
+class LoiCauHinh(Exception):
+    """Cấu hình bị từ chối. `ma` là mã ASCII, `ngu_canh` là dữ liệu để dựng câu thông báo."""
+
+    def __init__(self, ma: str, **ngu_canh: Any) -> None:
+        super().__init__(ma)
+        self.ma = ma
+        self.ngu_canh = ngu_canh
+
+
+VAI_TRO_AGENT = ("MASTER", "CLIENT", "CLICKER")
+
+#: Khoá `system_config` cho phép sửa, kèm miền giá trị. Cố ý **hẹp**: mọi khoá ở đây đều được đọc
+#: lại mỗi lần dùng (nên đổi là có hiệu lực ngay, không cần khởi động lại), và đổi sai thì chỉ làm
+#: hệ thống chậm hoặc ồn, không làm mất dữ liệu. `run_mode` có nút riêng; `event_retention_days`,
+#: `heartbeat_*` và `ui_fallback_match` **không** ở đây vì đổi sai là mất dữ liệu hoặc mất an toàn.
+KHOA_SUA_DUOC: dict[str, tuple[str, Any, Any]] = {
+    "cascade_wait_master_ms": ("int", 1000, 120_000),
+    "ui_open_queue_max_age_ms": ("int", 1000, 120_000),
+    "ui_open_queue_max_len": ("int", 1, 200),
+    "ui_close_correlate_grace_ms": ("int", 500, 60_000),
+    "reconcile_interval_sec": ("int", 10, 3600),
+    "finding_nhac_sau_phut": ("int", 0, 10_080),
+    "close_degraded_fallback": ("enum", ("EA", "SKIP"), None),
+}
+
+
+def _agent_phai_co(db: Database, agent_id: str, can_role: str | None = None) -> Any:
+    agent = db.get_agent(agent_id)
+    if agent is None:
+        raise LoiCauHinh("KHONG_CO_AGENT", agent_id=agent_id)
+    if can_role is not None and agent["role"] != can_role:
+        raise LoiCauHinh("SAI_ROLE", agent_id=agent_id, role=agent["role"], can=can_role)
+    return agent
+
+
+def tao_agent(db: Database, agent_id: str, role: str, magic: int,
+              login: int | None = None) -> str:
+    """Tạo agent mới và cấp token đầu tiên. Trả token thô **đúng một lần**.
+
+    Gộp hai việc là có chủ đích: một agent không token là một dòng vô dụng trong bảng, và tách hai
+    bước ra chính là chỗ người ta quên bước thứ hai.
+    """
+    if role not in VAI_TRO_AGENT:
+        raise LoiCauHinh("ROLE_LA", role=role)
+    if db.get_agent(agent_id) is not None:
+        raise LoiCauHinh("AGENT_DA_TON_TAI", agent_id=agent_id)
+    token = generate_token()
+    db.upsert_agent(agent_id, role=role, token_hash=hash_token(token), magic_number=magic,
+                    account_login=login)
+    log.info("Da tao agent %s (%s)", agent_id, role, extra={"agent_id": agent_id})
+    return token
+
+
+def tao_client(db: Database, client_id: str, agent_id: str, clicker_agent: str | None = None,
+               open_route: str = "UI", close_route: str | None = None,
+               ten: str | None = None) -> dict[str, Any]:
+    """Tạo dòng `client_account`. Trả về các giá trị đã dùng, để người gọi in ra.
+
+    `clicker_agent_id` chỉ đặt được ở đây; `sua_client` không tạo dòng mới.
+    """
+    if db.get_client_account(client_id) is not None:
+        raise LoiCauHinh("CLIENT_DA_TON_TAI", client_id=client_id)
+    _agent_phai_co(db, agent_id, "CLIENT")
+    # Mặc định theo `open_route`: một Client đặt đường giao diện để MỞ thì cũng đặt nó để ĐÓNG.
+    close_route = close_route or open_route
+    for truong, gia_tri in (("open_route", open_route), ("close_route", close_route)):
+        if gia_tri not in ("EA", "UI"):
+            raise LoiCauHinh("DUONG_LA", truong=truong, gia_tri=gia_tri)
+        if gia_tri == "UI" and not clicker_agent:
+            raise LoiCauHinh("CAN_CLICKER", truong=truong)
+    if clicker_agent:
+        _agent_phai_co(db, clicker_agent, "CLICKER")
+    db.upsert_client_account(client_id, agent_id=agent_id, display_name=ten or client_id,
+                             open_route=open_route, close_route=close_route,
+                             clicker_agent_id=clicker_agent)
+    log.info("Da tao client %s -> agent %s (open %s, close %s)",
+             client_id, agent_id, open_route, close_route)
+    return {"client_id": client_id, "agent_id": agent_id, "open_route": open_route,
+            "close_route": close_route, "clicker_agent_id": clicker_agent}
+
+
+def sua_client(db: Database, client_id: str, copy_mode: str | None = None,
+               volume_multiplier: float | None = None, open_route: str | None = None,
+               close_route: str | None = None,
+               can_close_master: bool | None = None) -> tuple[dict[str, Any], int]:
+    """Sửa cấu hình giao dịch của một Client. Trả về `(giá trị đã đổi, số cặp đang chạy)`.
+
+    **Chỉ đổi lệnh MỚI** (D-19): cặp đang chạy lấy tỷ lệ của chính nó và không đọc bảng này.
+    """
+    client = db.get_client_account(client_id)
+    if client is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+
+    doi: dict[str, Any] = {}
+    if copy_mode is not None:
+        if copy_mode not in ("SAME", "OPPOSITE"):
+            raise LoiCauHinh("CHIEU_COPY_LA", gia_tri=copy_mode)
+        doi["copy_mode"] = copy_mode
+    if volume_multiplier is not None:
+        if volume_multiplier <= 0:
+            raise LoiCauHinh("HE_SO_KHONG_DUONG", gia_tri=volume_multiplier)
+        doi["volume_multiplier"] = volume_multiplier
+    # Cùng ràng buộc cho hai đường và vì cùng một lý do: bật đường giao diện mà không có clicker là
+    # cấu hình vô nghĩa — lệnh không bao giờ gửi được đi đâu. Bảng chỉ có CHECK cho `open_route`
+    # (`schema.sql`), nên `close_route` chỉ được canh ở đây.
+    for truong, gia_tri in (("open_route", open_route), ("close_route", close_route)):
+        if gia_tri is None:
+            continue
+        if gia_tri not in ("EA", "UI"):
+            raise LoiCauHinh("DUONG_LA", truong=truong, gia_tri=gia_tri)
+        if gia_tri == "UI" and not client["clicker_agent_id"]:
+            raise LoiCauHinh("CAN_CLICKER", truong=truong)
+        doi[truong] = gia_tri
+    if can_close_master is not None:
+        doi["can_close_master"] = 1 if can_close_master else 0
+
+    if not doi:
+        return {}, 0
+    dang_mo = db.query_one(
+        "SELECT COUNT(*) n FROM pair WHERE client_id = ? "
+        "AND status NOT IN ('CLOSED','OPEN_FAILED')", (client_id,))["n"]
+    db.upsert_client_account(client_id, agent_id=client["agent_id"], **doi)
+    log.info("Doi cau hinh client %s: %s", client_id, doi)
+    return doi, int(dang_mo)
+
+
+def dat_duong_dong_master(db: Database, clicker_agent: str | None = None,
+                          close_route: str | None = None) -> dict[str, Any]:
+    """Đường ĐÓNG phía Master (D-21c).
+
+    Master không có dòng `client_account` nào, nên hai giá trị này nằm ở `system_config`.
+    """
+    clicker_id = (db.get_config("master_clicker_agent_id", "") or "").strip()
+    doi: dict[str, Any] = {}
+
+    if clicker_agent is not None:
+        _agent_phai_co(db, clicker_agent, "CLICKER")
+        # Một clicker lái ĐÚNG MỘT terminal. Dùng chung clicker của Client cho Master nghĩa là hai
+        # terminal khác nhau chung một tiến trình — bất khả, và nếu để lọt thì lệnh đóng Master sẽ
+        # bấm vào cửa sổ của Client.
+        trung = db.query_one("SELECT client_id FROM client_account WHERE clicker_agent_id = ?",
+                             (clicker_agent,))
+        if trung is not None:
+            raise LoiCauHinh("CLICKER_DA_DUNG", agent_id=clicker_agent,
+                             client_id=trung["client_id"])
+        clicker_id = clicker_agent
+        db.set_config("master_clicker_agent_id", clicker_id)
+        doi["master_clicker_agent_id"] = clicker_id
+
+    if close_route is not None:
+        if close_route not in ("EA", "UI"):
+            raise LoiCauHinh("DUONG_LA", truong="master_close_route", gia_tri=close_route)
+        if close_route == "UI" and not clicker_id:
+            raise LoiCauHinh("CAN_CLICKER_MASTER")
+        db.set_config("master_close_route", close_route)
+        doi["master_close_route"] = close_route
+    if doi:
+        log.info("Doi duong dong Master: %s", doi)
+    return doi
+
+
+def khai_anh_xa(db: Database, client_id: str, master_symbol: str, client_symbol: str) -> Any:
+    """Khai ánh xạ symbol, **sau khi đối chiếu với sàn Client**. Trả về `symbol_spec` đã khớp.
+
+    Thiếu ánh xạ thì `find_symbol_map` trả `None` và mọi lệnh Master bị bỏ qua trong im lặng, nên
+    đây là bước không được quên. Còn tên symbol sai một ký tự (hoặc chứa ký tự Cyrillic nhìn giống
+    chữ Latin) chỉ lộ ra đúng lúc có lệnh thật đi qua — vì vậy phải kiểm với spec sàn đẩy lên chứ
+    không kiểm chính tả.
+    """
+    client = db.get_client_account(client_id)
+    if client is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+    if not master_symbol or not client_symbol:
+        raise LoiCauHinh("THIEU_SYMBOL")
+    spec = db.get_symbol_spec(client["agent_id"], client_symbol)
+    if spec is None:
+        co = [r["symbol"] for r in db.query_all(
+            "SELECT symbol FROM symbol_spec WHERE agent_id = ? ORDER BY symbol",
+            (client["agent_id"],))]
+        raise LoiCauHinh("SAN_KHONG_CO_SYMBOL", client_symbol=client_symbol, co=co)
+    db.upsert_symbol_map(client_id, master_symbol, client_symbol, enabled=1,
+                         verified_at=utc_now_iso())
+    log.info("Anh xa %s: %s -> %s (da kiem tren san)", client_id, master_symbol, client_symbol)
+    return spec
+
+
+def tat_anh_xa(db: Database, client_id: str, master_symbol: str) -> None:
+    """Tắt một ánh xạ. **Chỉ** đặt `enabled = 0`.
+
+    Bản trước đi qua `upsert_symbol_map(..., client_symbol or "")`, nên tắt mà không truyền tên
+    symbol phía Client sẽ ghi rỗng vào cột đó — bật lại là ánh xạ tới một symbol không tồn tại.
+    """
+    if db.query_one("SELECT 1 FROM symbol_map WHERE client_id = ? AND master_symbol = ?",
+                    (client_id, master_symbol)) is None:
+        raise LoiCauHinh("KHONG_CO_ANH_XA", master_symbol=master_symbol)
+    with db.transaction() as conn:
+        conn.execute("UPDATE symbol_map SET enabled = 0, updated_at = ? "
+                     "WHERE client_id = ? AND master_symbol = ?",
+                     (utc_now_iso(), client_id, master_symbol))
+    log.warning("Da TAT anh xa %s cua %s", master_symbol, client_id)
+
+
+def sua_khoa_he_thong(db: Database, khoa: str, gia_tri: Any) -> str:
+    """Sửa một khoá `system_config` trong danh sách trắng. Trả về giá trị đã ghi."""
+    if khoa not in KHOA_SUA_DUOC:
+        raise LoiCauHinh("KHOA_NGOAI_DANH_SACH", khoa=khoa)
+    kieu, a, b = KHOA_SUA_DUOC[khoa]
+    if kieu == "enum":
+        if gia_tri not in a:
+            raise LoiCauHinh("GIA_TRI_LA", khoa=khoa, gia_tri=gia_tri)
+        moi = str(gia_tri)
+    else:
+        try:
+            so = int(gia_tri)
+        except (TypeError, ValueError):
+            raise LoiCauHinh("GIA_TRI_LA", khoa=khoa, gia_tri=gia_tri) from None
+        if so < a or so > b:
+            raise LoiCauHinh("NGOAI_MIEN", khoa=khoa, gia_tri=so, tu=a, den=b)
+        moi = str(so)
+    db.set_config(khoa, moi)
+    log.info("Doi khoa he thong %s = %s", khoa, moi)
+    return moi

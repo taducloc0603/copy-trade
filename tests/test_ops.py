@@ -20,14 +20,22 @@ import pytest
 from bridge.alerting import CUA_SO_GOP_SEC, AlertChannel, BoGop, TinNhan, tao_kenh
 from bridge.db.repo import Database
 from bridge.ops import (
+    LoiCauHinh,
     bao_tri_hang_ngay,
     cap_token,
+    dat_duong_dong_master,
     don_ban_cu,
     don_log_cu,
+    khai_anh_xa,
     khoi_phuc_thu,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
     sao_luu,
+    sua_client,
+    sua_khoa_he_thong,
+    tao_agent,
+    tao_client,
+    tat_anh_xa,
     thu_hoi_token,
 )
 from bridge.protocol.auth import hash_token, verify_token
@@ -980,3 +988,159 @@ def test_khong_co_gi_sai_thi_danh_sach_rong(seeded: Database) -> None:
     _cap_sai_kenh(seeded, pid, mo=0, dong=0)
 
     assert kiem_reason_client(seeded) == []
+
+
+# -- cấu hình nghiệp vụ: cùng một bộ ràng buộc cho CLI và dashboard ----------------------------
+#
+# Mỗi test dưới đây là một cách cấu hình sai đã từng phải chặn bằng tay ở `admin.py`. Chúng nằm ở
+# đây chứ không ở `test_dashboard.py` vì ràng buộc thuộc về `ops`: thêm một đường vào thứ ba cũng
+# không được nới bất kỳ dòng nào trong số này.
+
+CLICKER_AGENT = "AG-CLICKER-TEST"
+
+
+def _them_clicker(db: Database, agent_id: str = CLICKER_AGENT, login: int = 222222) -> str:
+    db.upsert_agent(agent_id, role="CLICKER", token_hash="hash-clicker", magic_number=770001,
+                    account_login=login)
+    return agent_id
+
+
+def test_tao_agent_tra_token_dung_mot_lan_va_luu_hash(db: Database) -> None:
+    token = tao_agent(db, "AG-MOI", "CLIENT", 770001, 333333)
+    agent = db.get_agent("AG-MOI")
+    assert agent is not None
+    assert verify_token(token, agent["token_hash"])
+    assert agent["account_login"] == 333333
+
+
+def test_tao_agent_trung_id_thi_tu_choi_chu_khong_ghi_de_token(db: Database,
+                                                               seeded: Database) -> None:
+    cu = seeded.get_agent(MASTER_AGENT)["token_hash"]
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_agent(seeded, MASTER_AGENT, "MASTER", 770001, 111111)
+    assert loi.value.ma == "AGENT_DA_TON_TAI"
+    assert seeded.get_agent(MASTER_AGENT)["token_hash"] == cu
+
+
+def test_tao_client_duong_ui_ma_khong_co_clicker_thi_tu_choi(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "CL-02", CLIENT_AGENT, None, "UI")
+    assert loi.value.ma == "CAN_CLICKER"
+    assert seeded.get_client_account("CL-02") is None
+
+
+def test_tao_client_dung_agent_sai_role_thi_tu_choi(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "CL-02", MASTER_AGENT, None, "EA")
+    assert loi.value.ma == "SAI_ROLE"
+
+
+def test_tao_client_khong_khai_close_route_thi_theo_open_route(seeded: Database) -> None:
+    _them_clicker(seeded)
+    da = tao_client(seeded, "CL-02", CLIENT_AGENT, CLICKER_AGENT, "UI")
+    assert da["close_route"] == "UI"
+    assert seeded.get_client_account("CL-02")["close_route"] == "UI"
+
+
+def test_sua_client_close_route_ui_ma_khong_co_clicker_thi_tu_choi(seeded: Database) -> None:
+    """Bảng chỉ có CHECK cho `open_route`, nên ràng buộc của `close_route` chỉ nằm ở đây."""
+    with pytest.raises(LoiCauHinh) as loi:
+        sua_client(seeded, CLIENT_ID, close_route="UI")
+    assert loi.value.ma == "CAN_CLICKER"
+    assert seeded.get_client_account(CLIENT_ID)["close_route"] == "EA"
+
+
+def test_sua_client_he_so_khong_duong_thi_tu_choi_truoc_khi_ghi(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        sua_client(seeded, CLIENT_ID, volume_multiplier=0)
+    assert loi.value.ma == "HE_SO_KHONG_DUONG"
+    assert seeded.get_client_account(CLIENT_ID)["volume_multiplier"] == 1.0
+
+
+def test_sua_client_bao_so_cap_dang_chay_vi_gia_tri_moi_chi_ap_cho_lenh_moi(
+        seeded: Database) -> None:
+    _cap(seeded, 9101)
+    doi, dang_mo = sua_client(seeded, CLIENT_ID, volume_multiplier=0.5)
+    assert doi == {"volume_multiplier": 0.5}
+    assert dang_mo == 1
+
+
+def test_duong_dong_master_ui_ma_chua_khai_clicker_thi_tu_choi(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_duong_dong_master(seeded, close_route="UI")
+    assert loi.value.ma == "CAN_CLICKER_MASTER"
+    assert seeded.get_config("master_close_route", "EA") == "EA"
+
+
+def test_duong_dong_master_khong_dung_clicker_cua_client(seeded: Database) -> None:
+    """Một clicker lái đúng một terminal. Dùng chung là bấm lệnh Master lên cửa sổ Client."""
+    _them_clicker(seeded)
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id=CLICKER_AGENT)
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_duong_dong_master(seeded, clicker_agent=CLICKER_AGENT, close_route="UI")
+    assert loi.value.ma == "CLICKER_DA_DUNG"
+
+
+def test_duong_dong_master_khai_clicker_va_bat_ui_trong_mot_lan(seeded: Database) -> None:
+    _them_clicker(seeded, "AG-CLICKER-MASTER", 111111)
+    doi = dat_duong_dong_master(seeded, clicker_agent="AG-CLICKER-MASTER", close_route="UI")
+    assert doi == {"master_clicker_agent_id": "AG-CLICKER-MASTER", "master_close_route": "UI"}
+    assert seeded.get_config("master_close_route") == "UI"
+
+
+def test_khai_anh_xa_symbol_san_khong_co_thi_tu_choi_va_liet_ke_cai_co(seeded: Database) -> None:
+    seeded.replace_symbol_specs(CLIENT_AGENT, [
+        {"symbol": "XAUUSDm", "volume_min": 0.01, "volume_step": 0.01, "volume_max": 50.0,
+         "digits": 2, "contract_size": 100.0},
+    ])
+    with pytest.raises(LoiCauHinh) as loi:
+        khai_anh_xa(seeded, CLIENT_ID, "XAUUSD", "XAUUSDn")
+    assert loi.value.ma == "SAN_KHONG_CO_SYMBOL"
+    assert loi.value.ngu_canh["co"] == ["XAUUSDm"]
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+
+
+def test_khai_anh_xa_symbol_dung_thi_luu_kem_moc_da_kiem(seeded: Database) -> None:
+    seeded.replace_symbol_specs(CLIENT_AGENT, [
+        {"symbol": "XAUUSDm", "volume_min": 0.01, "volume_step": 0.01, "volume_max": 50.0,
+         "digits": 2, "contract_size": 100.0},
+    ])
+    khai_anh_xa(seeded, CLIENT_ID, "XAUUSD", "XAUUSDm")
+    dong = seeded.find_symbol_map(CLIENT_ID, "XAUUSD")
+    assert dong["client_symbol"] == "XAUUSDm"
+    assert dong["verified_at"]
+
+
+def test_tat_anh_xa_khong_xoa_ten_symbol_phia_client(seeded: Database) -> None:
+    """Bản trước đi qua `upsert_symbol_map(..., client_symbol or "")` nên tắt là ghi rỗng."""
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    tat_anh_xa(seeded, CLIENT_ID, "XAUUSD")
+    dong = seeded.find_symbol_map(CLIENT_ID, "XAUUSD")
+    assert dong["enabled"] == 0
+    assert dong["client_symbol"] == "XAUUSDm"
+
+
+def test_tat_anh_xa_khong_co_thi_bao_loi(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        tat_anh_xa(seeded, CLIENT_ID, "XAUUSD")
+    assert loi.value.ma == "KHONG_CO_ANH_XA"
+
+
+def test_khoa_he_thong_ngoai_danh_sach_trang_thi_tu_choi(db: Database) -> None:
+    """Danh sách trắng là hàng rào: `event_retention_days` đổi sai là mất dữ liệu."""
+    with pytest.raises(LoiCauHinh) as loi:
+        sua_khoa_he_thong(db, "event_retention_days", 1)
+    assert loi.value.ma == "KHOA_NGOAI_DANH_SACH"
+
+
+def test_khoa_he_thong_ngoai_mien_gia_tri_thi_tu_choi(db: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        sua_khoa_he_thong(db, "ui_open_queue_max_len", 0)
+    assert loi.value.ma == "NGOAI_MIEN"
+
+
+def test_khoa_he_thong_hop_le_thi_ghi_va_doc_lai_duoc(db: Database) -> None:
+    assert sua_khoa_he_thong(db, "ui_open_queue_max_age_ms", 20000) == "20000"
+    assert db.get_config_int("ui_open_queue_max_age_ms", 0) == 20000
+    assert sua_khoa_he_thong(db, "close_degraded_fallback", "SKIP") == "SKIP"

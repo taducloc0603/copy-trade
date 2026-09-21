@@ -16,22 +16,72 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from bridge.clock import to_iso, utc_now_iso
+from bridge.clock import to_iso
 from bridge.config import load_config
 from bridge.db.repo import Database
 from bridge.ops import (
+    VAI_TRO_AGENT,
+    LoiCauHinh,
     bao_tri_hang_ngay,
     cap_token,
+    dat_duong_dong_master,
+    doi_login_agent,
+    khai_anh_xa,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
     kiem_reason_master,
     sao_luu,
+    sua_client,
+    tao_agent,
+    tao_client,
+    tat_anh_xa,
     thu_hoi_token,
     thu_muc_sao_luu,
 )
-from bridge.protocol.auth import hash_token
 
-VAI_TRO = ("MASTER", "CLIENT", "CLICKER")
+VAI_TRO = VAI_TRO_AGENT
+
+#: Mã lỗi của `ops.LoiCauHinh` → câu in ra dòng lệnh. Chỗ duy nhất trong CLI dựng câu cho người
+#: đọc; dashboard dịch **cùng những mã này** sang tiếng Việt có dấu qua `labels_vi.py` (D-16). Một
+#: mã đi hai đường ra, nhưng chỉ có một chỗ kiểm — đó là mục đích của cả lần tách này.
+CAU_LOI: dict[str, str] = {
+    "AGENT_DA_TON_TAI": "Agent {agent_id} da ton tai. Dung `cap-token` neu chi muon doi token.",
+    "KHONG_CO_AGENT": "Khong co agent {agent_id}",
+    "SAI_ROLE": "Agent {agent_id} co role {role}, can {can}.",
+    "ROLE_LA": "Role {role} khong hop le.",
+    "LOGIN_KHONG_DUONG": "So tai khoan phai duong, nhan duoc {login}",
+    "CLIENT_DA_TON_TAI": "Client {client_id} da ton tai. Dung `cau-hinh-client` de sua.",
+    "KHONG_CO_CLIENT": "Khong co client {client_id}",
+    "CAN_CLICKER": "{truong} = UI can clicker_agent_id. Tao client kem --clicker-agent.",
+    "CAN_CLICKER_MASTER": ("master_close_route = UI can master_clicker_agent_id, chua co. "
+                           "Dat kem --clicker-agent."),
+    "CLICKER_DA_DUNG": ("Agent {agent_id} dang la clicker cua Client {client_id}. "
+                        "Moi terminal can mot clicker rieng."),
+    "HE_SO_KHONG_DUONG": "volume_multiplier phai duong, nhan duoc {gia_tri}",
+    "CHIEU_COPY_LA": "copy_mode {gia_tri} khong hop le (SAME hoac OPPOSITE).",
+    "DUONG_LA": "{truong} = {gia_tri} khong hop le (EA hoac UI).",
+    "THIEU_SYMBOL": "Thieu symbol phia Client. Vi du: --client-symbol XAUUSDm",
+    "KHONG_CO_ANH_XA": "Khong co anh xa cho {master_symbol}",
+    "SAN_KHONG_CO_SYMBOL": "San Client chua bao co symbol {client_symbol!r}.",
+    "KHOA_NGOAI_DANH_SACH": "Khoa {khoa} khong sua duoc bang lenh nay.",
+    "GIA_TRI_LA": "Gia tri {gia_tri!r} khong hop le cho {khoa}.",
+    "NGOAI_MIEN": "{khoa} phai trong khoang {tu}..{den}, nhan duoc {gia_tri}",
+}
+
+
+def _in_loi(exc: LoiCauHinh) -> int:
+    """In câu tương ứng mã lỗi rồi trả mã thoát 1."""
+    mau = CAU_LOI.get(exc.ma, exc.ma)
+    print(mau.format(**exc.ngu_canh), file=sys.stderr)
+    if exc.ma == "SAN_KHONG_CO_SYMBOL":
+        # Tên symbol sai là lỗi gõ nhầm chứ không phải lỗi hệ thống, nên câu báo phải nói luôn
+        # cách tự kiểm và liệt kê những gì sàn đang báo có — thiếu hai dòng này thì người cài
+        # ngồi đoán.
+        print("Kiem: EA Client dang chay chua, va symbol da duoc keo vao Market Watch chua.",
+              file=sys.stderr)
+        if exc.ngu_canh.get("co"):
+            print("San Client dang bao co: " + ", ".join(exc.ngu_canh["co"]), file=sys.stderr)
+    return 1
 
 
 def _mo_db() -> tuple[Database, Path]:
@@ -58,23 +108,13 @@ def lenh_them_agent(db: Database, args: argparse.Namespace) -> int:
     Gộp hai việc lại là có chủ đích: một agent không token là một dòng vô dụng trong bảng, và
     tách hai bước ra chính là chỗ người ta quên bước thứ hai.
     """
-    if db.get_agent(args.agent_id) is not None:
-        print(f"Agent {args.agent_id} da ton tai. Dung `cap-token` neu chi muon doi token.",
-              file=sys.stderr)
-        return 1
-    token = _sinh_va_luu(db, args.agent_id, args.role, args.magic, args.login)
+    try:
+        token = tao_agent(db, args.agent_id, args.role, args.magic, args.login)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
     print(f"Da tao agent {args.agent_id} ({args.role}).")
     _in_token(args.agent_id, token)
     return 0
-
-
-def _sinh_va_luu(db: Database, agent_id: str, role: str, magic: int, login: int | None) -> str:
-    from bridge.protocol.auth import generate_token
-
-    token = generate_token()
-    db.upsert_agent(agent_id, role=role, token_hash=hash_token(token), magic_number=magic,
-                    account_login=login)
-    return token
 
 
 def _in_token(agent_id: str, token: str) -> None:
@@ -88,9 +128,8 @@ def _in_token(agent_id: str, token: str) -> None:
 def lenh_cap_token(db: Database, args: argparse.Namespace) -> int:
     try:
         token = cap_token(db, args.agent_id)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
     print(f"Da cap token moi cho {args.agent_id}. Token cu het hieu luc ngay lap tuc.")
     _in_token(args.agent_id, token)
     return 0
@@ -110,16 +149,12 @@ def lenh_sua_agent(db: Database, args: argparse.Namespace) -> int:
     Sai số tài khoản thì Bridge từ chối bắt tay với `ACCOUNT_MISMATCH` mãi mãi, và trước lệnh này
     cách duy nhất để sửa là `UPDATE` tay vào database.
     """
-    from bridge.ops import doi_login_agent
-
     try:
         co = doi_login_agent(db, args.agent_id, args.login)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
     if not co:
-        print(f"Khong co agent {args.agent_id}", file=sys.stderr)
-        return 1
+        return _in_loi(LoiCauHinh("KHONG_CO_AGENT", agent_id=args.agent_id))
     print(f"Da dat account_login cua {args.agent_id} = {args.login}. Token giu nguyen; "
           "tien trinh dang bi tu choi se tu noi lai o lan thu ke tiep.")
     return 0
@@ -254,47 +289,21 @@ def lenh_cau_hinh_master(db: Database, args: argparse.Namespace) -> int:
     tồn tại vì cùng lý do `cau-hinh-client` tồn tại: đổi chúng bằng `UPDATE` tay vào SQLite là chỗ
     dễ gõ nhầm nhất, mà gõ nhầm ở đây nghĩa là lệnh đóng Master đi sai kênh trong im lặng.
     """
-    route = (db.get_config("master_close_route", "EA") or "EA").upper()
-    clicker_id = (db.get_config("master_clicker_agent_id", "") or "").strip()
-
     if args.close_route is None and args.clicker_agent is None:
+        route = (db.get_config("master_close_route", "EA") or "EA").upper()
+        clicker_id = (db.get_config("master_clicker_agent_id", "") or "").strip()
         print(f"master_close_route={route} master_clicker_agent_id={clicker_id or '(chua khai)'}")
         return 0
 
-    if args.clicker_agent is not None:
-        agent = db.get_agent(args.clicker_agent)
-        if agent is None:
-            print(f"Khong co agent {args.clicker_agent}. Tao bang `them-agent --role CLICKER`.",
-                  file=sys.stderr)
-            return 1
-        if agent["role"] != "CLICKER":
-            print(f"Agent {args.clicker_agent} co role {agent['role']}, can CLICKER",
-                  file=sys.stderr)
-            return 1
-        # Một clicker lái ĐÚNG MỘT terminal (khoá `SingleInstance` theo số tài khoản). Dùng chung
-        # clicker của Client cho Master nghĩa là hai terminal khác nhau chung một tiến trình —
-        # bất khả, và nếu để lọt thì lệnh đóng Master sẽ bấm vào cửa sổ của Client.
-        trung = db.query_one(
-            "SELECT client_id FROM client_account WHERE clicker_agent_id = ?",
-            (args.clicker_agent,))
-        if trung is not None:
-            print(f"Agent {args.clicker_agent} dang la clicker cua Client {trung['client_id']}. "
-                  "Moi terminal can mot clicker rieng.", file=sys.stderr)
-            return 1
-        clicker_id = args.clicker_agent
-        db.set_config("master_clicker_agent_id", clicker_id)
-        print(f"master_clicker_agent_id = {clicker_id}")
-
-    if args.close_route is not None:
-        if args.close_route == "UI" and not clicker_id:
-            print("master_close_route = UI can master_clicker_agent_id, chua co. "
-                  "Dat kem --clicker-agent.", file=sys.stderr)
-            return 1
-        db.set_config("master_close_route", args.close_route)
-        print(f"master_close_route = {args.close_route}")
-        if args.close_route == "UI":
-            print("Luu y: terminal Master phai luon mo Toolbox o tab Trade, va clicker thu hai "
-                  "phai dang chay (python -m clicker --muc clicker_master).")
+    try:
+        doi = dat_duong_dong_master(db, args.clicker_agent, args.close_route)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    for khoa, gia_tri in doi.items():
+        print(f"{khoa} = {gia_tri}")
+    if doi.get("master_close_route") == "UI":
+        print("Luu y: terminal Master phai luon mo Toolbox o tab Trade, va clicker thu hai "
+              "phai dang chay (python -m clicker --muc clicker_master).")
     return 0
 
 
@@ -413,10 +422,8 @@ def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
     Hai sàn **không mặc định dùng cùng tên symbol** (`XAUUSD` với `XAUUSDm`), nên ánh xạ phải khai
     tường minh chứ không đoán.
     """
-    client = db.get_client_account(args.client_id)
-    if client is None:
-        print(f"Khong co client {args.client_id}", file=sys.stderr)
-        return 1
+    if db.get_client_account(args.client_id) is None:
+        return _in_loi(LoiCauHinh("KHONG_CO_CLIENT", client_id=args.client_id))
 
     if args.master_symbol is None:
         rows = db.query_all(
@@ -432,35 +439,20 @@ def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
         return 0
 
     if args.tat:
-        if db.query_one("SELECT 1 FROM symbol_map WHERE client_id = ? AND master_symbol = ?",
-                        (args.client_id, args.master_symbol)) is None:
-            print(f"Khong co anh xa cho {args.master_symbol}", file=sys.stderr)
-            return 1
-        db.upsert_symbol_map(args.client_id, args.master_symbol, args.client_symbol or "",
-                             enabled=0)
+        try:
+            tat_anh_xa(db, args.client_id, args.master_symbol)
+        except LoiCauHinh as exc:
+            return _in_loi(exc)
         print(f"Da TAT anh xa {args.master_symbol}")
         return 0
 
     if not args.client_symbol:
-        print("Thieu symbol phia Client. Vi du: --client-symbol XAUUSDm", file=sys.stderr)
-        return 1
+        return _in_loi(LoiCauHinh("THIEU_SYMBOL"))
 
-    # Kiem symbol co that tren san Client truoc khi luu. EA day `symbol_spec` len moi vai phut,
-    # nen day la nguon su that chu khong phai phong doan — va sai ten symbol la loi khong hien ra
-    # cho toi luc co lenh that di qua.
-    spec = db.get_symbol_spec(client["agent_id"], args.client_symbol)
-    if spec is None:
-        print(f"San Client chua bao co symbol {args.client_symbol!r}.", file=sys.stderr)
-        print("Kiem: EA Client dang chay chua, va symbol da duoc keo vao Market Watch chua.",
-              file=sys.stderr)
-        co = db.query_all("SELECT symbol FROM symbol_spec WHERE agent_id = ? ORDER BY symbol",
-                          (client["agent_id"],))
-        if co:
-            print("San Client dang bao co: " + ", ".join(r["symbol"] for r in co), file=sys.stderr)
-        return 1
-
-    db.upsert_symbol_map(args.client_id, args.master_symbol, args.client_symbol,
-                         enabled=1, verified_at=utc_now_iso())
+    try:
+        spec = khai_anh_xa(db, args.client_id, args.master_symbol, args.client_symbol)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
     print(f"{args.client_id}: {args.master_symbol} -> {args.client_symbol}  (da kiem tren san)")
     print(f"  volume toi thieu {spec['volume_min']}, buoc {spec['volume_step']}")
     return 0
@@ -478,50 +470,15 @@ def lenh_them_client(db: Database, args: argparse.Namespace) -> int:
     `clicker_agent_id` cũng chỉ đặt được ở đây. `cau-hinh-client --open-route UI` đòi nó
     nhưng không có cờ nào để điền, nên trước đây bật `UI` bằng lệnh là chuyện bất khả.
     """
-    if db.query_one("SELECT 1 FROM client_account WHERE client_id = ?",
-                    (args.client_id,)) is not None:
-        print(f"Client {args.client_id} da ton tai. Dung `cau-hinh-client` de sua.",
-              file=sys.stderr)
-        return 1
-
-    agent = db.get_agent(args.agent_id)
-    if agent is None:
-        print(f"Khong co agent {args.agent_id}. Tao bang `them-agent` truoc.", file=sys.stderr)
-        return 1
-    if agent["role"] != "CLIENT":
-        print(f"Agent {args.agent_id} co role {agent['role']}, can CLIENT.", file=sys.stderr)
-        return 1
-
-    # Giu nguyen rang buoc cua `cau-hinh-client`: open_route = UI ma khong co clicker thi
-    # duong mo lenh khong co ai bam, va no hong trong im lang chu khong bao gi.
-    if args.open_route == "UI" and not args.clicker_agent:
-        print("open_route = UI can --clicker-agent", file=sys.stderr)
-        return 1
-    # Mac dinh theo `--open-route`: mot Client dat duong giao dien de MO thi cung dat no de
-    # DONG, con mot Client con o duong EA thi giu nguyen ca hai. Khong co cach ghep nao khac
-    # vua hop ly vua khong bat nguoi ta phai go them mot co moi de giu nguyen hanh vi cu.
-    close_route = args.close_route or args.open_route
-    if close_route == "UI" and not args.clicker_agent:
-        print("close_route = UI can --clicker-agent", file=sys.stderr)
-        return 1
-    if args.clicker_agent:
-        clicker = db.get_agent(args.clicker_agent)
-        if clicker is None:
-            print(f"Khong co agent {args.clicker_agent}", file=sys.stderr)
-            return 1
-        if clicker["role"] != "CLICKER":
-            print(f"Agent {args.clicker_agent} co role {clicker['role']}, can CLICKER.",
-                  file=sys.stderr)
-            return 1
-
-    db.upsert_client_account(args.client_id, agent_id=args.agent_id,
-                             display_name=args.ten or args.client_id,
-                             open_route=args.open_route,
-                             close_route=close_route,
-                             clicker_agent_id=args.clicker_agent)
+    try:
+        da = tao_client(db, args.client_id, args.agent_id, args.clicker_agent,
+                        args.open_route, args.close_route, args.ten)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    clicker = da["clicker_agent_id"]
     print(f"Da tao client {args.client_id} -> agent {args.agent_id} "
-          f"(open_route={args.open_route}, close_route={close_route}"
-          f"{', clicker ' + args.clicker_agent if args.clicker_agent else ''})")
+          f"(open_route={da['open_route']}, close_route={da['close_route']}"
+          f"{', clicker ' + clicker if clicker else ''})")
     print("Buoc tiep: `anh-xa-symbol` -- THIEU ANH XA LA MOI LENH MASTER BI BO QUA.")
     return 0
 
@@ -536,35 +493,13 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
     **Chỉ đổi lệnh MỚI.** Cặp đang chạy giữ nguyên tỷ lệ của nó: đường đóng một phần lấy tỷ lệ
     trên volume còn lại của chính cặp đó và không hề đọc bảng này (D-19).
     """
-    client = db.query_one("SELECT * FROM client_account WHERE client_id = ?", (args.client_id,))
+    client = db.get_client_account(args.client_id)
     if client is None:
-        print(f"Khong co client {args.client_id}", file=sys.stderr)
-        return 1
+        return _in_loi(LoiCauHinh("KHONG_CO_CLIENT", client_id=args.client_id))
 
-    doi = {}
-    if args.copy_mode is not None:
-        doi["copy_mode"] = args.copy_mode
-    if args.multiplier is not None:
-        if args.multiplier <= 0:
-            print("volume_multiplier phai duong", file=sys.stderr)
-            return 1
-        doi["volume_multiplier"] = args.multiplier
-    if args.open_route is not None:
-        if args.open_route == "UI" and not client["clicker_agent_id"]:
-            print("open_route = UI can clicker_agent_id, chua co", file=sys.stderr)
-            return 1
-        doi["open_route"] = args.open_route
-    if args.close_route is not None:
-        # Cung rang buoc voi `open_route`, va vi cung mot ly do: bat duong giao dien ma khong co
-        # clicker la mot cau hinh vo nghia — lenh se khong bao gio gui duoc di dau.
-        if args.close_route == "UI" and not client["clicker_agent_id"]:
-            print("close_route = UI can clicker_agent_id, chua co", file=sys.stderr)
-            return 1
-        doi["close_route"] = args.close_route
-    if args.can_close_master is not None:
-        doi["can_close_master"] = 1 if args.can_close_master == "bat" else 0
-
-    if not doi:
+    co_gi_doi = any(x is not None for x in (args.copy_mode, args.multiplier, args.open_route,
+                                           args.close_route, args.can_close_master))
+    if not co_gi_doi:
         print(f"{args.client_id}: copy_mode={client['copy_mode']} "
               f"volume_multiplier={client['volume_multiplier']} "
               f"open_route={client['open_route']} "
@@ -572,10 +507,14 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
               f"can_close_master={client['can_close_master']}")
         return 0
 
-    dang_mo = db.query_one(
-        "SELECT COUNT(*) n FROM pair WHERE client_id = ? AND status NOT IN ('CLOSED','OPEN_FAILED')",
-        (args.client_id,))["n"]
-    db.upsert_client_account(args.client_id, agent_id=client["agent_id"], **doi)
+    try:
+        doi, dang_mo = sua_client(
+            db, args.client_id, copy_mode=args.copy_mode, volume_multiplier=args.multiplier,
+            open_route=args.open_route, close_route=args.close_route,
+            can_close_master=(None if args.can_close_master is None
+                              else args.can_close_master == "bat"))
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
     for khoa, gia_tri in doi.items():
         print(f"{args.client_id}.{khoa} = {gia_tri}")
     if dang_mo:
