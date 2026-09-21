@@ -481,6 +481,35 @@ KHOA_SUA_DUOC: dict[str, tuple[str, Any, Any]] = {
 }
 
 
+def _clicker_con_trong(db: Database, clicker_agent: str, tru_client: str | None = None) -> None:
+    """Một clicker lái ĐÚNG MỘT terminal, nên nó thuộc về đúng một Client (hoặc về Master).
+
+    Không canh chỗ này thì `OPEN_UI` của Client B được bấm trên terminal của Client A hoặc của
+    Master — tức là **mở lệnh trên tài khoản khác**, và không có gì trong sổ sách nói ra điều đó.
+    """
+    trung = db.query_one(
+        "SELECT client_id FROM client_account WHERE clicker_agent_id = ? AND client_id <> ?",
+        (clicker_agent, tru_client or ""))
+    if trung is not None:
+        raise LoiCauHinh("CLICKER_DA_DUNG", agent_id=clicker_agent, client_id=trung["client_id"])
+    cua_master = (db.get_config("master_clicker_agent_id", "") or "").strip()
+    if cua_master and cua_master == clicker_agent:
+        raise LoiCauHinh("CLICKER_CUA_MASTER", agent_id=clicker_agent)
+
+
+def _agent_client_con_trong(db: Database, agent_id: str, tru_client: str | None = None) -> None:
+    """Một agent CLIENT (một terminal MT5) thuộc về đúng một dòng `client_account`.
+
+    Hai dòng cùng trỏ vào một agent nghĩa là mỗi lệnh Master sinh **hai** lệnh mở trên cùng một
+    terminal — nhân đôi volume một cách im lặng.
+    """
+    trung = db.query_one(
+        "SELECT client_id FROM client_account WHERE agent_id = ? AND client_id <> ?",
+        (agent_id, tru_client or ""))
+    if trung is not None:
+        raise LoiCauHinh("AGENT_DA_DUNG", agent_id=agent_id, client_id=trung["client_id"])
+
+
 def _agent_phai_co(db: Database, agent_id: str, can_role: str | None = None) -> Any:
     agent = db.get_agent(agent_id)
     if agent is None:
@@ -497,6 +526,8 @@ def tao_agent(db: Database, agent_id: str, role: str, magic: int,
     Gộp hai việc là có chủ đích: một agent không token là một dòng vô dụng trong bảng, và tách hai
     bước ra chính là chỗ người ta quên bước thứ hai.
     """
+    if not agent_id.strip():
+        raise LoiCauHinh("THIEU_MA")
     if role not in VAI_TRO_AGENT:
         raise LoiCauHinh("ROLE_LA", role=role)
     if db.get_agent(agent_id) is not None:
@@ -515,9 +546,12 @@ def tao_client(db: Database, client_id: str, agent_id: str, clicker_agent: str |
 
     `clicker_agent_id` chỉ đặt được ở đây; `sua_client` không tạo dòng mới.
     """
+    if not client_id.strip() or not agent_id.strip():
+        raise LoiCauHinh("THIEU_MA")
     if db.get_client_account(client_id) is not None:
         raise LoiCauHinh("CLIENT_DA_TON_TAI", client_id=client_id)
     _agent_phai_co(db, agent_id, "CLIENT")
+    _agent_client_con_trong(db, agent_id)
     # Mặc định theo `open_route`: một Client đặt đường giao diện để MỞ thì cũng đặt nó để ĐÓNG.
     close_route = close_route or open_route
     for truong, gia_tri in (("open_route", open_route), ("close_route", close_route)):
@@ -527,6 +561,7 @@ def tao_client(db: Database, client_id: str, agent_id: str, clicker_agent: str |
             raise LoiCauHinh("CAN_CLICKER", truong=truong)
     if clicker_agent:
         _agent_phai_co(db, clicker_agent, "CLICKER")
+        _clicker_con_trong(db, clicker_agent)
     db.upsert_client_account(client_id, agent_id=agent_id, display_name=ten or client_id,
                              open_route=open_route, close_route=close_route,
                              clicker_agent_id=clicker_agent)
@@ -669,7 +704,7 @@ def tat_anh_xa(db: Database, client_id: str, master_symbol: str) -> None:
 
 
 def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
-                         terminal_title: str | None = None) -> dict[str, Any]:
+                         terminal_title: str | None = None) -> dict[str, Any]:  # noqa: D401
     """Khai terminal mà một clicker phải lái: số tài khoản và mẩu tiêu đề cửa sổ.
 
     Hai giá trị này từng nằm ở `config.toml`, nên đổi terminal là phải sửa file trên VPS rồi chạy
@@ -686,11 +721,14 @@ def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
             raise LoiCauHinh("LOGIN_KHONG_DUONG", login=login)
         doi["account_login"] = login
     if terminal_title is not None:
-        tieu_de = terminal_title.strip()
-        so = doi.get("account_login") or agent["account_login"]
-        if tieu_de and so and str(so) not in tieu_de:
-            raise LoiCauHinh("TIEU_DE_KHONG_CO_SO_TK", tieu_de=tieu_de, login=so)
-        doi["terminal_title"] = tieu_de
+        doi["terminal_title"] = terminal_title.strip()
+
+    # Kiểm **cặp giá trị sau khi sửa**, không chỉ cái vừa gõ: đổi riêng số tài khoản mà giữ tiêu đề
+    # cũ cũng ra một cặp lệch, và cặp lệch nghĩa là clicker lái nhầm terminal.
+    so = doi.get("account_login", agent["account_login"]) or 0
+    tieu_de = doi.get("terminal_title", agent["terminal_title"]) or ""
+    if doi and so and tieu_de and str(so) not in tieu_de:
+        raise LoiCauHinh("TIEU_DE_KHONG_CO_SO_TK", tieu_de=tieu_de, login=so)
     if not doi:
         return {}
     dat = ", ".join(f"{k} = ?" for k in doi)

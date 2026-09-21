@@ -1,5 +1,10 @@
 # Mẫu cấu hình. Sao chép thành `config.toml` rồi điền giá trị thật.
 # `config.toml` nằm trong .gitignore, `config.example.toml` thì được commit.
+#
+# Cac khoa duoi day sua duoc tren dashboard (tab Cau hinh): noi dung moi duoc kiem bang dung
+# phep kiem cua lan khoi dong TRUOC khi ghi, ban cu duoc sao luu thanh
+# config.toml.bak-<ngay-gio> (giu 5 ban). Gia tri moi CHI co hieu luc sau
+# `Restart-Service CopyBridge`.
 
 [bridge]
 # Chi nghe loopback. Doi thanh "0.0.0.0" de agent may khac noi toi duoc — khi do
@@ -36,8 +41,10 @@ token = ""
 # khai tren dashboard, tab Cau hinh > Agent. Clicker nhan chung tu Bridge moi lan bat tay, nen doi
 # terminal la sua tren dashboard chu khong phai sua file nay roi dang ky lai Scheduled Task.
 #
-# Van khai duoc o day -- va neu khai thi FILE THANG DATABASE, tuc sua tren dashboard se khong co
-# tac dung. Chi dung khi ban co ly do cu the:
+# BAN CAI CU co san hai khoa nay: XOA chung di sau khi nang cap, neu khong thi sua tren
+# dashboard khong co tac dung (FILE THANG DATABASE) va khong script nao kiem ho.
+#
+# Van khai duoc o day khi ban co ly do cu the:
 #   [clicker]
 #   account_login  = 538217
 #   terminal_title = "538217"

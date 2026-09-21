@@ -62,6 +62,11 @@ CAU_LOI: dict[str, str] = {
                            "Dat kem --clicker-agent."),
     "CLICKER_DA_DUNG": ("Agent {agent_id} dang la clicker cua Client {client_id}. "
                         "Moi terminal can mot clicker rieng."),
+    "CLICKER_CUA_MASTER": ("Agent {agent_id} dang la clicker lai terminal Master. Dung chung la "
+                           "lenh cua Client se duoc bam tren terminal Master."),
+    "AGENT_DA_DUNG": ("Agent {agent_id} dang la agent cua Client {client_id}. Mot terminal MT5 "
+                      "chi thuoc ve mot Client."),
+    "THIEU_MA": "Thieu ma. Dien ma client hoac ten agent.",
     "HE_SO_KHONG_DUONG": "volume_multiplier phai duong, nhan duoc {gia_tri}",
     "CHIEU_COPY_LA": "copy_mode {gia_tri} khong hop le (SAME hoac OPPOSITE).",
     "DUONG_LA": "{truong} = {gia_tri} khong hop le (EA hoac UI).",

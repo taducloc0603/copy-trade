@@ -24,6 +24,7 @@ from bridge.ops import (
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
+    dat_terminal_clicker,
     don_ban_cu,
     don_log_cu,
     khai_anh_xa,
@@ -1024,9 +1025,16 @@ def test_tao_agent_trung_id_thi_tu_choi_chu_khong_ghi_de_token(db: Database,
     assert seeded.get_agent(MASTER_AGENT)["token_hash"] == cu
 
 
+def _them_agent_client(db: Database, agent_id: str = "AG-CLIENT-2") -> str:
+    """Client thứ hai cần agent riêng: một terminal MT5 chỉ thuộc về một Client."""
+    db.upsert_agent(agent_id, role="CLIENT", token_hash="h", magic_number=770001,
+                    account_login=333333)
+    return agent_id
+
+
 def test_tao_client_duong_ui_ma_khong_co_clicker_thi_tu_choi(seeded: Database) -> None:
     with pytest.raises(LoiCauHinh) as loi:
-        tao_client(seeded, "CL-02", CLIENT_AGENT, None, "UI")
+        tao_client(seeded, "CL-02", _them_agent_client(seeded), None, "UI")
     assert loi.value.ma == "CAN_CLICKER"
     assert seeded.get_client_account("CL-02") is None
 
@@ -1039,7 +1047,7 @@ def test_tao_client_dung_agent_sai_role_thi_tu_choi(seeded: Database) -> None:
 
 def test_tao_client_khong_khai_close_route_thi_theo_open_route(seeded: Database) -> None:
     _them_clicker(seeded)
-    da = tao_client(seeded, "CL-02", CLIENT_AGENT, CLICKER_AGENT, "UI")
+    da = tao_client(seeded, "CL-02", _them_agent_client(seeded), CLICKER_AGENT, "UI")
     assert da["close_route"] == "UI"
     assert seeded.get_client_account("CL-02")["close_route"] == "UI"
 
@@ -1203,3 +1211,47 @@ def test_xoa_client_da_co_cap_thi_bi_tu_choi(seeded: Database) -> None:
         xoa_client(seeded, CLIENT_ID)
     assert loi.value.ma == "CLIENT_CON_LICH_SU"
     assert seeded.get_client_account(CLIENT_ID) is not None
+
+
+def test_hai_client_khong_duoc_dung_chung_mot_clicker(seeded: Database) -> None:
+    """Một clicker lái đúng một terminal. Dùng chung là mở lệnh trên tài khoản khác."""
+    _them_clicker(seeded)
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id=CLICKER_AGENT)
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "CL-02", _them_agent_client(seeded), CLICKER_AGENT, "UI")
+    assert loi.value.ma == "CLICKER_DA_DUNG"
+
+
+def test_client_khong_duoc_dung_clicker_cua_master(seeded: Database) -> None:
+    _them_clicker(seeded, "AG-CLICKER-MASTER", 111111)
+    dat_duong_dong_master(seeded, clicker_agent="AG-CLICKER-MASTER")
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "CL-02", _them_agent_client(seeded), "AG-CLICKER-MASTER", "UI")
+    assert loi.value.ma == "CLICKER_CUA_MASTER"
+
+
+def test_hai_client_khong_duoc_dung_chung_mot_agent(seeded: Database) -> None:
+    """Dùng chung là mỗi lệnh Master sinh hai lệnh mở trên cùng một terminal."""
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "CL-02", CLIENT_AGENT, None, "EA")
+    assert loi.value.ma == "AGENT_DA_DUNG"
+
+
+def test_khong_tao_duoc_client_hay_agent_voi_ma_rong(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_client(seeded, "  ", CLIENT_AGENT, None, "EA")
+    assert loi.value.ma == "THIEU_MA"
+    with pytest.raises(LoiCauHinh) as loi:
+        tao_agent(seeded, "", "CLIENT", 770001)
+    assert loi.value.ma == "THIEU_MA"
+
+
+def test_doi_rieng_so_tai_khoan_ma_tieu_de_cu_khong_khop_thi_bi_tu_choi(seeded: Database) -> None:
+    """Cặp lệch cũng là lái nhầm terminal, dù người ta chỉ vừa gõ đúng một ô."""
+    _them_clicker(seeded, CLICKER_AGENT, 538217)
+    dat_terminal_clicker(seeded, CLICKER_AGENT, terminal_title="538217 - Connext")
+    with pytest.raises(LoiCauHinh) as loi:
+        dat_terminal_clicker(seeded, CLICKER_AGENT, login=538216)
+    assert loi.value.ma == "TIEU_DE_KHONG_CO_SO_TK"
+    assert seeded.get_agent(CLICKER_AGENT)["account_login"] == 538217

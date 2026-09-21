@@ -18,7 +18,9 @@
     Sau MOI lan VPS khoi dong lai hoac MT5 tu cap nhat: kiem nut Algo
     Trading sang xanh tren CA HAI terminal.
 
- 3. PHAI BAM RUNNING BANG TAY SAU MOI LAN KHOI DONG LAI (D-15).
+ 3. PHAI BAM "BAT DAU COPY" BANG TAY SAU MOI LAN KHOI DONG LAI (D-15).
+    Nut nam o dau trang dashboard, canh nhan trang thai. Hoac:
+    bridge.admin run-mode RUNNING.
     Bridge LUON khoi dong o PAUSED, khong co ngoai le, ke ca luc may
     tu bat lai 3 gio sang. Day la chu dich. Dich vu tu bat lai KHONG
     co nghia la he thong dang copy lenh.
@@ -46,4 +48,7 @@
     do la thu clicker doi chieu voi cua so that truoc khi bam.
     Cung trang do khai ANH XA SYMBOL -- thieu anh xa la moi lenh
     Master bi bo qua trong im lang.
+    BAN CAI CU: xoa account_login/terminal_title khoi config.toml
+    truoc, vi FILE THANG DATABASE -- con chung trong file thi sua
+    tren dashboard khong co tac dung, va khong script nao kiem ho.
 =====================================================================

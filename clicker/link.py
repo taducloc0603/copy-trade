@@ -66,6 +66,10 @@ class LinkConfig:
     #: Mẩu tiêu đề để nhận ra đúng cửa sổ terminal. Chứa số tài khoản nên nó cũng là hàng rào
     #: chống gửi lệnh nhầm terminal.
     terminal_title: str = ""
+    #: Hai giá trị trên đến từ đâu: `True` nghĩa là **của máy này** (dòng lệnh hoặc `config.toml`),
+    #: và khi đó Bridge không được đè. `False` nghĩa là Bridge giao, và lần bắt tay sau Bridge phải
+    #: đè lại — nếu không thì sửa trên dashboard sẽ không bao giờ tới được clicker đang chạy.
+    cuc_bo: bool = False
     magic: int = 0
     heartbeat_sec: float = DEFAULT_HEARTBEAT_SEC
     reconnect_sec: float = DEFAULT_RECONNECT_SEC
@@ -131,6 +135,13 @@ class ClickerLink:
                 raise ThieuCauHinh(
                     "Chua khai tieu de cua so terminal cho agent nay. Khai tren dashboard "
                     "(tab Cau hinh > Agent) hoac dat clicker.terminal_title trong config.toml.")
+            if not self.dry_run and not self.config.account_login:
+                # Khong co so tai khoan thi phep kiem "cua so nay dung tai khoan khong" khong chay
+                # duoc, va clicker bam vao bat ky cua so nao khop mau tieu de. Tha khong co clicker
+                # va biet ro, con hon mot clicker khong ai canh.
+                raise ThieuCauHinh(
+                    "Chua khai so tai khoan cho agent nay, nen khong kiem duoc cua so co dung tai "
+                    "khoan khong. Khai tren dashboard (tab Cau hinh > Agent).")
             heartbeat = asyncio.create_task(self._heartbeat_loop())
             try:
                 await self._read_loop()
@@ -180,23 +191,32 @@ class ClickerLink:
         return reply
 
     def ap_dung_cau_hinh(self, cau_hinh: dict[str, Any]) -> None:
-        """Lấy số tài khoản và tiêu đề cửa sổ từ `hello_ack` khi tham số cục bộ để trống.
+        """Nhận số tài khoản và tiêu đề cửa sổ từ `hello_ack`.
 
-        Thứ tự ưu tiên giữ nguyên: dòng lệnh > `config.toml` > Bridge. Nghĩa là một bản cài cũ có
-        sẵn mục `[clicker]` chạy y như trước, còn bản cài mới thì hai giá trị này khai trên
-        dashboard và clicker nhận chúng ở **mỗi lần bắt tay** — đổi trên dashboard, Bridge cắt kết
-        nối, ba giây sau clicker lái đúng cửa sổ mới.
+        Thứ tự ưu tiên: dòng lệnh > `config.toml` > Bridge — giá trị **của máy này** (`cuc_bo`)
+        không bao giờ bị đè, nên một bản cài cũ khai sẵn mục `[clicker]` chạy y như trước.
+
+        Nhưng khi giá trị đến từ Bridge thì nó phải được **đè lại ở mỗi lần bắt tay**. Bản đầu chỉ
+        điền vào chỗ trống, nên sau lần bắt tay đầu tiên mọi thay đổi trên dashboard không bao giờ
+        tới được clicker đang chạy: nó vẫn lái terminal cũ, và tệ hơn — nó so số tài khoản CŨ với
+        tiêu đề CŨ nên canary vẫn xanh trong lúc Bridge đã định tuyến lệnh sang tài khoản khác.
         """
-        if not self.config.account_login and cau_hinh.get("account_login"):
-            self.config.account_login = int(cau_hinh["account_login"])
-            log.info("Nhan so tai khoan %s tu Bridge", self.config.account_login)
-        if not self.config.terminal_title and cau_hinh.get("terminal_title"):
-            self.config.terminal_title = str(cau_hinh["terminal_title"])
-            self.driver.terminal_title = self.config.terminal_title
-            log.info("Nhan tieu de cua so terminal %r tu Bridge", self.config.terminal_title)
-        # Driver kiểm số tài khoản ở **mỗi** lần bấm, nên nó phải biết con số này chứ không chỉ
-        # canary biết.
-        if getattr(self.driver, "account_login", None) is not None:
+        if self.config.cuc_bo:
+            return
+        login_moi = int(cau_hinh.get("account_login") or 0)
+        tieu_de_moi = str(cau_hinh.get("terminal_title") or "")
+        if login_moi and login_moi != self.config.account_login:
+            log.info("Nhan so tai khoan %s tu Bridge (truoc do %s)",
+                     login_moi, self.config.account_login or "chua co")
+            self.config.account_login = login_moi
+        if tieu_de_moi and tieu_de_moi != self.config.terminal_title:
+            log.info("Nhan tieu de cua so terminal %r tu Bridge (truoc do %r)",
+                     tieu_de_moi, self.config.terminal_title)
+            self.config.terminal_title = tieu_de_moi
+        # Driver kiểm số tài khoản ở **mỗi** lần bấm, nên nó phải biết cả hai giá trị chứ không
+        # chỉ canary biết.
+        self.driver.terminal_title = self.config.terminal_title
+        if hasattr(self.driver, "account_login"):
             self.driver.account_login = self.config.account_login
 
     async def send_heartbeat(self) -> None:

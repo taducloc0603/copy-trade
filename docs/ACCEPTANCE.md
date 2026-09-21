@@ -19,7 +19,7 @@ thật xác nhận và cái gì mới chỉ đúng trong đầu người viết 
 kể nhất khi chuyển sang tiền thật. Phase 7 là ví dụ: bộ test dùng số tròn nên **không** lộ ra lỗi
 sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 
-**Tổng kết: DEMO 15 · TEST 8 · KHÔNG 2.**
+**Tổng kết cho TEST-01…TEST-29: DEMO 15 · TEST 8 · KHÔNG 2.** TEST-30…TEST-32 nằm ngoài bảng này: TEST-30a đã ĐẠT trên VPS, phần còn lại **chưa chạy trên demo**.
 
 *(Cập nhật 2026-09-06 sau phase 11. Con số của bản phase 10 ghi "DEMO 13 · TEST 9 · KHÔNG 3"
 **không khớp với chính bảng bên dưới** — đếm tay ra 11 · 12 · 2; kiểm toán độc lập bắt được
@@ -105,7 +105,13 @@ và sửa được trên dashboard.
 | TEST-32f | Thêm ánh xạ symbol sai một ký tự, rồi đúng | Sai thì bị từ chối và **không** lưu; đúng thì lưu kèm mốc "đã kiểm" |
 | TEST-32g | Cấp lại token cho một agent trên dashboard | Token hiện một lần; `grep -ri token logs\` vẫn rỗng |
 | TEST-32h | Sửa `config.toml` trên dashboard: đổi `telegram_chat_id`, rồi thử đặt `web_port` trùng `port` | Lần đầu lưu được, chú thích trong file còn nguyên, có file `config.toml.bak-*`; lần sau bị từ chối và file **không đổi** |
-| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `Restart-Service CopyBridge` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được |
+| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `Restart-Service CopyBridge` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được. Ô bí mật để trống thì giá trị cũ **giữ nguyên**, không bị xoá |
+| TEST-32j | Tắt Client (`ĐÃ TẮT`) khi đang có cặp mở, rồi đóng lệnh đó ở Master | Cặp đang mở **vẫn đóng theo Master**; lệnh Master mới **không** được copy; bật lại thì copy chạy tiếp |
+| TEST-32k | Xoá Client đang có cặp lệnh | Bị từ chối kèm câu bảo TẮT; Client vẫn còn. Xoá một Client mới tạo (chưa có cặp) thì được, kèm ánh xạ của nó |
+| TEST-32l | Xoá một ánh xạ symbol rồi mở lệnh symbol đó ở Master | Không copy nữa, đúng như khi tắt; cặp đang mở của symbol đó **vẫn đóng được** |
+| TEST-32m | Ba nút chế độ ở đầu trang | Bấm từng nút → `bridge.admin run-mode` in đúng giá trị tương ứng; nút đóng khẩn cấp **không** nằm trên thanh đó |
+| TEST-32n | Đổi tiêu đề cửa sổ của clicker sang terminal của tài khoản khác, rồi ra lệnh đóng | Clicker **không bấm gì**, log `Tieu de cua so la tai khoan ... khac ...`; lệnh đóng rơi về EA kèm alert, không có lệnh nào bấm nhầm terminal |
+| TEST-32o | Mở dashboard khi `dashboard_password` để trống | Xem được, nhưng mọi nút Lưu trả lỗi "chưa đặt mật khẩu" |
 
 ---
 
@@ -134,4 +140,4 @@ Chạy bằng `pytest -m cham`. Bài **24 giờ liên tục chưa chạy** — x
 
 ## Bộ test tự động
 
-**524 test xanh** (`pytest -m "not cham"`) + **3 test tải**, `ruff` sạch, ngày 2026-09-06.
+**875 test xanh** (`pytest`) + **3 test tải**, `ruff` sạch, ngày 2026-09-21.

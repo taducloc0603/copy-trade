@@ -17,7 +17,7 @@ from pathlib import Path
 from bridge.config import ConfigError, load_config
 from bridge.logging_setup import get_logger, setup_logging
 from clicker.journal import CommandJournal
-from clicker.link import DEFAULT_HEARTBEAT_SEC, ClickerLink, LinkConfig
+from clicker.link import DEFAULT_HEARTBEAT_SEC, ClickerLink, LinkConfig, ThieuCauHinh
 from clicker.ui.driver import DryRunDriver, Mt5UiDriver
 
 log = get_logger(__name__)
@@ -137,6 +137,8 @@ def build_link(args: argparse.Namespace) -> ClickerLink:
         config=LinkConfig(
             host=args.host, port=args.port, token=args.token,
             account_login=args.account_login, terminal_title=args.terminal_title,
+            # Co gia tri o may nay (dong lenh hoac config.toml) thi Bridge khong duoc de len.
+            cuc_bo=bool(args.account_login or args.terminal_title),
             heartbeat_sec=args.heartbeat_sec,
         ),
         journal=CommandJournal(args.journal),
@@ -209,6 +211,12 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(link.run())
     except KeyboardInterrupt:
         log.info("Nhan tin hieu dung, thoat")
+    except ThieuCauHinh as exc:
+        # Ma 4 chu khong phai 2: `chay-clicker.ps1` dung han o 2 va 3, con ma khac thi no cho roi
+        # bat lai. O day thu lai la dung -- khai tren dashboard xong la lan bat ke tiep clicker
+        # len, khong phai dang nhap VPS chay lai tac vu.
+        log.critical("%s", exc)
+        return 4
     finally:
         lock.release()
     return 0

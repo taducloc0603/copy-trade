@@ -241,7 +241,6 @@ KHOA_FILE_SUA_DUOC: dict[str, tuple[str, bool]] = {
     "bridge.host": ("str", False),
     "bridge.port": ("int", False),
     "bridge.web_port": ("int", False),
-    "bridge.db_path": ("str", False),
     "security.dashboard_password": ("str", True),
     "security.telegram_token": ("str", True),
     "security.telegram_chat_id": ("str", False),
@@ -337,7 +336,9 @@ def _siet_quyen(duong_dan: Path) -> None:
 
 def _don_ban_sao_cu(duong_dan: Path, giu: int = SO_BAN_SAO_CONFIG) -> list[Path]:
     """Giữ `giu` bản mới nhất, xoá phần còn lại. Trả về danh sách đã xoá."""
-    ban = sorted(duong_dan.parent.glob(duong_dan.name + ".bak-*"), reverse=True)
+    # Chỉ dọn bản do chính hàm này tạo (`bak-YYYYmmdd-HHMMSS`). Người vận hành tự chép một bản
+    # `config.toml.bak-truoc-khi-nang-cap` thì đó là thứ họ cố ý giữ.
+    ban = sorted(duong_dan.parent.glob(duong_dan.name + ".bak-????????-??????"), reverse=True)
     da_xoa = []
     for cu in ban[giu:]:
         with contextlib.suppress(OSError):
@@ -386,6 +387,10 @@ def sua_config_toml(duong_dan: Path, doi: Mapping[str, Any],
     # lại một `config.toml` cụt.
     tam = duong_dan.with_name(duong_dan.name + ".tam")
     tam.write_text(moi, encoding="utf-8", newline="")
+    # Siết quyền TRƯỚC khi đổi tên: file mới thừa kế quyền của thư mục, nên nếu không làm thì lần
+    # sửa đầu tiên từ dashboard sẽ **mở toang** đúng cái file mà `cai-dat.ps1` đã khoá lại — bản rõ
+    # của mật khẩu dashboard và token clicker.
+    _siet_quyen(tam)
     os.replace(tam, duong_dan)
     log.warning("Da sua %d khoa trong %s, ban cu o %s", len(doi), duong_dan.name, ban_sao.name)
     return ban_sao

@@ -5,7 +5,7 @@ Tài liệu cài đặt **duy nhất** của dự án. Chọn phần theo tình 
 | Tình trạng VPS | Đọc |
 |---|---|
 | **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống) |
-| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — Máy đã có hệ thống](#phần-b--vps-đã-có-hệ-thống) |
+| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 thêm/tắt/xoá Client · B7 cài lại sạch |
 | Hằng ngày, sau mỗi lần khởi động lại | [Phần C — Vận hành](#phần-c--vận-hành-hằng-ngày) |
 
 Muốn biết **vì sao** một bước như vậy: [RUNBOOK.md](RUNBOOK.md). Gặp sự cố khi đang chạy: RUNBOOK mục 7.
@@ -228,6 +228,30 @@ Sau khi cập nhật:
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING # Bridge khởi động lại luôn về PAUSED
 ```
 
+Mở dashboard rồi **bấm `Ctrl+F5` một lần**: tab mở từ trước lần cập nhật vẫn chạy CSS/JS cũ, và
+triệu chứng là "cập nhật xong mà dashboard y như cũ". Chỉ cần làm một lần cho mỗi tab đang mở.
+
+### B1b. Riêng bản 2026-09-21 — cấu hình chuyển vào database (D-32)
+
+Bản này có **migration 008** và đổi chỗ hai giá trị của clicker. Làm đúng bốn việc sau, một lần:
+
+1. **Xoá `account_login` và `terminal_title`** khỏi mục `[clicker]` và `[clicker_master]` trong
+   `config.toml` (Notepad, lưu **UTF-8 không BOM**). Còn chúng trong file thì **file thắng
+   database**: khai trên dashboard sẽ không có tác dụng, và không script nào báo cho bạn biết —
+   dấu hiệu duy nhất là hai dòng đỏ trong khối `config.toml` ở tab Cấu hình.
+2. Khởi động lại dịch vụ để Bridge đọc lại file: `Restart-Service CopyBridge`.
+3. Trên dashboard → tab **Cấu hình** → khối **Agent**: khai **số tài khoản** và **tiêu đề cửa sổ**
+   cho từng clicker (xem A4). Chưa khai thì clicker thoát mã 4 và thử lại mỗi 60 giây; kiểm bằng
+   `Get-Content logs\clicker-wrapper.log -Tail 20`.
+4. Nếu bạn đang dùng đường đóng Master qua giao diện, kiểm tác vụ còn không:
+   ```powershell
+   Get-ScheduledTask -TaskPath '\CopyBridge\' | Select-Object TaskName, State
+   ```
+   Thiếu `ClickerMaster` thì `.\scripts\tao-dich-vu.ps1 -ChiTacVuClicker` (máy đang chạy — không
+   đụng tới dịch vụ).
+
+Xong bốn việc: `liet-ke` phải cho cả hai clicker **ONLINE**, và canary của chúng xanh trên dashboard.
+
 **Nếu script in cảnh báo đỏ `ea/ thay doi`:** biên dịch lại EA, chép `.ex5` mới vào
 `MQL5\Experts` của từng terminal (như A3), rồi **gỡ EA khỏi chart và gắn lại** với token cũ (đổi
 khung thời gian không nạp lại `.ex5`). Biên dịch không cần mở MetaEditor:
@@ -264,6 +288,9 @@ git -C C:\CopyBridge checkout <commit-cu>
 
 `-BoQuaGit` là bắt buộc ở đây: sau `checkout` một commit, `git pull` không chạy được. Khi muốn quay
 lại bản mới nhất: `git -C C:\CopyBridge checkout main` rồi `.\scripts\cai-dat.ps1 -CapNhat`.
+
+**Bản 2026-09-21 CÓ migration (008).** Lùi khỏi nó thì không đủ `git checkout` — phải phục hồi
+database từ bản sao lưu, theo đúng các bước dưới đây.
 
 **Bản mới đã chạy migration** — phải phục hồi database từ bản sao lưu tạo **trước** lần cập nhật
 (`data\backup\bridge-<ngày-giờ>.db`):
@@ -356,7 +383,7 @@ vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao 
 | Cần gì | Làm ở đâu |
 |---|---|
 | Terminal MT5 thứ ba, đăng nhập tài khoản Client thứ hai | Trên VPS, như A0 |
-| Một agent `CLIENT` riêng + token riêng, EA gắn lên đúng terminal đó | Dashboard → Cấu hình → Agent → *Thêm agent*; token hiện một lần, dán vào EA |
+| Một agent `CLIENT` riêng + token riêng, EA gắn lên đúng terminal đó | Dashboard → Cấu hình → Agent → *Thêm agent* (**chỉ dùng được khi dashboard có mật khẩu**); token hiện một lần, dán vào EA |
 | Dòng cấu hình `CL-02` | Dashboard → Cấu hình → khối **Thêm Client** |
 | Ánh xạ symbol cho `CL-02` | Dashboard → Cấu hình → Ánh xạ symbol |
 | **Một clicker riêng**, nếu muốn `CL-02` mở/đóng qua giao diện | **Chưa hỗ trợ** — xem dưới |
@@ -412,14 +439,15 @@ Dashboard: `http://127.0.0.1:8080` (chỉ mở được trong VPS; mật khẩu 
 
 1. Kiểm nút **Algo Trading** xanh và Toolbox ở tab **Trade** trên **cả hai** terminal.
 2. `.\.venv\Scripts\python.exe -m bridge.admin liet-ke` — agent `ONLINE`.
-3. `.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING`
+3. Bấm **Bắt đầu copy** ở đầu trang dashboard, hoặc
+   `.\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING`
 
 | `run_mode` | Mở lệnh mới | Đồng bộ đóng |
 |---|---|---|
-| `RUNNING` | có | có |
-| `PAUSE_NEW_ENTRIES` | không | có |
-| `PAUSED` | không | **không** — đóng một bên thì bên kia vẫn mở |
-| `EMERGENCY` | không | đóng tất cả |
+| `RUNNING` (nút **Bắt đầu copy**) | có | có |
+| `PAUSE_NEW_ENTRIES` (nút **Tạm dừng lệnh mới**) | không | có |
+| `PAUSED` (nút **Dừng toàn bộ đồng bộ**) | không | **không** — đóng một bên thì bên kia vẫn mở |
+| `EMERGENCY` (nút **Đóng khẩn cấp**, cuối tab Tổng quan) | không | đóng tất cả |
 
 Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần trên demo trước khi cần.
 
@@ -431,6 +459,8 @@ Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần 
 | `liet-ke` | Trạng thái agent |
 | `run-mode [RUNNING\|PAUSE_NEW_ENTRIES\|PAUSED]` | Xem / đặt chế độ |
 | `cau-hinh-client CL-01 [...]` | Xem / sửa cấu hình copy |
+| `cau-hinh-client CL-01 --hoat-dong tat` | Ngừng copy lệnh mới cho Client đó (cặp đang mở vẫn đóng theo Master) |
+| `xoa-client CL-02` | Xoá hẳn một Client — chỉ khi nó chưa có cặp lệnh nào |
 | `cau-hinh-master [...]` | Xem / sửa đường đóng phía Master |
 | `anh-xa-symbol CL-01 [...]` | Xem / khai ánh xạ symbol |
 | `kiem-reason` | Mọi deal của bot mang `DEAL_REASON_CLIENT` |
@@ -476,6 +506,8 @@ Các script in danh sách này ở cuối mỗi lần chạy (`scripts\canh-bao.
 7. **Khai số tài khoản + tiêu đề cửa sổ cho từng clicker trên dashboard** (A4). Trợ lý không hỏi
    hai giá trị này nữa; chưa khai thì clicker thoát mã 4 và thử lại mỗi 60 giây — hệ thống dựng
    xong vẫn không bấm được lệnh nào. Cùng trang đó khai **ánh xạ symbol**.
+   **Bản cài cũ:** xoá `account_login`/`terminal_title` khỏi `config.toml` trước, vì file thắng
+   database và không script nào kiểm hộ (B1b).
 
 Rủi ro không phải kỹ thuật: hai tài khoản vào lệnh ngược chiều, cùng symbol, cách nhau dưới một giây,
 **cùng IP** — nhiều broker cấm. Đọc điều khoản của cả hai broker.

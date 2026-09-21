@@ -151,6 +151,18 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return None
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
+    def _chan_ghi() -> JSONResponse | None:
+        """Sửa cấu hình cũng đòi dashboard có mật khẩu.
+
+        `hop_le` cho qua **mọi** request khi mật khẩu trống, mà các endpoint ghi ở đây đổi được
+        chiều copy, hệ số volume, đường mở/đóng và cả `config.toml`. Để chúng mở toang cho bất kỳ
+        ai chạm được tới cổng 8080 là đánh đổi sai: xem thì cứ xem, còn sửa thì phải đăng nhập.
+        Nút `run_mode` và đóng khẩn cấp giữ nguyên hành vi cũ (F-02 đã bàn riêng về chúng).
+        """
+        if dashboard.can_dang_nhap():
+            return None
+        return _tra_loi(LoiCauHinh("CHUA_DAT_MAT_KHAU"), status=403)
+
     def _chan_cap_token() -> JSONResponse | None:
         """Không có mật khẩu dashboard thì **không** cấp token ở đây.
 
@@ -322,6 +334,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
                              sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             doi, dang_mo = sua_client(
@@ -342,6 +356,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     async def api_tao_client(request: Request, sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             da = tao_client(dashboard.db, body.get("client_id") or "", body.get("agent_id") or "",
@@ -357,6 +373,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         """Xoá hẳn một Client. Từ chối khi nó đã có cặp lệnh — khi đó hãy **tắt**."""
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         try:
             xoa_client(dashboard.db, client_id)
         except LoiCauHinh as exc:
@@ -367,6 +385,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     @app.post("/api/master_close_route")
     async def api_duong_dong_master(request: Request, sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
+            return loi
+        if (loi := _chan_ghi()) is not None:
             return loi
         body = await request.json()
         try:
@@ -382,6 +402,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         """Kiểm với sàn **rồi mới** lưu — cùng phép kiểm của `/api/symbol_map/verify`."""
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             spec = khai_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -396,6 +418,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     async def api_tat_anh_xa(request: Request, sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             tat_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -409,6 +433,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         """Xoá hẳn một ánh xạ. Tắt thì dòng còn đó; xoá thì không còn dấu vết."""
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             xoa_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -420,6 +446,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     @app.post("/api/system_config")
     async def api_khoa_he_thong(request: Request, sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
+            return loi
+        if (loi := _chan_ghi()) is not None:
             return loi
         body = await request.json()
         try:
@@ -438,6 +466,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         """
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         if dashboard.config is None:
             return _tra_loi(LoiCauHinh("KHONG_CO_FILE_CONFIG"), status=409)
         body = await request.json()
@@ -445,8 +475,12 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         if not isinstance(doi, dict) or not doi:
             return _tra_loi(LoiCauHinh("KHONG_CO_GI_DOI"))
         try:
-            ban_sao = sua_config_toml(Path(dashboard.config.source_path), doi,
-                                      project_root=Path(dashboard.config.project_root))
+            # Chạy ở luồng khác: `sua_config_toml` đọc/ghi file và gọi `icacls`, mà dashboard
+            # dùng **chung vòng sự kiện** với Bridge. Một lần `icacls` treo vài giây là heartbeat
+            # của agent trễ theo, agent rơi OFFLINE, và D-25 ngừng copy lệnh.
+            ban_sao = await asyncio.to_thread(
+                sua_config_toml, Path(dashboard.config.source_path), doi,
+                Path(dashboard.config.project_root))
         except ConfigError as exc:
             # Câu của `ConfigError` đã là tiếng Việt và nói rõ khoá nào sai, nên đưa thẳng ra.
             return JSONResponse({"error": "CONFIG_KHONG_HOP_LE", "message": str(exc)},
@@ -482,6 +516,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         """Khai terminal của một clicker. Clicker đang chạy nhận giá trị mới trong vài giây."""
         if (loi := _chan(sid)) is not None:
             return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
         body = await request.json()
         try:
             doi = dat_terminal_clicker(
@@ -492,9 +528,19 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return _tra_loi(exc)
         # Clicker đọc cấu hình ở **mỗi lần bắt tay**, nên cắt kết nối là cách rẻ nhất để giá trị
         # mới có hiệu lực. Không cần thêm loại message, và vẫn đúng khi clicker đang offline.
+        # Cắt kết nối để clicker nối lại và đọc cấu hình mới — nhưng **không** cắt khi nó đang
+        # giữ một lệnh chưa xong: command đã gửi mà chưa ack sẽ mất theo kết nối, và lệnh đó có
+        # thể là một lệnh đóng. Còn lệnh đang bay thì để clicker nhận giá trị mới ở lần nối lại
+        # kế tiếp; trang nói rõ điều đó qua `nap_lai`.
         nap_lai = False
         if doi and dashboard.server is not None:
-            nap_lai = dashboard.server.dong_ket_noi(agent_id, "doi terminal tu dashboard")
+            dang_bay = [c for c in dashboard.db.list_inflight_commands()
+                        if c["target_agent_id"] == agent_id]
+            if not dang_bay:
+                nap_lai = dashboard.server.dong_ket_noi(agent_id, "doi terminal tu dashboard")
+            else:
+                log.warning("Khong cat ket noi %s de nap lai: dang co %d lenh chua xong",
+                            agent_id, len(dang_bay))
         return {"ok": True, "doi": doi, "nap_lai": nap_lai}
 
     @app.post("/api/agent/{agent_id}/token")

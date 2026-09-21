@@ -77,7 +77,14 @@ def _http(app) -> httpx.AsyncClient:
 
 @pytest.fixture
 async def client(seeded_web: Database) -> AsyncIterator[httpx.AsyncClient]:
-    async with _http(tao_app(Dashboard(seeded_web))) as c:
+    """Dashboard **có mật khẩu** và đã đăng nhập — đúng cấu hình thật trên VPS.
+
+    Các endpoint ghi cấu hình đòi dashboard có mật khẩu (`_chan_ghi`): không mật khẩu thì
+    `hop_le` cho qua mọi request, và khi đó một cổng 8080 chạm được là sửa được chiều copy, hệ
+    số volume và cả `config.toml`.
+    """
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
         yield c
 
 
@@ -405,7 +412,8 @@ async def test_sua_client_sai_rang_buoc_thi_tra_ma_loi_va_cau_tieng_viet(
 
 async def test_bat_duong_dong_master_qua_dashboard(clicker_web: Database) -> None:
     """Clicker của Client không dùng lại được cho Master — hai terminal khác nhau."""
-    async with _http(tao_app(Dashboard(clicker_web))) as c:
+    async with _http(tao_app(Dashboard(clicker_web, password=MAT_KHAU))) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/master_close_route",
                          json={"clicker_agent": "AG-CLICKER", "close_route": "UI"})
         assert r.status_code == 400
@@ -464,18 +472,30 @@ async def test_khoa_he_thong_ngoai_danh_sach_trang_bi_tu_choi(client: httpx.Asyn
     assert seeded_web.get_config_int("ui_open_queue_max_age_ms", 0) == 20000
 
 
-async def test_khong_cap_token_khi_dashboard_chua_dat_mat_khau(
-        client: httpx.AsyncClient, seeded_web: Database) -> None:
-    """Không mật khẩu thì `hop_le` cho qua mọi request — cấp token khi đó là phát hành danh tính
-    cho bất kỳ ai chạm được cổng 8080."""
-    r = await client.post("/api/agent", json={"agent_id": "AG-X", "role": "CLIENT",
-                                              "magic": 770001, "login": 9})
-    assert r.status_code == 403
+@pytest.mark.parametrize("duong, than", [
+    ("/api/agent", {"agent_id": "AG-X", "role": "CLIENT", "magic": 770001, "login": 9}),
+    ("/api/agent/AG-MASTER/token", {}),
+    ("/api/client/CL-01", {"volume_multiplier": 2.0}),
+    ("/api/client/CL-01/delete", {}),
+    ("/api/symbol_map", {"client_id": "CL-01", "master_symbol": "X", "client_symbol": "Y"}),
+    ("/api/symbol_map/delete", {"client_id": "CL-01", "master_symbol": "X"}),
+    ("/api/system_config", {"khoa": "ui_open_queue_max_len", "gia_tri": 5}),
+    ("/api/file_config", {"doi": {"bridge.port": 9999}}),
+    ("/api/agent/AG-CLICKER/terminal", {"login": 9}),
+])
+async def test_dashboard_khong_mat_khau_thi_khong_sua_duoc_gi(
+        seeded_web: Database, duong: str, than: dict) -> None:
+    """Không mật khẩu thì `hop_le` cho qua **mọi** request.
+
+    Xem thì cứ xem — nhưng sửa chiều copy, hệ số volume, `config.toml` hay cấp một token mới thì
+    phải đăng nhập, vì mỗi thứ trong số đó đổi được cách hệ thống cư xử với tiền.
+    """
+    async with _http(tao_app(Dashboard(seeded_web))) as c:
+        r = await c.post(duong, json=than)
+    assert r.status_code == 403, duong
     assert r.json()["error"] == "CHUA_DAT_MAT_KHAU"
     assert seeded_web.get_agent("AG-X") is None
-
-    r = await client.post(f"/api/agent/{MASTER_AGENT}/token")
-    assert r.status_code == 403
+    assert seeded_web.get_client_account(CLIENT_ID) is not None
 
 
 async def test_cap_token_khi_da_dat_mat_khau_thi_tra_token_mot_lan(seeded_web: Database) -> None:
@@ -503,6 +523,10 @@ async def test_cap_token_khi_da_dat_mat_khau_thi_tra_token_mot_lan(seeded_web: D
     ("/api/system_config", {"khoa": "ui_open_queue_max_len", "gia_tri": 5}),
     ("/api/agent", {"agent_id": "AG-X", "role": "CLIENT", "magic": 1}),
     ("/api/agent/AG-MASTER/token", {}),
+    ("/api/agent/AG-CLICKER/terminal", {"login": 9}),
+    ("/api/client/CL-01/delete", {}),
+    ("/api/symbol_map/delete", {"client_id": "CL-01", "master_symbol": "X"}),
+    ("/api/file_config", {"doi": {"bridge.port": 9999}}),
 ])
 async def test_moi_endpoint_ghi_deu_doi_dang_nhap(seeded_web: Database, duong: str,
                                                   than: dict) -> None:
@@ -562,7 +586,9 @@ def test_moi_duong_api_app_js_goi_deu_co_route_that(project_root, seeded_web: Da
             # Bỏ phần tham số: JS ghép id vào bằng chuỗi nên chỉ so được phần tĩnh đầu.
             mau.add(duong.split("{")[0])
     for d in sorted(duong_js):
-        assert any(m.startswith(d) or d.startswith(m) for m in mau), f"app.js goi {d} khong co route"
+        # So khớp một chiều: đường JS phải **bắt đầu bằng** một route có thật. So hai chiều thì
+        # `/api/sym` (gõ thiếu) vẫn lọt vì nó là tiền tố của `/api/symbol_map`.
+        assert any(d.startswith(m) for m in mau), f"app.js goi {d} khong co route"
 
 
 async def test_khai_terminal_cho_clicker_va_cat_ket_noi_de_nap_lai(seeded_web) -> None:
@@ -576,7 +602,9 @@ async def test_khai_terminal_cho_clicker_va_cat_ket_noi_de_nap_lai(seeded_web) -
             da_dong.append((agent_id, ly_do))
             return True
 
-    async with _http(tao_app(Dashboard(seeded_web, server=ServerGia()))) as c:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU,
+                                       server=ServerGia()))) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/agent/AG-CLICKER/terminal",
                          json={"login": 538217, "terminal_title": "538217 - Connext"})
         assert r.status_code == 200
@@ -618,7 +646,7 @@ db_path = "data/bridge.db"
 dashboard_password = "mat-khau-thu-nghiem"
 
 [clicker]
-token = "tok"
+token = "TOKEN-CLICKER-BI-MAT"
 """
 
 
@@ -674,7 +702,9 @@ async def test_bi_mat_khong_bao_gio_di_ra_khoi_bridge(seeded_web: Database,
         await c.post("/login", data={"password": MAT_KHAU})
         r = await c.get("/api/config")
     assert "mat-khau-thu-nghiem" not in r.text
-    assert "tok" not in [d["gia_tri"] for d in r.json()["file_config"]]
+    # `in` trên danh sách chỉ bắt trùng khớp hẳn, nên nó bỏ sót một token dài hơn chuỗi tìm.
+    assert not any("TOKEN-CLICKER" in d["gia_tri"] for d in r.json()["file_config"])
+    assert "TOKEN-CLICKER-BI-MAT" not in r.text
     khoa = {d["khoa"]: d for d in r.json()["file_config"]}
     assert khoa["security.dashboard_password"]["bi_mat"] is True
     assert khoa["security.dashboard_password"]["gia_tri"] == UI["cfg_file_masked"]

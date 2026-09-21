@@ -57,6 +57,12 @@ LOI_CAU_HINH = {
                            "Master. Khai clicker trước."),
     "CLICKER_DA_DUNG": ("Agent {agent_id} đang là clicker của Client {client_id}. "
                         "Mỗi terminal cần một clicker riêng."),
+    "CLICKER_CUA_MASTER": ("Agent {agent_id} đang là clicker lái terminal Master. Dùng chung là "
+                           "lệnh của Client sẽ được bấm trên terminal Master."),
+    "AGENT_DA_DUNG": ("Agent {agent_id} đang là agent của Client {client_id}. Một terminal MT5 "
+                      "chỉ thuộc về một Client — dùng chung là mỗi lệnh Master sinh hai lệnh mở "
+                      "trên cùng terminal đó."),
+    "THIEU_MA": "Thiếu mã. Điền mã client hoặc tên agent.",
     "HE_SO_KHONG_DUONG": "Hệ số volume phải lớn hơn 0, nhận được {gia_tri}.",
     "CHIEU_COPY_LA": "Chiều copy {gia_tri} không hợp lệ.",
     "DUONG_LA": "Giá trị {gia_tri} không hợp lệ cho {truong}.",

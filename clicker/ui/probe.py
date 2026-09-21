@@ -89,7 +89,16 @@ def probe(title_contains: str, account_login: int = 0) -> ProbeResult:
         return ProbeResult(False, "Handle cua so khong con hop le", hwnd=result.hwnd)
     if account_login:
         tren_cua_so = account_login_from_title(result.title or "")
-        if tren_cua_so is not None and tren_cua_so != account_login:
+        if tren_cua_so is None:
+            # Khong doc duoc so tai khoan tu tieu de nghia la KHONG KIEM DUOC, chu khong phai
+            # "kiem xong thay on". Tieu de MT5 luon mo dau bang so tai khoan; doc khong ra la cua
+            # so la hoac MT5 da doi cach dat tieu de -- ca hai deu la luc phai dung lai.
+            log.critical("Khong doc duoc so tai khoan tu tieu de %r, khong kiem duoc dung terminal",
+                         result.title)
+            return ProbeResult(
+                False, f"Tieu de {result.title!r} khong bat dau bang so tai khoan",
+                hwnd=result.hwnd, title=result.title)
+        if tren_cua_so != account_login:
             log.critical("Cua so %r la tai khoan %s, khong phai %s trong so. Khong lai terminal nay.",
                          result.title, tren_cua_so, account_login)
             return ProbeResult(

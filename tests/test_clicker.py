@@ -495,10 +495,28 @@ def test_gia_tri_cuc_bo_thang_gia_tri_bridge_giao(tmp_path: Path) -> None:
     vi — nó vẫn lái đúng cái terminal nó đang lái.
     """
     link = _link(tmp_path)
+    link.config.cuc_bo = True          # đúng thứ `build_link` đặt khi máy có sẵn giá trị
     link.config.account_login = 111
     link.config.terminal_title = "cuc-bo"
     link.ap_dung_cau_hinh({"account_login": 222, "terminal_title": "tu-bridge"})
     assert (link.config.account_login, link.config.terminal_title) == (111, "cuc-bo")
+
+
+def test_doi_terminal_tren_dashboard_thi_lan_bat_tay_sau_PHAI_de_gia_tri_cu(
+        tmp_path: Path) -> None:
+    """Bản đầu chỉ điền vào chỗ trống, nên sửa trên dashboard không bao giờ tới clicker đang chạy.
+
+    Tệ hơn cả việc "không có tác dụng": clicker giữ cả số tài khoản CŨ lẫn tiêu đề CŨ, nên phép
+    đối chiếu hai giá trị đó vẫn khớp và canary vẫn xanh — trong lúc Bridge đã định tuyến lệnh
+    của nó sang một tài khoản khác.
+    """
+    link = _link(tmp_path)
+    link.ap_dung_cau_hinh({"account_login": 111, "terminal_title": "111"})
+    assert (link.config.account_login, link.config.terminal_title) == (111, "111")
+
+    link.ap_dung_cau_hinh({"account_login": 222, "terminal_title": "222"})
+    assert (link.config.account_login, link.config.terminal_title) == (222, "222")
+    assert link.driver.terminal_title == "222"
 
 
 def _gia_lap_cua_so(monkeypatch: pytest.MonkeyPatch, tieu_de: str) -> None:

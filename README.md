@@ -33,7 +33,7 @@ EA (MQL5) là agent mỏng: báo sự kiện, thực thi lệnh, gửi heartbeat
 
 ## Trạng thái
 
-Phase 1–12 xong, chạy trên **demo** (VPS). Bộ test tự động: `pytest` (~770 test) + `ruff check .`.
+Phase 1–12 xong, chạy trên **demo** (VPS). Bộ test tự động: `pytest` (~875 test) + `ruff check .`.
 
 > **Chưa dùng cho tiền thật** cho tới khi xong các điều kiện ở [RUNBOOK.md](docs/RUNBOOK.md) mục 8
 > — đáng kể nhất là đo **phiên RDP ngắt** (B-08) và **mất điện đột ngột** (TEST-19).
@@ -52,6 +52,11 @@ ruff check .
 ```
 
 Phần lớn logic test được bằng mock agent, không cần MT5. EA và clicker cần terminal MT5 **demo**.
+
+Cấu hình nghiệp vụ (agent, client, ánh xạ symbol, khoá hệ thống) nằm trong database và **sửa
+trên dashboard**, tab Cấu hình (D-32). `config.toml` chỉ giữ thứ cần trước khi Bridge chạy — cổng,
+đường dẫn DB, mật khẩu dashboard, token clicker — và cũng sửa được trên trang đó, nhưng phải khởi
+động lại dịch vụ mới có hiệu lực.
 
 ## Tài liệu
 

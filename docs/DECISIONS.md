@@ -542,6 +542,16 @@ tiên `--tham-so` > `config.toml` > Bridge giữ cho bản cài cũ chạy y nh�
    chặn đường MỞ; đường ĐÓNG rơi về `OrderSend` của EA theo `close_degraded_fallback = EA`, tức
    deal đóng mang `EXPERT` — đúng thứ đường đóng qua giao diện tồn tại để ngăn.
 
+**Mọi endpoint SỬA cấu hình đều đòi dashboard có mật khẩu.** `Dashboard.hop_le` cho qua mọi
+request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải loopback.
+Xem thì cứ xem — nhưng đổi chiều copy, hệ số volume, đường mở/đóng, xoá Client hay ghi
+`config.toml` thì phải đăng nhập, vì mỗi thứ trong số đó đổi cách hệ thống cư xử với tiền. Nút
+`run_mode` và đóng khẩn cấp giữ nguyên hành vi cũ (F-02 bàn riêng về chúng).
+
+**`bridge.db_path` KHÔNG sửa được trên dashboard.** Đổi nó rồi khởi động lại là Bridge mở một
+database rỗng: toàn bộ agent, token, ánh xạ và cặp đang mở biến mất khỏi sổ trong khi vị thế thật
+vẫn nằm trên sàn. Đó không phải một khoá cấu hình, đó là một nút xoá sổ sách.
+
 **Cấp token trên dashboard bị chặn khi dashboard không có mật khẩu.** `Dashboard.hop_le` cho qua
 mọi request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải
 loopback — nên trên đúng cấu hình đang dùng, một nút cấp token sẽ là đường phát hành danh tính

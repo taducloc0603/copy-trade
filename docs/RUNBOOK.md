@@ -45,7 +45,7 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 
 | Nằm ở | Gồm những gì | Sửa bằng |
 |---|---|---|
-| **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
+| **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master, bật/tắt), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
 | **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Dashboard tab **Cấu hình** (kiểm lại rồi mới ghi, sao lưu bản cũ) hoặc mở file. Có hiệu lực **sau khi khởi động lại dịch vụ** |
 
 **Thứ tự ưu tiên của clicker: tham số dòng lệnh > `config.toml` > giá trị Bridge giao.** Nghĩa
@@ -54,7 +54,12 @@ khai trên dashboard — sửa trên trang mà không thấy gì đổi thì ki�
 hiện hai khoá đó kèm cảnh báo khi file còn khai chúng.
 
 Mỗi lần lưu từ dashboard để lại một bản `config.toml.bak-<ngày-giờ>` cạnh file gốc, **giữ 5 bản
-gần nhất**. Chúng là bản rõ của mật khẩu và token, nên đừng chép chúng đi đâu.
+gần nhất**; bản bạn tự chép tay với tên khác thì không bị đụng tới. Chúng là bản rõ của mật khẩu và
+token, nên đừng chép chúng đi đâu.
+
+**Mọi nút Lưu trên trang Cấu hình đòi dashboard có mật khẩu.** Không mật khẩu thì trang vẫn xem
+được nhưng không sửa được gì (D-32). Và `bridge.db_path` **không** nằm trong số khoá sửa được —
+đổi nó là Bridge mở một database rỗng ở lần khởi động sau.
 
 `config.toml` nằm trong `.gitignore`. Các khoá:
 
@@ -72,9 +77,12 @@ telegram_chat_id = ""
 
 [clicker]                # CHI token. So tai khoan va tieu de cua so nam trong DB (D-32).
 token = "..."
-account_login = <so-tai-khoan-Client>   # so tai khoan Client
-terminal_title = "<so-tai-khoan-Client>"  # mau tieu de cua so terminal Client
 ```
+
+> **Bản cài cũ còn `account_login` và `terminal_title` trong `[clicker]`/`[clicker_master]`?**
+> Xoá hai dòng đó đi. Chừng nào chúng còn trong file thì **file thắng database**, và mọi thay đổi
+> trên dashboard sẽ không có tác dụng — lặng lẽ, không báo lỗi gì. Trang Cấu hình hiện đúng hai
+> dòng đó kèm cảnh báo màu đỏ; không script nào kiểm hộ.
 
 > **Đừng truyền token clicker bằng `--token`.** Dòng lệnh của một tiến trình là thứ mọi tài
 > khoản trên cùng máy đọc được bằng `Get-CimInstance Win32_Process`, mà clicker chạy 24/7.
@@ -109,6 +117,10 @@ Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicke
 
 Chạy tay để gỡ lỗi (dừng dịch vụ/tác vụ tương ứng trước): `.\.venv\Scripts\python.exe -m bridge`,
 `.\.venv\Scripts\python.exe -m clicker` (đọc mục `[clicker]`), `... -m clicker --muc clicker_master`.
+
+Đổi chế độ có hai đường như nhau: ba nút **Tạm dừng lệnh mới / Dừng toàn bộ đồng bộ / Bắt đầu
+copy** ở **đầu trang dashboard** (thấy được ở mọi tab), hoặc `bridge.admin run-mode`. Nút **Đóng
+khẩn cấp** cố ý nằm tách ở cuối tab Tổng quan, viền đỏ.
 
 Thứ tự **quan trọng** khi hàng đợi của EA đang có event cũ:
 
