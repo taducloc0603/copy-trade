@@ -40,6 +40,7 @@ from bridge.ops import (
     tao_client,
     tat_anh_xa,
     xoa_anh_xa,
+    xoa_client,
 )
 from bridge.web import views
 
@@ -330,6 +331,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
                 open_route=body.get("open_route"),
                 close_route=body.get("close_route"),
                 can_close_master=body.get("can_close_master"),
+                enabled=body.get("enabled"),
             )
         except LoiCauHinh as exc:
             return _tra_loi(exc)
@@ -349,6 +351,18 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return _tra_loi(exc)
         log.info("Dashboard tao client %s", da["client_id"])
         return {"ok": True, "client": da}
+
+    @app.post("/api/client/{client_id}/delete")
+    async def api_xoa_client(client_id: str, sid: str | None = Cookie(None)) -> Any:
+        """Xoá hẳn một Client. Từ chối khi nó đã có cặp lệnh — khi đó hãy **tắt**."""
+        if (loi := _chan(sid)) is not None:
+            return loi
+        try:
+            xoa_client(dashboard.db, client_id)
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        log.warning("Dashboard xoa client %s", client_id)
+        return {"ok": True}
 
     @app.post("/api/master_close_route")
     async def api_duong_dong_master(request: Request, sid: str | None = Cookie(None)) -> Any:

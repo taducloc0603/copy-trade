@@ -243,6 +243,17 @@ VPS: lọc theo `error_message IS NOT NULL` sẽ **giấu luôn** các lỗi th�
 Đổi ngữ nghĩa của một tín hiệu được thiết kế để tin, dưới sức ép thời gian, là đúng loại thay đổi
 không nên làm.
 
+### B-19 — Chỉ chạy được hai clicker, nên Client thứ hai phải đi đường EA
+
+`config.py::muc_clicker` chỉ biết hai mục `[clicker]` và `[clicker_master]`; `clicker --muc` và
+`chay-clicker.ps1` cũng khoá đúng hai tên đó. Nghĩa là thêm `CL-02` thì dòng cấu hình, agent, ánh
+xạ symbol đều khai được trên dashboard (D-32), nhưng nó **không có clicker riêng** — phải đặt
+`open_route = close_route = EA`, và deal của nó mang `EXPERT` thay vì `CLIENT`.
+
+Gỡ bỏ giới hạn này là: cho `muc_clicker` đọc mục theo tên bất kỳ dạng `[clicker_*]`, nới
+`--muc`/`ValidateSet`, và đăng ký thêm một Scheduled Task cho mỗi clicker. Không khó, nhưng nó
+chạm vào đường đang chạy thật nên để thành một việc riêng.
+
 ## Mở rộng — không thuộc MVP
 
 - Nhiều Client **thật** trên giao diện: cấu hình riêng từng Client, so sánh chéo, chính sách

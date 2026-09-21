@@ -538,8 +538,8 @@ def tao_client(db: Database, client_id: str, agent_id: str, clicker_agent: str |
 
 def sua_client(db: Database, client_id: str, copy_mode: str | None = None,
                volume_multiplier: float | None = None, open_route: str | None = None,
-               close_route: str | None = None,
-               can_close_master: bool | None = None) -> tuple[dict[str, Any], int]:
+               close_route: str | None = None, can_close_master: bool | None = None,
+               enabled: bool | None = None) -> tuple[dict[str, Any], int]:
     """Sửa cấu hình giao dịch của một Client. Trả về `(giá trị đã đổi, số cặp đang chạy)`.
 
     **Chỉ đổi lệnh MỚI** (D-19): cặp đang chạy lấy tỷ lệ của chính nó và không đọc bảng này.
@@ -570,6 +570,11 @@ def sua_client(db: Database, client_id: str, copy_mode: str | None = None,
         doi[truong] = gia_tri
     if can_close_master is not None:
         doi["can_close_master"] = 1 if can_close_master else 0
+    if enabled is not None:
+        # Tắt một Client là **ngừng copy lệnh mới** cho nó, không đụng gì tới cặp đang mở: chúng
+        # vẫn được đóng theo Master như thường. Đây là cách dừng một Client mà không mất lịch sử,
+        # và là thứ nên dùng thay cho xoá.
+        doi["enabled"] = 1 if enabled else 0
 
     if not doi:
         return {}, 0
@@ -694,6 +699,27 @@ def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
                      (*doi.values(), utc_now_iso(), agent_id))
     log.warning("Khai terminal cho clicker %s: %s", agent_id, doi, extra={"agent_id": agent_id})
     return doi
+
+
+def xoa_client(db: Database, client_id: str) -> None:
+    """Xoá hẳn một Client khỏi bảng.
+
+    **Từ chối khi Client đã từng có cặp lệnh.** Khoá ngoại của `pair` trỏ vào đây, nên xoá đi là
+    xoá luôn khả năng đọc lại lịch sử của những cặp đó — mà lịch sử là thứ duy nhất trả lời được
+    "hôm ấy lệnh nào đã đi đâu" khi có tranh cãi về tiền. Muốn dừng một Client thì **tắt** nó:
+    ngừng copy lệnh mới, giữ nguyên mọi thứ đã xảy ra.
+
+    Ánh xạ symbol của Client thì đi theo (`ON DELETE CASCADE`) — chúng là cấu hình, không phải
+    lịch sử.
+    """
+    if db.get_client_account(client_id) is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+    so_cap = db.query_one("SELECT COUNT(*) n FROM pair WHERE client_id = ?", (client_id,))["n"]
+    if so_cap:
+        raise LoiCauHinh("CLIENT_CON_LICH_SU", client_id=client_id, so_cap=int(so_cap))
+    with db.transaction() as conn:
+        conn.execute("DELETE FROM client_account WHERE client_id = ?", (client_id,))
+    log.warning("Da XOA client %s", client_id)
 
 
 def xoa_anh_xa(db: Database, client_id: str, master_symbol: str) -> None:

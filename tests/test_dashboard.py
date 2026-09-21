@@ -721,3 +721,44 @@ async def test_xoa_anh_xa_khong_co_thi_tra_ma_loi(client: httpx.AsyncClient) -> 
                           json={"client_id": CLIENT_ID, "master_symbol": "KHONG-CO"})
     assert r.status_code == 400
     assert r.json()["error"] == "KHONG_CO_ANH_XA"
+
+
+async def test_them_client_moi_tren_dashboard(client: httpx.AsyncClient,
+                                              seeded_web: Database) -> None:
+    seeded_web.upsert_agent("AG-CLIENT-2", role="CLIENT", token_hash="h", magic_number=770001,
+                            account_login=3)
+    r = await client.post("/api/client", json={"client_id": "CL-02", "agent_id": "AG-CLIENT-2",
+                                               "open_route": "EA", "close_route": "EA"})
+    assert r.status_code == 200
+    assert seeded_web.get_client_account("CL-02")["open_route"] == "EA"
+
+
+async def test_tat_client_tren_dashboard(client: httpx.AsyncClient,
+                                         seeded_web: Database) -> None:
+    r = await client.post(f"/api/client/{CLIENT_ID}", json={"enabled": False})
+    assert r.status_code == 200
+    assert seeded_web.get_client_account(CLIENT_ID)["enabled"] == 0
+    assert seeded_web.list_enabled_clients() == []
+
+
+async def test_xoa_client_da_co_cap_bi_tu_choi_va_bao_nen_tat(client: httpx.AsyncClient,
+                                                              seeded_web: Database) -> None:
+    seeded_web.upsert_master_position(9501, agent_id=MASTER_AGENT, symbol="XAUUSD",
+                                      direction="BUY", initial_volume=1.0, current_volume=1.0,
+                                      status="OPEN")
+    seeded_web.create_pending_pair(9501, CLIENT_ID, copy_mode="OPPOSITE",
+                                   master_initial_volume=1.0, effective_multiplier=1.0)
+    r = await client.post(f"/api/client/{CLIENT_ID}/delete")
+    assert r.status_code == 400
+    assert r.json()["error"] == "CLIENT_CON_LICH_SU"
+    assert seeded_web.get_client_account(CLIENT_ID) is not None
+
+
+async def test_xoa_client_chua_co_cap_thi_duoc(client: httpx.AsyncClient,
+                                               seeded_web: Database) -> None:
+    seeded_web.upsert_agent("AG-CLIENT-2", role="CLIENT", token_hash="h", magic_number=770001,
+                            account_login=3)
+    seeded_web.upsert_client_account("CL-02", agent_id="AG-CLIENT-2")
+    r = await client.post("/api/client/CL-02/delete")
+    assert r.status_code == 200
+    assert seeded_web.get_client_account("CL-02") is None

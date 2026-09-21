@@ -39,6 +39,7 @@ from bridge.ops import (
     thu_hoi_token,
     thu_muc_sao_luu,
     xoa_anh_xa,
+    xoa_client,
 )
 
 VAI_TRO = VAI_TRO_AGENT
@@ -54,6 +55,8 @@ CAU_LOI: dict[str, str] = {
     "LOGIN_KHONG_DUONG": "So tai khoan phai duong, nhan duoc {login}",
     "CLIENT_DA_TON_TAI": "Client {client_id} da ton tai. Dung `cau-hinh-client` de sua.",
     "KHONG_CO_CLIENT": "Khong co client {client_id}",
+    "CLIENT_CON_LICH_SU": ("{client_id} da co {so_cap} cap lenh nen khong xoa duoc. "
+                           "Dung: cau-hinh-client {client_id} --hoat-dong tat"),
     "CAN_CLICKER": "{truong} = UI can clicker_agent_id. Tao client kem --clicker-agent.",
     "CAN_CLICKER_MASTER": ("master_close_route = UI can master_clicker_agent_id, chua co. "
                            "Dat kem --clicker-agent."),
@@ -514,13 +517,15 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
         return _in_loi(LoiCauHinh("KHONG_CO_CLIENT", client_id=args.client_id))
 
     co_gi_doi = any(x is not None for x in (args.copy_mode, args.multiplier, args.open_route,
-                                           args.close_route, args.can_close_master))
+                                           args.close_route, args.can_close_master,
+                                           args.hoat_dong))
     if not co_gi_doi:
         print(f"{args.client_id}: copy_mode={client['copy_mode']} "
               f"volume_multiplier={client['volume_multiplier']} "
               f"open_route={client['open_route']} "
               f"close_route={client['close_route']} "
-              f"can_close_master={client['can_close_master']}")
+              f"can_close_master={client['can_close_master']} "
+              f"enabled={client['enabled']}")
         return 0
 
     try:
@@ -528,13 +533,24 @@ def lenh_cau_hinh_client(db: Database, args: argparse.Namespace) -> int:
             db, args.client_id, copy_mode=args.copy_mode, volume_multiplier=args.multiplier,
             open_route=args.open_route, close_route=args.close_route,
             can_close_master=(None if args.can_close_master is None
-                              else args.can_close_master == "bat"))
+                              else args.can_close_master == "bat"),
+            enabled=(None if args.hoat_dong is None else args.hoat_dong == "bat"))
     except LoiCauHinh as exc:
         return _in_loi(exc)
     for khoa, gia_tri in doi.items():
         print(f"{args.client_id}.{khoa} = {gia_tri}")
     if dang_mo:
         print(f"Luu y: {dang_mo} cap dang chay giu nguyen ty le cu, chi lenh MOI dung gia tri nay.")
+    return 0
+
+
+def lenh_xoa_client(db: Database, args: argparse.Namespace) -> int:
+    """Xoá một `client_account`. Từ chối khi Client đã có cặp lệnh — dùng `--hoat-dong tat`."""
+    try:
+        xoa_client(db, args.client_id)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    print(f"Da xoa client {args.client_id} (ke ca anh xa symbol cua no).")
     return 0
 
 
@@ -651,6 +667,12 @@ def build_parser() -> argparse.ArgumentParser:
     cf.add_argument("--close-route", dest="close_route", choices=("EA", "UI"),
                     help="Kenh gui lenh DONG. UI de deal dong mang DEAL_REASON_CLIENT")
     cf.add_argument("--can-close-master", dest="can_close_master", choices=("bat", "tat"))
+    cf.add_argument("--hoat-dong", dest="hoat_dong", choices=("bat", "tat"),
+                    help="Tat thi Client nay khong copy lenh moi nua (cap dang mo giu nguyen)")
+
+    xc = sub.add_parser("xoa-client",
+                        help="Xoa han mot client_account (chi khi chua co cap lenh nao)")
+    xc.add_argument("client_id")
 
     cm = sub.add_parser("cau-hinh-master",
                         help="Xem hoac sua duong DONG phia Master (phase 12)")
@@ -713,6 +735,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "cau-hinh-master":
             return lenh_cau_hinh_master(db, args)
+        if args.lenh == "xoa-client":
+            return lenh_xoa_client(db, args)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
         if args.lenh == "xac-nhan-alert":

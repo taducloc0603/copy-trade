@@ -49,6 +49,8 @@ LOI_CAU_HINH = {
     "LOGIN_KHONG_DUONG": "Số tài khoản phải là số dương, nhận được {login}.",
     "CLIENT_DA_TON_TAI": "Đã có client {client_id}.",
     "KHONG_CO_CLIENT": "Không có client {client_id}",
+    "CLIENT_CON_LICH_SU": ("{client_id} đã có {so_cap} cặp lệnh nên không xoá được — xoá là "
+                           "mất luôn đường đọc lại lịch sử của chúng. Hãy TẮT Client này."),
     "CAN_CLICKER": ("Đặt {truong} qua giao diện thì Client phải có một clicker. "
                     "Chưa khai clicker thì lệnh sẽ không có ai bấm."),
     "CAN_CLICKER_MASTER": ("Đóng phía Master qua giao diện cần một clicker riêng lái terminal "
@@ -205,6 +207,22 @@ UI = {
     "cfg_saved": "Đã lưu",
     "cfg_open_pairs_keep": "{n} cặp đang chạy giữ nguyên tỷ lệ cũ",
     "cfg_client_title": "Cấu hình copy —",
+    "cfg_client_enabled": "Trạng thái Client",
+    "cfg_client_on": "ĐANG COPY",
+    "cfg_client_off": "ĐÃ TẮT — không copy lệnh mới, cặp đang mở vẫn đóng theo Master",
+    "confirm_client_off": ("Tắt Client này: lệnh mới của Master sẽ không được copy sang "
+                           "nữa. Cặp đang mở giữ nguyên và vẫn đóng theo Master. Tiếp tục?"),
+    "cfg_client_new": "Thêm Client",
+    "cfg_client_id": "Mã client",
+    "cfg_client_agent": "Agent CLIENT (EA trên terminal đó)",
+    "cfg_client_clicker": "Clicker lái terminal đó",
+    "cfg_client_new_hint": ("Mỗi Client cần một terminal MT5 riêng, một agent CLIENT riêng, "
+                            "và nếu đi qua giao diện thì một clicker riêng nữa. Hệ thống "
+                            "hiện chạy được hai clicker: của Client và của Master."),
+    "btn_delete": "Xoá",
+    "confirm_client_delete": ("Xoá hẳn Client này khỏi cấu hình, kèm ánh xạ symbol của nó. "
+                              "Chỉ làm được khi nó chưa có cặp lệnh nào — có rồi thì hãy "
+                              "TẮT, vì xoá là mất luôn đường đọc lại lịch sử. Tiếp tục?"),
     "cfg_system_title": "Khoá hệ thống",
     "cfg_system_hint": "Mỗi khoá lưu riêng. Đổi là có hiệu lực ngay, không cần khởi động lại.",
     "cfg_file_restart_short": "Có hiệu lực sau khi khởi động lại dịch vụ.",

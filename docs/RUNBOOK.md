@@ -137,6 +137,10 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
 .\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
 .\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER
+# Tat mot Client: ngung copy lenh MOI, cap dang mo van dong theo Master.
+.\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --hoat-dong tat
+# Xoa han: CHI khi Client chua co cap lenh nao. Co roi thi tat, dung xoa.
+.\.venv\Scripts\python.exe -m bridge.admin xoa-client CL-02
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI  # dong qua giao dien

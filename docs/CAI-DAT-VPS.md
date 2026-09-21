@@ -349,7 +349,41 @@ dùng lại được token cũ. Mất token EA thì cấp lại trên dashboard 
 token*, chỉ dùng được khi dashboard có mật khẩu) hoặc bằng `bridge.admin cap-token`, rồi dán lại
 vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao lưu — không phải khai lại.
 
-## B6. Cài lại sạch từ đầu
+## B6. Thêm Client thứ hai, tắt hoặc xoá Client đang có
+
+**Một Client = một terminal MT5 riêng.** Thêm `CL-02` không chỉ là thêm một dòng cấu hình; nó cần:
+
+| Cần gì | Làm ở đâu |
+|---|---|
+| Terminal MT5 thứ ba, đăng nhập tài khoản Client thứ hai | Trên VPS, như A0 |
+| Một agent `CLIENT` riêng + token riêng, EA gắn lên đúng terminal đó | Dashboard → Cấu hình → Agent → *Thêm agent*; token hiện một lần, dán vào EA |
+| Dòng cấu hình `CL-02` | Dashboard → Cấu hình → khối **Thêm Client** |
+| Ánh xạ symbol cho `CL-02` | Dashboard → Cấu hình → Ánh xạ symbol |
+| **Một clicker riêng**, nếu muốn `CL-02` mở/đóng qua giao diện | **Chưa hỗ trợ** — xem dưới |
+
+> **Giới hạn hiện tại: hệ thống chạy được đúng hai clicker** (`clicker` cho Client, `clicker_master`
+> cho Master). Nên `CL-02` hôm nay phải đi **đường EA** cho cả mở lẫn đóng: nó hoạt động bình
+> thường, chỉ khác là deal mang `DEAL_REASON = EXPERT` chứ không phải `CLIENT`. Muốn `CL-02` cũng
+> đi qua giao diện thì cần mở rộng phần cấu hình clicker — chưa làm (B-19).
+
+**Tắt một Client** (khối *Cấu hình copy* → *Trạng thái Client* → `ĐÃ TẮT` → Lưu): ngừng copy lệnh
+**mới** cho Client đó. Cặp đang mở **giữ nguyên và vẫn đóng theo Master**. Đây là cách dừng một
+Client mà không mất gì.
+
+**Xoá một Client** (nút *Xoá* cạnh nút *Lưu*): chỉ làm được khi Client **chưa có cặp lệnh nào**.
+Có rồi thì dashboard từ chối và bảo bạn tắt — vì `pair` trỏ vào dòng này, xoá đi là mất luôn đường
+đọc lại lịch sử của những cặp đó. Xoá kéo theo ánh xạ symbol của chính Client đó.
+
+Bằng dòng lệnh, cùng một bộ ràng buộc:
+
+```powershell
+$py = ".\.venv\Scripts\python.exe"
+& $py -m bridge.admin them-client CL-02 --agent AG-CLIENT-2 --open-route EA --close-route EA
+& $py -m bridge.admin cau-hinh-client CL-01 --hoat-dong tat    # tat, giu lich su
+& $py -m bridge.admin xoa-client CL-02                          # chi khi chua co cap nao
+```
+
+## B7. Cài lại sạch từ đầu
 
 Chỉ khi muốn **xoá hết lịch sử** (cặp, lệnh, alert):
 

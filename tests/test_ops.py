@@ -38,6 +38,7 @@ from bridge.ops import (
     tat_anh_xa,
     thu_hoi_token,
     xoa_anh_xa,
+    xoa_client,
 )
 from bridge.protocol.auth import hash_token, verify_token
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT, MASTER_POSITION_ID
@@ -1177,3 +1178,28 @@ def test_xoa_anh_xa_khong_dung_toi_cap_dang_mo(seeded: Database) -> None:
     pair_id = _cap(seeded, 9301)
     xoa_anh_xa(seeded, CLIENT_ID, "XAUUSD")
     assert seeded.get_pair(pair_id)["status"] == "OPEN"
+
+
+def test_tat_client_thi_khong_con_trong_danh_sach_copy(seeded: Database) -> None:
+    """Tắt là ngừng copy lệnh MỚI — `processor` chỉ duyệt các Client đang bật."""
+    doi, _ = sua_client(seeded, CLIENT_ID, enabled=False)
+    assert doi == {"enabled": 0}
+    assert [r["client_id"] for r in seeded.list_enabled_clients()] == []
+    sua_client(seeded, CLIENT_ID, enabled=True)
+    assert [r["client_id"] for r in seeded.list_enabled_clients()] == [CLIENT_ID]
+
+
+def test_xoa_client_chua_co_cap_thi_xoa_luon_ca_anh_xa(seeded: Database) -> None:
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    xoa_client(seeded, CLIENT_ID)
+    assert seeded.get_client_account(CLIENT_ID) is None
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+
+
+def test_xoa_client_da_co_cap_thi_bi_tu_choi(seeded: Database) -> None:
+    """Xoá là mất luôn đường đọc lại lịch sử của những cặp đó."""
+    _cap(seeded, 9401)
+    with pytest.raises(LoiCauHinh) as loi:
+        xoa_client(seeded, CLIENT_ID)
+    assert loi.value.ma == "CLIENT_CON_LICH_SU"
+    assert seeded.get_client_account(CLIENT_ID) is not None

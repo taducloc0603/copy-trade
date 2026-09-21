@@ -406,8 +406,12 @@ function khoiClient(el) {
     const dongMaster = oChon(c.can_close_master ? "1" : "0",
                              [{ gia_tri: "0", nhan: UI.cfg_close_master_off },
                               { gia_tri: "1", nhan: UI.cfg_close_master_on }]);
+    const hoatDong = oChon(c.enabled ? "1" : "0",
+                           [{ gia_tri: "1", nhan: UI.cfg_client_on },
+                            { gia_tri: "0", nhan: UI.cfg_client_off }]);
 
-    box.append(hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
+    box.append(hang(UI.cfg_client_enabled, hoatDong),
+               hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
                hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong),
                hang(UI.cfg_can_close_master, dongMaster));
 
@@ -423,21 +427,69 @@ function khoiClient(el) {
           && !(await hoiXacNhan(UI.confirm_open_route_ui, null))) return;
       if (dongMaster.value === "1" && !c.can_close_master
           && !(await hoiXacNhan(UI.confirm_can_close_master, null))) return;
+      if (hoatDong.value === "0" && c.enabled
+          && !(await hoiXacNhan(UI.confirm_client_off, null))) return;
       await ghiCauHinh("/api/client/" + encodeURIComponent(c.client_id), {
         copy_mode: chieu.value,
         volume_multiplier: parseFloat(heSo.value),
         open_route: duongMo.value,
         close_route: duongDong.value,
         can_close_master: dongMaster.value === "1",
+        enabled: hoatDong.value === "1",
       }, (d) => {
         if (d.dang_mo) {
           alert(UI.cfg_open_pairs_keep.replace("{n}", d.dang_mo));
         }
       });
     };
-    box.appendChild(chanKhoi(luu, UI.cfg_effect_next_open));
+    // Xoa nam canh Luu chu khong o mot goc rieng: no cung la mot hanh dong cua DUNG khoi nay.
+    // Server tu choi xoa khi Client da co cap lenh, nen nut nay khong the lam mat lich su.
+    const xoa = nut(UI.btn_delete);
+    xoa.onclick = async () => {
+      if (!(await hoiXacNhan(UI.confirm_client_delete, null))) return;
+      await ghiCauHinh("/api/client/" + encodeURIComponent(c.client_id) + "/delete", {});
+    };
+    const chan = chanKhoi(luu, UI.cfg_effect_next_open);
+    chan.insertBefore(xoa, chan.childNodes[1] || null);
+    box.appendChild(chan);
     el.appendChild(box);
   }
+  el.appendChild(khoiThemClient());
+}
+
+// Them Client moi. Mot Client = mot terminal MT5 rieng + mot agent CLIENT rieng (+ mot clicker
+// rieng neu di qua giao dien), nen o day chi tao DONG CAU HINH -- phan con lai van la viec o
+// ngoai. Cau `cfg_client_new_hint` noi dung dieu do de khong ai tuong bam xong la co Client chay.
+function khoiThemClient() {
+  const box = khoi(UI.cfg_client_new);
+  box.appendChild(nhan(UI.cfg_client_new_hint, "ghi-chu"));
+
+  const daDung = new Set(CAU_HINH.clients.map((c) => c.agent_id));
+  const agentClient = CAU_HINH.agents.filter((a) => a.role === "CLIENT" && !daDung.has(a.agent_id))
+    .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
+  const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
+    .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
+
+  const ma = oChu("");
+  const agent = oChon(null, agentClient.length ? agentClient : [{ gia_tri: "", nhan: "—" }]);
+  const clicker = oChon(null, [{ gia_tri: "", nhan: "—" }].concat(clickers));
+  const duongMo = oChon("UI", CAU_HINH.chon_duong);
+  const duongDong = oChon("UI", CAU_HINH.chon_duong);
+
+  box.append(hang(UI.cfg_client_id, ma), hang(UI.cfg_client_agent, agent),
+             hang(UI.cfg_client_clicker, clicker),
+             hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong));
+
+  const them = nut(UI.cfg_client_new, "chinh");
+  them.onclick = () => ghiCauHinh("/api/client", {
+    client_id: ma.value.trim(),
+    agent_id: agent.value,
+    clicker_agent: clicker.value || null,
+    open_route: duongMo.value,
+    close_route: duongDong.value,
+  });
+  box.appendChild(chanKhoi(them));
+  return box;
 }
 
 function khoiMaster(el) {
