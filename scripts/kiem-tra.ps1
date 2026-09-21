@@ -116,6 +116,8 @@ $tienTrinh = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorA
                Where-Object { $_.CommandLine -like '*-m clicker*' })
 if ($tienTrinh.Count -eq 0) {
     do_ "clicker KHONG chay (Bridge se co y khong copy lenh nao -- D-25)"
+    vang ("Nguyen nhan hay gap nhat: chua khai so tai khoan + tieu de cua so cho clicker tren " +
+          "dashboard (tab Cau hinh > Agent). Doc logs\clicker-wrapper.log: 'thoat 4' la dau hieu.")
 } else {
     xanh ("clicker dang chay, PID " + (($tienTrinh | ForEach-Object { $_.ProcessId }) -join ', '))
 }

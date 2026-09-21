@@ -200,7 +200,8 @@ Một bên đóng
 
 ```
 bridge/
-  config.py         cấu hình khởi động, đọc từ config.toml
+  config.py         cấu hình khởi động: đọc **và ghi** config.toml (dashboard sửa được, D-32)
+  ops.py            việc vận hành + **ràng buộc cấu hình dùng chung** cho admin và dashboard
   logging_setup.py  logging có ngữ cảnh pair_id / event_id
   labels_vi.py      bảng nhãn tiếng Việt — nơi duy nhất có tiếng Việt hướng người dùng
   db/               schema, migration, repository            (phase 2)

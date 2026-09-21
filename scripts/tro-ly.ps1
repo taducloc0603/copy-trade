@@ -220,14 +220,14 @@ function buoc_nen() {
 function buoc_thong_so() {
     buoc_moi "Thong so cua he thong"
     giai_thich @(
-        "Hoi mot luot tat ca gia tri ma cac buoc sau can. Enter la lay mac dinh.",
+        "Hoi mot luot tat ca gia tri ma cac buoc sau can. Enter la lay mac dinh --",
+        "gan nhu luon dung, tru khi ban chay hai he thong bot tren cung mot may.",
         "",
-        "MO MOT CUA SO PowerShell KHAC va chay lenh nay truoc -- no cho ban gan het",
-        "nhung gia tri sap phai dien:",
-        "  Get-Process terminal64 | Select-Object Id, MainWindowTitle",
-        "",
-        "Tieu de MT5 co dang:  <so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
-        "                      ^^^^^^^^^^^^^^^^^^^^^ so tai khoan nam ngay dau tieu de"
+        "SO TAI KHOAN MT5 va TIEU DE CUA SO terminal KHONG hoi o day (D-32):",
+        "  - EA tu bao so tai khoan cua no luc bat tay dau tien.",
+        "  - Clicker nhan so tai khoan va tieu de tu Bridge, va ban khai chung tren",
+        "    dashboard sau khi cai xong: http://127.0.0.1:8080 > tab Cau hinh > Agent.",
+        "Doi terminal ve sau cung sua o do, khong phai sua config.toml roi dang ky lai tac vu."
     )
 
     Write-Host ""
@@ -657,7 +657,8 @@ function buoc_anh_xa() {
 function buoc_dich_vu() {
     buoc_moi "Dang ky dich vu va tac vu"
     giai_thich @(
-        "Dang ky Windows Service cho Bridge va ba Scheduled Task (clicker, bao tri, tinh hinh).",
+        "Dang ky Windows Service cho Bridge va cac Scheduled Task (clicker, clicker Master",
+        "neu bat duong dong Master, bao tri, tinh hinh).",
         "DAY LA THU KHOI DONG BRIDGE. Phai xong truoc khi gan EA, vi EA gan len chart khi chua",
         "ai nghe cong 8787 se khong bao gio len ONLINE.",
         "Se hoi mat khau tai khoan autologon. Bo trong thi dich vu chay bang LocalSystem."
@@ -684,12 +685,15 @@ function buoc_dich_vu() {
     $tao = Join-Path $PSScriptRoot "tao-dich-vu.ps1"
     if (-not (Test-Path $tao)) { $tao = Join-Path $ThuMuc "scripts\tao-dich-vu.ps1" }
     if (-not (Test-Path $tao)) { canh "khong thay tao-dich-vu.ps1"; return }
-    if (-not (hoi_co_khong "Dang ky dich vu Windows va ba Scheduled Task?")) {
+    if (-not (hoi_co_khong "Dang ky dich vu Windows va cac Scheduled Task?")) {
         bo_qua "nguoi dung tu choi"; return
     }
-    # Tac vu chi mang -Muc: so tai khoan va tieu de cua so nam trong DB. Doi terminal ve sau
-    # khong phai dang ky lai tac vu.
-    & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu
+    # Tac vu chi mang -Muc: so tai khoan va tieu de cua so nam trong DB. Doi terminal ve sau khong
+    # phai dang ky lai tac vu. Nhung VIEC CO dang ky tac vu ClickerMaster hay khong thi van phai
+    # noi ro o day, neu khong khong ai dang ky no ca.
+    $doiSoMaster = @()
+    if ($script:BatDongMaster) { $doiSoMaster = @('-TacVuClickerMaster') }
+    & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu @doiSoMaster
     if ($LASTEXITCODE -ne 0) { canh "tao-dich-vu.ps1 tra ve $LASTEXITCODE" }
     else { ok "da dang ky" }
 }

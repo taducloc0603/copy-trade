@@ -300,7 +300,7 @@ Get-ScheduledTask -TaskPath '\CopyBridge\' | Select-Object TaskName, State   # c
   trên dashboard (tab Cấu hình → Agent), hoặc
   `.\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER-MASTER --login <so-tk-Master> --terminal-title "<so-tk-Master>"`
 
-**Đổi chiều copy, hệ số, đóng hai chiều:** các lệnh `cau-hinh-client` ở [A4](#a4-bật-các-tuỳ-chọn-copy).
+**Đổi chiều copy, hệ số, đóng hai chiều:** trên dashboard, tab Cấu hình → khối Client (xem [A4](#a4-cấu-hình-trên-dashboard)).
 
 **Thêm symbol:** `.\.venv\Scripts\python.exe -m bridge.admin anh-xa-symbol CL-01 <symbol-Master> --client-symbol <symbol-Client>`
 (EA Client phải đang chạy, symbol có trong Market Watch). Nhớ: terminal Client chỉ copy symbol của
@@ -396,16 +396,25 @@ Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần 
 | `xac-nhan-alert --code <MA> --truoc <moc> [--that]` | Đánh dấu đã xem alert cũ |
 | `sao-luu` | Sao lưu ngay |
 | `cap-token <agent>` | Cấp lại token (token cũ hết hiệu lực ngay) |
-| `sua-agent <agent> --login N --terminal-title "N"` | Sửa số tài khoản / tiêu đề cửa sổ của clicker |
+| `sua-agent <agent> [--login N] [--terminal-title "N"]` | Sửa số tài khoản / tiêu đề cửa sổ của clicker. Hai cờ đều tuỳ chọn, phải có ít nhất một |
 
 **Log:** `logs\bridge.log`, `logs\clicker.log`, `logs\clicker_master.log`, `logs\service-err.log`.
 
 **Cấu hình nằm ở đâu:** cấu hình *nghiệp vụ* (agent, client, ánh xạ symbol, khoá hệ thống) nằm
 trong database — sửa trên dashboard là có hiệu lực ngay. `config.toml` giữ thứ cần **trước khi**
 Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker. Dashboard cũng sửa được các
-khoá này (kiểm lại nội dung rồi mới ghi, và sao lưu bản cũ kèm dấu thời gian), nhưng giá trị mới
-chỉ có hiệu lực **sau khi khởi động lại dịch vụ**: `Restart-Service CopyBridge`. Giá trị bí mật
-không bao giờ hiện lại trên màn hình — ô để trống nghĩa là giữ nguyên (D-32).
+khoá này, nhưng giá trị mới chỉ có hiệu lực **sau khi khởi động lại dịch vụ**:
+`Restart-Service CopyBridge`. Giá trị bí mật không bao giờ hiện lại trên màn hình — ô để trống
+nghĩa là giữ nguyên (D-32).
+
+Nội dung mới được kiểm bằng đúng phép kiểm của lần khởi động **trước khi** ghi, nên một giá trị
+sai bị từ chối và file cũ không hề bị đụng tới — không cần sửa tay sau một lần bị từ chối. Mỗi lần
+lưu để lại `config.toml.bak-<ngày-giờ>` cạnh file gốc và chỉ giữ **5 bản gần nhất**; đó là bản rõ
+của mật khẩu và token nên đừng chép chúng đi đâu.
+
+**Một khoá còn sót trong `config.toml` sẽ đè giá trị khai trên dashboard** (thứ tự: dòng lệnh >
+`config.toml` > Bridge). Bản cài cũ thường còn `account_login` và `terminal_title` trong mục
+`[clicker]`: trang Cấu hình hiện chúng kèm cảnh báo, xoá khỏi file thì dashboard mới có tác dụng.
 
 **Không bao giờ** sửa database bằng tay, và không đưa token lên dòng lệnh hay ảnh chụp màn hình.
 
@@ -422,6 +431,9 @@ Các script in danh sách này ở cuối mỗi lần chạy (`scripts\canh-bao.
 4. **Mỗi terminal Client chỉ copy một symbol** (B-01).
 5. **Cài MT5 và gắn EA phải làm tay**; biên dịch lại EA thì gỡ ra gắn lại.
 6. **Clicker và MT5 cùng mức quyền.**
+7. **Khai số tài khoản + tiêu đề cửa sổ cho từng clicker trên dashboard** (A4). Trợ lý không hỏi
+   hai giá trị này nữa; chưa khai thì clicker thoát mã 4 và thử lại mỗi 60 giây — hệ thống dựng
+   xong vẫn không bấm được lệnh nào. Cùng trang đó khai **ánh xạ symbol**.
 
 Rủi ro không phải kỹ thuật: hai tài khoản vào lệnh ngược chiều, cùng symbol, cách nhau dưới một giây,
 **cùng IP** — nhiều broker cấm. Đọc điều khoản của cả hai broker.
@@ -440,10 +452,11 @@ Rủi ro không phải kỹ thuật: hai tài khoản vào lệnh ngược chi�
 | `Khong co client CL-01` | Chưa tạo client — chạy lại trợ lý |
 | Lệnh Master không copy | `run_mode` chưa `RUNNING`, thiếu ánh xạ symbol, hoặc clicker chưa `ONLINE` |
 | Clicker thoát mã 2 | Thiếu `token` trong `[clicker]` của `config.toml` |
-| Clicker thoát mã 4, log `chua khai terminal` | Chưa khai số tài khoản + tiêu đề cửa sổ cho clicker đó trên dashboard (A4) |
+| Clicker thoát mã 4, log `chua khai terminal` | Chưa khai số tài khoản + tiêu đề cửa sổ cho clicker đó trên dashboard (A4). Khác mã 2 và 3: mã 4 **tự thử lại mỗi 60 giây**, khai xong là clicker tự lên, không phải chạy lại tác vụ |
 | Canary clicker đỏ, log `Tieu de cua so la tai khoan ...` | Tiêu đề đang trỏ vào terminal của tài khoản khác — sửa trên dashboard |
 | Clicker thoát mã 3 / `Da co mot clicker khac` | Đã có clicker khác lái terminal đó — đúng thiết kế |
-| Log clicker `ACCOUNT_MISMATCH` | `sua-agent <agent> --login <so-dung>` |
+| Log **EA** báo `ACCOUNT_MISMATCH` | Token đang gắn với tài khoản MT5 khác. `sua-agent <agent> --login <so-dung>`, hoặc gắn lại đúng token vào đúng terminal |
+| Log **clicker** báo `ACCOUNT_MISMATCH` | Chỉ xảy ra khi `config.toml` còn khai `account_login` lệch với DB — **file thắng database**. Xoá khoá đó khỏi file rồi khai trên dashboard |
 | Clicker chạy mà không bấm được gì | Lệch mức quyền với MT5, hoặc tác vụ không chạy kiểu *Interactive* |
 | Đóng lệnh báo `Tab Trade ... khong mo` | Chuyển Toolbox về tab Trade |
 | Clicker báo `Hop thoai khong dung hinh dang` | MT5 khác build — đo lại theo RUNBOOK mục 5a |

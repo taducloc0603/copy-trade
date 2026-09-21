@@ -13,8 +13,10 @@ Phân biệt hai loại cấu hình, đừng trộn lẫn:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import subprocess
 import tomllib
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
@@ -309,6 +311,41 @@ def _sua_van_ban_toml(van_ban: str, doi: Mapping[str, Any]) -> str:
     return "\n".join(ket_qua) + "\n"
 
 
+#: Số bản sao lưu `config.toml` giữ lại. Mỗi bản là **bản rõ** của mật khẩu dashboard và token
+#: clicker, nên để chúng tích lại vô hạn trong thư mục dự án là tự rải bí mật ra đĩa.
+SO_BAN_SAO_CONFIG = 5
+
+
+def _siet_quyen(duong_dan: Path) -> None:
+    """Cho bản sao lưu cùng mức quyền với `config.toml` (chỉ chủ máy và Administrators đọc được).
+
+    `cai-dat.ps1` siết quyền cho `config.toml` bằng `icacls`, nhưng file mới tạo ở đây thì **thừa
+    kế** quyền của thư mục — tức là một bản rõ của mật khẩu và token với quyền rộng hơn chính file
+    gốc. Chạy được thì tốt, không chạy được cũng không chặn việc lưu: mất bản sao lưu còn tệ hơn.
+    """
+    if os.name != "nt":
+        return
+    nguoi_dung = os.environ.get("USERNAME", "")
+    if not nguoi_dung:
+        return
+    with contextlib.suppress(OSError):
+        subprocess.run(
+            ["icacls", str(duong_dan), "/inheritance:r", "/grant:r",
+             f"{nguoi_dung}:(R,W)", "*S-1-5-32-544:(F)", "*S-1-5-18:(F)"],
+            capture_output=True, check=False, timeout=10)
+
+
+def _don_ban_sao_cu(duong_dan: Path, giu: int = SO_BAN_SAO_CONFIG) -> list[Path]:
+    """Giữ `giu` bản mới nhất, xoá phần còn lại. Trả về danh sách đã xoá."""
+    ban = sorted(duong_dan.parent.glob(duong_dan.name + ".bak-*"), reverse=True)
+    da_xoa = []
+    for cu in ban[giu:]:
+        with contextlib.suppress(OSError):
+            cu.unlink()
+            da_xoa.append(cu)
+    return da_xoa
+
+
 def sua_config_toml(duong_dan: Path, doi: Mapping[str, Any],
                     project_root: Path | None = None) -> Path:
     """Sửa các khoá trong `config.toml`. Trả về đường dẫn bản sao lưu vừa tạo.
@@ -343,6 +380,8 @@ def sua_config_toml(duong_dan: Path, doi: Mapping[str, Any],
     ban_sao = duong_dan.with_name(
         f"{duong_dan.name}.bak-{utc_now().strftime('%Y%m%d-%H%M%S')}")
     ban_sao.write_text(cu, encoding="utf-8", newline="")
+    _siet_quyen(ban_sao)
+    _don_ban_sao_cu(duong_dan)
     # Ghi qua file tạm rồi đổi tên: mất điện giữa chừng để lại file cũ nguyên vẹn chứ không để
     # lại một `config.toml` cụt.
     tam = duong_dan.with_name(duong_dan.name + ".tam")

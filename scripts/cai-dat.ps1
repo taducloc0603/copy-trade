@@ -587,11 +587,13 @@ function in_buoc_tiep() {
 
  1. Tao agent va cap token (database moi LUON RONG -- data/ nam trong .gitignore):
       cd "$ThuMuc"
-      $venvPy -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001 --login <so-tk-master>
-      $venvPy -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001 --login <so-tk-client>
-      $venvPy -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login <so-tk-client>
+      $venvPy -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001
+      $venvPy -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001
+      $venvPy -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001
     Token tho HIEN DUNG MOT LAN. Token cua AG-CLICKER dat vao muc [clicker] trong config.toml,
     dung dat tren dong lenh -- dong lenh cua tien trinh thi may nao cung doc duoc.
+    KHONG can --login: EA tu bao so tai khoan luc bat tay dau tien, con so tai khoan va tieu de
+    cua so cua clicker thi khai tren dashboard (tab Cau hinh > Agent).
 
  2. Tao dong client -- THIEU BUOC NAY LA anh-xa-symbol BAO 'Khong co client':
       $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI --close-route UI
@@ -602,9 +604,11 @@ function in_buoc_tiep() {
 
  4. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
 
- 5. Khai bao anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang:
-      $venvPy -m bridge.admin anh-xa-symbol --help
-    (can EA Client dang chay va symbol da keo vao Market Watch)
+ 5. Mo dashboard http://127.0.0.1:8080 > tab Cau hinh va khai hai thu:
+    - Agent: so tai khoan + tieu de cua so terminal cho tung clicker. Chua khai thi clicker
+      khong lai duoc terminal nao (no thoat ma 4 va thu lai moi 60 giay).
+    - Anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang.
+      (can EA Client dang chay va symbol da keo vao Market Watch)
 
  6. Moi lan dang nhap:
       $ThuMuc\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"

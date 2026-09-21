@@ -14,7 +14,11 @@
     cua phien nguoi dung, ma toan bo duong mo lenh la PostMessage vao hop thoai New Order.
 
 .EXAMPLE
-    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -AccountLogin <so-tai-khoan-Client> -TerminalTitle "<so-tai-khoan-Client>"
+    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge
+
+.EXAMPLE
+    # Kem clicker thu hai lai terminal Master (phase 12).
+    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -TacVuClickerMaster
 
 .EXAMPLE
     .\tao-dich-vu.ps1 -GoBo
@@ -26,8 +30,14 @@ param(
     [string] $NguoiDung = "$env:USERDOMAIN\$env:USERNAME",
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
-    # Clicker THU HAI, lai terminal MASTER (phase 12). Chi dang ky tac vu khi co so tai khoan --
-    # ban nao khong bat `master_close_route = UI` thi khong can no.
+    # Clicker THU HAI, lai terminal MASTER (phase 12). Ban nao khong bat `master_close_route = UI`
+    # thi khong can no, va mot tac vu thua se chay roi chet lien tuc.
+    #
+    # So tai khoan va tieu de cua so KHONG con bat buoc (D-32): chung nam trong database va clicker
+    # nhan tu Bridge. Nen phai co mot cong tac rieng de noi "co, dang ky tac vu nay" -- dieu kien
+    # cu la `-AccountLoginMaster > 0`, va khi tro ly thoi truyen so tai khoan thi tac vu
+    # ClickerMaster khong bao gio duoc dang ky nua.
+    [switch] $TacVuClickerMaster,
     [int]    $AccountLoginMaster = 0,
     [string] $TerminalTitleMaster = "",
     # CHI dang ky tac vu ClickerMaster: khong go/cai lai dich vu, khong giet Bridge de thu tu bat
@@ -286,7 +296,9 @@ function go_bo([string] $nssm) {
         & $nssm remove $TenDichVu confirm | Out-Null
         ok "da go dich vu $TenDichVu"
     }
-    foreach ($t in @("Clicker", "BaoTri", "TinhHinh")) {
+    # ClickerMaster PHAI co trong danh sach nay: bo sot no thi sau khi "go het" van con mot
+    # tac vu bam vao terminal Master cu -- va no chi lo ra khi ai do nhin thay lenh dong la.
+    foreach ($t in @("Clicker", "ClickerMaster", "BaoTri", "TinhHinh")) {
         $tv = Get-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $t -ErrorAction SilentlyContinue
         if ($null -ne $tv) {
             Unregister-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $t -Confirm:$false
@@ -318,9 +330,7 @@ try {
         canh "-BoQuaTacVu: khong dang ky Scheduled Task"
     } else {
         dang_ky_tac_vu_clicker "Clicker" "clicker" $AccountLogin $TerminalTitle
-        # Clicker thu hai chi dang ky khi co so tai khoan Master. Ban nao khong bat
-        # `master_close_route = UI` thi khong can no, va mot tac vu thua se chay roi chet lien tuc.
-        if ($AccountLoginMaster -gt 0) {
+        if ($TacVuClickerMaster -or $AccountLoginMaster -gt 0) {
             dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" `
                 $AccountLoginMaster $TerminalTitleMaster
         }

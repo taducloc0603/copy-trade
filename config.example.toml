@@ -18,15 +18,12 @@ dashboard_password = ""
 telegram_token = ""
 telegram_chat_id = ""
 
-# Tham so cua tien trinh clicker (`python -m clicker`). Dat o day thay vi tren dong lenh:
-# dong lenh cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang
-# `Get-CimInstance Win32_Process`, va clicker chay 24/7 nen token se phoi ra suot ngay.
+# TOKEN cua tien trinh clicker (`python -m clicker`). Dat o day thay vi tren dong lenh: dong lenh
+# cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang `Get-CimInstance
+# Win32_Process`, va clicker chay 24/7 nen token se phoi ra suot ngay.
 # Thu tu uu tien: --token > bien moi truong COPYBRIDGE_CLICKER_TOKEN > muc nay.
 [clicker]
 token = ""
-account_login = 0
-# Mau tieu de cua so terminal Client, thuong chua so tai khoan. Che do that bat buoc phai co.
-terminal_title = ""
 
 # Clicker THU HAI, lai terminal MASTER (phase 12). Chi can khi bat `master_close_route = UI` de
 # deal DONG tren tai khoan Master cung mang DEAL_REASON = CLIENT. De trong thi khong chay clicker
@@ -34,5 +31,13 @@ terminal_title = ""
 # Chay bang: python -m clicker --muc clicker_master
 [clicker_master]
 token = ""
-account_login = 0
-terminal_title = ""
+
+# SO TAI KHOAN va TIEU DE CUA SO cua clicker KHONG con o day (D-32): chung nam trong database va
+# khai tren dashboard, tab Cau hinh > Agent. Clicker nhan chung tu Bridge moi lan bat tay, nen doi
+# terminal la sua tren dashboard chu khong phai sua file nay roi dang ky lai Scheduled Task.
+#
+# Van khai duoc o day -- va neu khai thi FILE THANG DATABASE, tuc sua tren dashboard se khong co
+# tac dung. Chi dung khi ban co ly do cu the:
+#   [clicker]
+#   account_login  = 538217
+#   terminal_title = "538217"

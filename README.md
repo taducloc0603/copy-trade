@@ -59,9 +59,9 @@ Phần lớn logic test được bằng mock agent, không cần MT5. EA và cli
 |---|---|
 | [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) | Cài đặt, cập nhật, vận hành hằng ngày |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Giải thích cấu hình, lệnh vận hành, **xử lý sự cố** (mục 7), điều kiện chạy thật (mục 8) |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Các quyết định thiết kế D-01…D-31 và lý do — **đọc trước khi sửa hành vi** |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Các quyết định thiết kế D-01…D-32 và lý do — **đọc trước khi sửa hành vi** |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, ranh giới vai trò, luồng dữ liệu |
-| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Bảng nghiệm thu TEST-01…TEST-31 và nguồn bằng chứng |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Bảng nghiệm thu TEST-01…TEST-32 và nguồn bằng chứng |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Giới hạn đã biết và việc còn nợ (B-xx) |
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md), [docs/GLOSSARY.md](docs/GLOSSARY.md) | Quy ước code, thuật ngữ |
 | [plan/](plan/) | Kế hoạch triển khai theo phase (hồ sơ thiết kế, code có trích dẫn) |

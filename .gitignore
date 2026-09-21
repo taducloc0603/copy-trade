@@ -9,6 +9,8 @@ __pycache__/
 *.db-wal
 *.db-shm
 config.toml
+# Ban sao luu config.toml do dashboard tao: ban RO cua mat khau va token.
+config.toml.bak-*
 .pytest_cache/
 .ruff_cache/
 *.egg-info/

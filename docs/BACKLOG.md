@@ -60,7 +60,9 @@ kiện rồi cảnh báo, **chưa thực sự mở bù** — cố ý: "được 
 Trang Cấu hình nay sửa được: cấu hình Client, đường đóng phía Master, ánh xạ symbol (kiểm với sàn
 rồi mới lưu), các khoá `system_config` trong danh sách trắng, và số tài khoản + tiêu đề cửa sổ
 terminal của từng clicker. Ràng buộc nằm một chỗ ở `bridge/ops.py`, dùng chung với `bridge.admin`
-(D-32). `config.toml` vẫn **chỉ đọc** trên dashboard.
+(D-32). `config.toml` cũng sửa được trên dashboard: nội dung mới chạy qua đúng `parse_config` của
+đường khởi động trước khi ghi, bản cũ được sao lưu, bí mật không bao giờ đi ra khỏi Bridge — và
+giá trị mới chỉ có hiệu lực sau khi khởi động lại dịch vụ.
 
 ### B-06 — Cascade chưa chạy trên demo
 

@@ -15,10 +15,12 @@
 [CmdletBinding()]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
+    # CHI de tuong thich ban cai cu. Truyen vao day la GHI DE gia tri khai tren dashboard, va
+    # tu do sua tren dashboard se khong con tac dung (thu tu: dong lenh > config.toml > Bridge).
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
     # Muc cau hinh trong config.toml. `clicker_master` la clicker THU HAI, lai terminal Master
-    # (phase 12) -- token, so tai khoan, tieu de va nhat ky deu rieng.
+    # (phase 12) -- token va nhat ky rieng; so tai khoan va tieu de cua so lay tu Bridge.
     [ValidateSet("clicker", "clicker_master")]
     [string] $Muc = "clicker",
     [int]    $ChoGiuaHaiLan = 10

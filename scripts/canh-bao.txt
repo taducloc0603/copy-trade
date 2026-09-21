@@ -1,5 +1,5 @@
 =====================================================================
- SCRIPT KHONG LAM DUOC 6 VIEC SAU. KHONG LAM = MAT TIEN.
+ SCRIPT KHONG LAM DUOC 7 VIEC SAU. KHONG LAM = MAT TIEN.
 =====================================================================
  1. PHIEN RDP NGAT (B-08) -- CHUA AI CHUNG MINH.
     Toan bo duong mo lenh dua vao clicker dieu khien giao dien MT5
@@ -37,4 +37,13 @@
     chan het window message: PostMessage tra ve thanh cong nhung
     KHONG CO GI XAY RA. Hoac ca hai deu thuong, hoac ca hai deu nang
     quyen.
+
+ 7. PHAI KHAI SO TAI KHOAN + TIEU DE CUA SO CHO TUNG CLICKER.
+    Tren dashboard: http://127.0.0.1:8080 > tab Cau hinh > Agent.
+    Tro ly cai dat KHONG hoi hai gia tri nay nua (D-32). Chua khai
+    thi clicker THOAT (ma 4) va thu lai moi 60 giay -- he thong dung
+    xong van khong bam duoc lenh nao. Tieu de phai CHUA SO TAI KHOAN:
+    do la thu clicker doi chieu voi cua so that truoc khi bam.
+    Cung trang do khai ANH XA SYMBOL -- thieu anh xa la moi lenh
+    Master bi bo qua trong im lang.
 =====================================================================

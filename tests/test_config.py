@@ -263,3 +263,12 @@ def test_khoa_moi_chen_ngay_sau_khoa_cuoi_cua_muc_khong_dinh_vao_muc_sau(tmp_pat
     vi_tri = dong.index('telegram_chat_id = "12345"')
     assert dong[vi_tri - 1].startswith("telegram_token")
     assert dong[vi_tri + 1].strip() == ""
+
+
+def test_chi_giu_nam_ban_sao_luu_config_moi_nhat(tmp_path: Path) -> None:
+    """Mỗi bản sao lưu là **bản rõ** của mật khẩu và token: để chúng tích lại là rải bí mật ra đĩa."""
+    duong_dan = _config(tmp_path)
+    for cong in range(8):
+        sua_config_toml(duong_dan, {"bridge.port": 8800 + cong}, project_root=tmp_path)
+    ban = sorted(tmp_path.glob("config.toml.bak-*"))
+    assert len(ban) <= 5, [b.name for b in ban]

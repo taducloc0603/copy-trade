@@ -48,6 +48,14 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 | **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
 | **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Dashboard tab **Cấu hình** (kiểm lại rồi mới ghi, sao lưu bản cũ) hoặc mở file. Có hiệu lực **sau khi khởi động lại dịch vụ** |
 
+**Thứ tự ưu tiên của clicker: tham số dòng lệnh > `config.toml` > giá trị Bridge giao.** Nghĩa
+là một `account_login` hay `terminal_title` còn sót trong `config.toml` sẽ **âm thầm đè** giá trị
+khai trên dashboard — sửa trên trang mà không thấy gì đổi thì kiểm chỗ này trước. Trang Cấu hình
+hiện hai khoá đó kèm cảnh báo khi file còn khai chúng.
+
+Mỗi lần lưu từ dashboard để lại một bản `config.toml.bak-<ngày-giờ>` cạnh file gốc, **giữ 5 bản
+gần nhất**. Chúng là bản rõ của mật khẩu và token, nên đừng chép chúng đi đâu.
+
 `config.toml` nằm trong `.gitignore`. Các khoá:
 
 ```toml
@@ -62,7 +70,7 @@ dashboard_password = "..."
 telegram_token   = ""    # de trong thi kenh canh bao im lang, khong loi
 telegram_chat_id = ""
 
-[clicker]                # token clicker dat o DAY, khong phai tren dong lenh
+[clicker]                # CHI token. So tai khoan va tieu de cua so nam trong DB (D-32).
 token = "..."
 account_login = <so-tai-khoan-Client>   # so tai khoan Client
 terminal_title = "<so-tai-khoan-Client>"  # mau tieu de cua so terminal Client
@@ -124,7 +132,8 @@ món nợ đó đã một lần làm mất token của clicker.
 ```powershell
 .\.venv\Scripts\python.exe -m bridge.admin tinh-hinh                            # co gi can lam khong
 .\.venv\Scripts\python.exe -m bridge.admin liet-ke
-.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001 --login <so-tai-khoan-Client>
+.\.venv\Scripts\python.exe -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001
+# KHONG can --login: EA tu bao so tai khoan luc bat tay dau tien, con clicker thi nhan tu Bridge.
 .\.venv\Scripts\python.exe -m bridge.admin cap-token AG-CLIENT
 .\.venv\Scripts\python.exe -m bridge.admin thu-hoi AG-CLICKER
 .\.venv\Scripts\python.exe -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER
@@ -133,6 +142,7 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI  # dong qua giao dien
 # Terminal ma mot clicker phai lai. Khai tren dashboard cung duoc, va la duong chinh (D-32).
 .\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER --login 538217 --terminal-title "538217"
+# Hai co deu tuy chon, nhung phai co it nhat mot.
 .\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING      # dat
 .\.venv\Scripts\python.exe -m bridge.admin sao-luu
@@ -146,11 +156,11 @@ món nợ đó đã một lần làm mất token của clicker.
 ```
 
 > **Bật `master_close_route = UI` là thêm một tiến trình và một điều kiện vận hành.** Clicker thứ
-> hai chạy bằng `python -m clicker --muc clicker_master`, đọc mục `[clicker_master]` của
-> `config.toml` (token riêng, số tài khoản riêng, tiêu đề cửa sổ riêng) và ghi nhật ký riêng
-> `data/clicker_master_commands.ndjson` — dùng chung nhật ký là mất lệnh trong im lặng. Terminal
-> **Master** từ đó phải luôn mở Toolbox ở tab **Trade**, y như Client. Đăng ký tác vụ:
-> `scripts\tao-dich-vu.ps1 -AccountLoginMaster <so-tk> -TerminalTitleMaster "<tieu-de>"`.
+> hai chạy bằng `python -m clicker --muc clicker_master`, đọc **token riêng** ở mục
+> `[clicker_master]` của `config.toml` và ghi nhật ký riêng `data/clicker_master_commands.ndjson`
+> — dùng chung nhật ký là mất lệnh trong im lặng. Số tài khoản và tiêu đề cửa sổ của nó khai trên
+> dashboard như mọi clicker khác. Terminal **Master** từ đó phải luôn mở Toolbox ở tab **Trade**,
+> y như Client. Đăng ký tác vụ: `scripts\tao-dich-vu.ps1 -TacVuClickerMaster`.
 >
 > **Không phải chạm vào token.** `scripts\tro-ly.ps1` hỏi một câu ở bước thông số, rồi tự tạo agent,
 > **ghi token thẳng vào `[clicker_master]`** và đăng ký tác vụ — token của cả hai clicker không bao
@@ -331,7 +341,10 @@ khác), kiểm từ một máy thứ ba rằng hai cổng không lộ ra Interne
 | Alert `UI_OPEN_QUEUE_EXPIRED` | Lệnh xếp hàng chờ clicker quá **15 giây** (`ui_open_queue_max_age_ms`) | Lệnh đó **bị huỷ có chủ đích** — mở sau 15 giây là mở sai giá (D-31). Mất hedge thật: kiểm và quyết định bằng tay có mở bù không. Thấy dòng này lặp lại nghĩa là Master vào lệnh nhanh hơn giao diện bấm được; **đừng nới trần**, hãy ghi số vào B-15. |
 | Alert `UI_OPEN_QUEUE_FULL` | Hàng đợi chạm `ui_open_queue_max_len` (mặc định 20) | Chặn cuối. Lệnh **mất thật**. Cùng cách xử lý như trên, nhưng mức độ nặng hơn: hàng đợi đã dài 20 lệnh nghĩa là clicker đang tắc hẳn — kiểm tab Trade của terminal Client xem có hộp thoại nào đang kẹt không. |
 | Alert ERROR `AGENT_DUPLICATE_CONNECTION`; log EA `Bridge tu choi: REPLACED - …`; (bản trước 2026-09-15: hàng trăm nghìn `COMMAND_TIMEOUT … REQUEST_SNAPSHOT`, log EA lặp `Gui khong tron goi (-1/…)`); `bridge.log` lặp `mo ket noi moi … dong ket noi cu` mỗi ~1 giây | **EA gắn trên HAI chart** của cùng một terminal (hoặc hai terminal cùng token). Bridge giữ một kết nối mỗi agent, nên hai bản đá nhau ra liên tục. Đã xảy ra thật 2026-09-12→15: 388 nghìn alert | Log EA (tab Experts) sẽ hiện **hai tên chart khác nhau** trong ngoặc, ví dụ `CopyBridgeMaster (ETHUSD.s,H1)` và `(BTCUSD.s,H1)`. Menu **Window** để thấy mọi chart; giữ EA trên **đúng một** chart. Phía Client giữ chart của symbol đang copy (B-01). Hết lũ rồi mới `xac-nhan-alert --code COMMAND_TIMEOUT`. |
-| Log clicker (`clicker.log` / `clicker_master.log`) lặp `Bridge tu choi bat tay … ACCOUNT_MISMATCH` | Agent trong DB mang số tài khoản khác số clicker gửi. Gặp thật 2026-09-15: trợ lý tạo `AG-CLICKER-MASTER` với số `0` | `python -m bridge.admin sua-agent <agent> --login <so-tai-khoan-dung>`. Token giữ nguyên; clicker tự nối lại ở lần thử kế tiếp (~3 giây). **Không** `UPDATE` DB tay. |
+| Log **EA** lặp `Bridge tu choi bat tay … ACCOUNT_MISMATCH` | Token đang gắn với một tài khoản MT5 khác. Bridge gắn agent với số tài khoản ở **lần bắt tay đầu tiên** rồi giữ nguyên | `bridge.admin sua-agent <agent> --login <so-dung>`, hoặc gắn đúng token vào đúng terminal. Dòng log `Agent X gan voi tai khoan MT5 Y (lan dau)` cho biết nó đã gắn với số nào. |
+| Log **clicker** lặp `ACCOUNT_MISMATCH` | Chỉ xảy ra khi `config.toml` còn khai `account_login` khác số trong DB — **file thắng database** (D-32) | Xoá `account_login` khỏi mục `[clicker]`/`[clicker_master]` của `config.toml` rồi khai trên dashboard. Clicker tự nối lại sau ~3 giây. |
+| Clicker thoát **mã 4**, `logs\clicker-wrapper.log` ghi `chua khai terminal` | Chưa ai khai tiêu đề cửa sổ cho clicker đó — ở đâu cũng không có | Dashboard tab **Cấu hình** → Agent: điền số tài khoản và tiêu đề cửa sổ. Clicker thử lại mỗi 60 giây nên khai xong là nó tự lên. Cố ý **không** chạy tiếp ở canary đỏ: canary đỏ chỉ chặn đường MỞ, còn đường ĐÓNG sẽ rơi về EA và deal đóng mang `EXPERT`. |
+| Canary clicker đỏ, log `Tieu de cua so la tai khoan X, khac Y` | Tiêu đề đang trỏ vào terminal của **tài khoản khác** | Sửa tiêu đề trên dashboard. Đây là hàng rào thay cho `ACCOUNT_MISMATCH` (D-32): đối chiếu với cửa sổ thật, mỗi nhịp heartbeat. |
 | Đã bật `master_close_route = UI` mà lệnh đóng Master vẫn **Placed by expert** | Clicker Master không sẵn sàng lúc đóng, lệnh rơi về EA theo D-28 | `bridge.admin liet-ke`: `AG-CLICKER-MASTER` phải **ONLINE**. Đọc alert `CLOSE_MASTER_FELL_BACK_TO_EA` — lý do nằm ngay trong nội dung (`dang OFFLINE`, `chua khai …`). OFFLINE thì xem tác vụ `\CopyBridge\ClickerMaster` có chạy không và `logs\clicker_master.log`. |
 | Đóng ở Client mà Master **không** đóng theo | Một trong các cửa chặn của `closing.on_client_close`: `run_mode = PAUSED` (Bridge cố ý không đồng bộ đóng — chỉ `RUNNING` / `PAUSE_NEW_ENTRIES` / `EMERGENCY` mới đồng bộ); `can_close_master = 0` (alert `ORPHANED_MASTER`); vị thế không thuộc cặp nào; Bridge coi là bot đóng; đóng một phần (`CLIENT_PARTIAL_CLOSE`, không cascade theo D-11); hoặc cascade chạy mà Master không xác nhận trong 15 s (`CASCADE_MASTER_TIMEOUT`) | Đọc `event.process_status` / `process_error` của event đóng phía Client — nó ghi **đúng** nhánh đã đi. Truy vấn sẵn: plan chẩn đoán 2026-09-15 (in cấu hình, 5 event đóng gần nhất, lệnh và alert của cặp). `PAUSED` thì dùng `run-mode PAUSE_NEW_ENTRIES` nếu muốn vẫn đồng bộ đóng mà không mở lệnh mới. Cặp đã lỡ **không** tự sửa khi đổi chế độ: đóng Master bằng tay hoặc xử lý finding trên dashboard, không `UPDATE` DB. |
 | Nghi "bên kia chốt sai lệnh" | Ba cơ chế đã rà (D-30, bổ sung 2026-09-15): cặp ghép nhầm lúc mở, deal đóng một vị thế khác lệnh nhắm tới, hoặc clicker báo nhầm đã đóng | Chạy `python -m bridge.admin kiem-dong-sai --ngay YYYY-MM-DD` (ngày **UTC**) cho đúng ngày xảy ra. `[C]` = cặp gắn nhầm vị thế; `[A]` = deal đóng X trong lúc lệnh nhắm Y (có thể là người dùng đóng tay đúng lúc đó — đọc log); `[B]` = cặp `CLOSED` mà vị thế không có deal đóng — **kiểm terminal**, vị thế có thể vẫn đang mở. Rồi đọc `logs\clicker.log` quanh mốc đó: `Do dong`, `Dong N mo hop thoai`, `Bam Close ticket`. Gửi cả hai phần khi báo lỗi. |

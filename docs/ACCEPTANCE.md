@@ -1,4 +1,4 @@
-# Nghiệm thu — TEST-01 … TEST-31
+# Nghiệm thu — TEST-01 … TEST-32
 
 *Chốt ngày 2026-09-06, cập nhật sau Phase 11. Hai tài khoản demo Connext-Demo: **538216 Master**,
 **538217 Client**. Cấu hình khi nghiệm thu: một Client, `copy_mode = OPPOSITE`,
