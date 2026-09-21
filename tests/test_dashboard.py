@@ -11,14 +11,18 @@ Trọng tâm không phải bố cục mà là những chỗ giao diện có th�
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import httpx
 import pytest
 
 from bridge.clock import to_iso, utc_now
+from bridge.config import parse_config
 from bridge.db.repo import Database
 from bridge.labels_vi import UI
+from bridge.protocol.auth import verify_token
 from bridge.web import views
 from bridge.web.app import EMERGENCY_PHRASE, Dashboard, tao_app
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT
@@ -360,3 +364,201 @@ async def test_khong_bao_biet_thi_hien_khong_biet(seeded: Database) -> None:
         if a["role"] != "CLICKER":
             assert a["trade_allowed"] is None
             assert "canh_bao" not in a
+
+
+# -- API ghi cấu hình -------------------------------------------------------------------------
+#
+# Ràng buộc nằm ở `bridge/ops.py` và đã có test riêng ở `tests/test_ops.py`. Ở đây chỉ kiểm phần
+# việc của tầng web: gọi đúng hàm, trả đúng mã lỗi kèm câu tiếng Việt, và **không** cho ai chưa
+# đăng nhập đi qua.
+
+
+@pytest.fixture
+def clicker_web(seeded_web: Database) -> Database:
+    seeded_web.upsert_agent("AG-CLICKER", role="CLICKER", token_hash="h", magic_number=770001,
+                            account_login=2)
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                     clicker_agent_id="AG-CLICKER")
+    return seeded_web
+
+
+async def test_sua_client_tren_dashboard_ghi_vao_db(client: httpx.AsyncClient,
+                                                    seeded_web: Database) -> None:
+    r = await client.post(f"/api/client/{CLIENT_ID}",
+                          json={"copy_mode": "SAME", "volume_multiplier": 0.25})
+    assert r.status_code == 200
+    assert r.json()["doi"] == {"copy_mode": "SAME", "volume_multiplier": 0.25}
+    dong = seeded_web.get_client_account(CLIENT_ID)
+    assert dong["copy_mode"] == "SAME"
+    assert dong["volume_multiplier"] == 0.25
+
+
+async def test_sua_client_sai_rang_buoc_thi_tra_ma_loi_va_cau_tieng_viet(
+        client: httpx.AsyncClient, seeded_web: Database) -> None:
+    r = await client.post(f"/api/client/{CLIENT_ID}", json={"close_route": "UI"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "CAN_CLICKER"
+    assert r.json()["message"].strip()
+    assert seeded_web.get_client_account(CLIENT_ID)["close_route"] == "EA"
+
+
+async def test_bat_duong_dong_master_qua_dashboard(clicker_web: Database) -> None:
+    """Clicker của Client không dùng lại được cho Master — hai terminal khác nhau."""
+    async with _http(tao_app(Dashboard(clicker_web))) as c:
+        r = await c.post("/api/master_close_route",
+                         json={"clicker_agent": "AG-CLICKER", "close_route": "UI"})
+        assert r.status_code == 400
+        assert r.json()["error"] == "CLICKER_DA_DUNG"
+
+        clicker_web.upsert_agent("AG-CLICKER-MASTER", role="CLICKER", token_hash="h",
+                                 magic_number=770001, account_login=1)
+        r = await c.post("/api/master_close_route",
+                         json={"clicker_agent": "AG-CLICKER-MASTER", "close_route": "UI"})
+        assert r.status_code == 200
+    assert clicker_web.get_config("master_close_route") == "UI"
+
+
+async def test_luu_anh_xa_symbol_kiem_voi_san_truoc_khi_ghi(client: httpx.AsyncClient,
+                                                            seeded_web: Database) -> None:
+    seeded_web.replace_symbol_specs(CLIENT_AGENT, [
+        {"symbol": "XAUUSDm", "volume_min": 0.01, "volume_step": 0.01, "volume_max": 50.0,
+         "digits": 2, "contract_size": 100.0},
+    ])
+    r = await client.post("/api/symbol_map", json={"client_id": CLIENT_ID,
+                                                   "master_symbol": "XAUUSD",
+                                                   "client_symbol": "XAUUSDn"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "SAN_KHONG_CO_SYMBOL"
+    assert seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+
+    r = await client.post("/api/symbol_map", json={"client_id": CLIENT_ID,
+                                                   "master_symbol": "XAUUSD",
+                                                   "client_symbol": "XAUUSDm"})
+    assert r.status_code == 200
+    assert seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD")["verified_at"]
+
+
+async def test_tat_anh_xa_giu_nguyen_ten_symbol_phia_client(client: httpx.AsyncClient,
+                                                             seeded_web: Database) -> None:
+    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    r = await client.post("/api/symbol_map/disable",
+                          json={"client_id": CLIENT_ID, "master_symbol": "XAUUSD"})
+    assert r.status_code == 200
+    dong = seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD")
+    assert dong["enabled"] == 0
+    assert dong["client_symbol"] == "XAUUSDm"
+
+
+async def test_khoa_he_thong_ngoai_danh_sach_trang_bi_tu_choi(client: httpx.AsyncClient,
+                                                              seeded_web: Database) -> None:
+    r = await client.post("/api/system_config",
+                          json={"khoa": "event_retention_days", "gia_tri": 1})
+    assert r.status_code == 400
+    assert r.json()["error"] == "KHOA_NGOAI_DANH_SACH"
+    assert seeded_web.get_config_int("event_retention_days", 30) == 30
+
+    r = await client.post("/api/system_config",
+                          json={"khoa": "ui_open_queue_max_age_ms", "gia_tri": 20000})
+    assert r.status_code == 200
+    assert seeded_web.get_config_int("ui_open_queue_max_age_ms", 0) == 20000
+
+
+async def test_khong_cap_token_khi_dashboard_chua_dat_mat_khau(
+        client: httpx.AsyncClient, seeded_web: Database) -> None:
+    """Không mật khẩu thì `hop_le` cho qua mọi request — cấp token khi đó là phát hành danh tính
+    cho bất kỳ ai chạm được cổng 8080."""
+    r = await client.post("/api/agent", json={"agent_id": "AG-X", "role": "CLIENT",
+                                              "magic": 770001, "login": 9})
+    assert r.status_code == 403
+    assert r.json()["error"] == "CHUA_DAT_MAT_KHAU"
+    assert seeded_web.get_agent("AG-X") is None
+
+    r = await client.post(f"/api/agent/{MASTER_AGENT}/token")
+    assert r.status_code == 403
+
+
+async def test_cap_token_khi_da_dat_mat_khau_thi_tra_token_mot_lan(seeded_web: Database) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/agent", json={"agent_id": "AG-X", "role": "CLIENT",
+                                             "magic": 770001, "login": 9})
+        assert r.status_code == 200
+        token = r.json()["token"]
+        assert len(token) > 20
+        agent = seeded_web.get_agent("AG-X")
+        assert verify_token(token, agent["token_hash"])
+
+        r = await c.post(f"/api/agent/{MASTER_AGENT}/token")
+        assert r.status_code == 200
+        assert verify_token(r.json()["token"], seeded_web.get_agent(MASTER_AGENT)["token_hash"])
+
+
+@pytest.mark.parametrize("duong, than", [
+    ("/api/client/CL-01", {"copy_mode": "SAME"}),
+    ("/api/client", {"client_id": "CL-9", "agent_id": "AG-CLIENT"}),
+    ("/api/master_close_route", {"close_route": "EA"}),
+    ("/api/symbol_map", {"client_id": "CL-01", "master_symbol": "X", "client_symbol": "Y"}),
+    ("/api/symbol_map/disable", {"client_id": "CL-01", "master_symbol": "X"}),
+    ("/api/system_config", {"khoa": "ui_open_queue_max_len", "gia_tri": 5}),
+    ("/api/agent", {"agent_id": "AG-X", "role": "CLIENT", "magic": 1}),
+    ("/api/agent/AG-MASTER/token", {}),
+])
+async def test_moi_endpoint_ghi_deu_doi_dang_nhap(seeded_web: Database, duong: str,
+                                                  than: dict) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        r = await c.post(duong, json=than)
+        assert r.status_code == 401, duong
+
+
+async def test_trang_cau_hinh_hien_config_toml_nhung_che_bi_mat(seeded_web: Database) -> None:
+    """Biết `dashboard_password` đang trống là thông tin vận hành; biết nó là gì thì không."""
+    config = parse_config({
+        "bridge": {"host": "127.0.0.1", "port": 8787, "web_port": 8080},
+        "security": {"dashboard_password": "sieu-bi-mat"},
+        "clicker": {"token": "tok", "account_login": 538217, "terminal_title": "538217"},
+    }, source_path=Path("config.toml"), project_root=Path("."))
+    async with _http(tao_app(Dashboard(seeded_web, config=config))) as c:
+        r = await c.get("/api/config")
+    khoa = {d["khoa"]: d["gia_tri"] for d in r.json()["file_config"]}
+    assert khoa["security.dashboard_password"] == UI["cfg_file_masked"]
+    assert khoa["clicker.token"] == UI["cfg_file_masked"]
+    assert "sieu-bi-mat" not in r.text
+    assert "tok" not in [d["gia_tri"] for d in r.json()["file_config"]]
+    assert khoa["clicker.account_login"] == "538217"
+
+
+async def test_trang_cau_hinh_hien_du_bon_khoi(client: httpx.AsyncClient) -> None:
+    r = await client.get("/api/config")
+    data = r.json()
+    assert [a["agent_id"] for a in data["agents"]] == [CLIENT_AGENT, MASTER_AGENT]
+    assert data["clients"][0]["client_id"] == CLIENT_ID
+    assert data["master"]["master_close_route"] == "EA"
+    assert {k["khoa"] for k in data["he_thong"]} >= {"ui_open_queue_max_len",
+                                                     "close_degraded_fallback"}
+    assert data["file_config"] == []
+
+
+def test_moi_nhan_app_js_dung_deu_co_trong_labels(project_root) -> None:
+    """`UI.abc` gõ sai trong JS không làm sập trang — nó hiện ô trống, im lặng.
+
+    Trang Cấu hình có mấy chục nhãn, nên "im lặng" ở đây nghĩa là một nút không có chữ mà không
+    ai biết. Phép kiểm này rẻ và bắt đúng loại lỗi đó.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dung = set(re.findall(r"UI\.([a-z0-9_]+)", js))
+    thieu = sorted(dung - set(UI))
+    assert not thieu, f"app.js dùng nhãn không có trong labels_vi.UI: {thieu}"
+
+
+def test_moi_duong_api_app_js_goi_deu_co_route_that(project_root, seeded_web: Database) -> None:
+    """Gõ sai đường trong `goi(\"/api/...\")` chỉ lộ ra khi người vận hành bấm nút."""
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    duong_js = {d for d in re.findall(r'"(/api/[a-z_/]*)', js)}
+    mau = set()
+    for route in tao_app(Dashboard(seeded_web)).routes:
+        duong = getattr(route, "path", "")
+        if duong.startswith("/api/"):
+            # Bỏ phần tham số: JS ghép id vào bằng chuỗi nên chỉ so được phần tĩnh đầu.
+            mau.add(duong.split("{")[0])
+    for d in sorted(duong_js):
+        assert any(m.startswith(d) or d.startswith(m) for m in mau), f"app.js goi {d} khong co route"

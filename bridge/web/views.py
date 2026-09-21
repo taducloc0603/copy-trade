@@ -16,6 +16,7 @@ from typing import Any
 from bridge.clock import parse_iso
 from bridge.db.repo import Database
 from bridge.labels_vi import (
+    AGENT_ROLE,
     AGENT_STATUS,
     ALERT_LEVEL,
     PAIR_STATUS,
@@ -23,6 +24,7 @@ from bridge.labels_vi import (
     UI,
     label,
 )
+from bridge.ops import KHOA_SUA_DUOC
 
 #: Thứ tự nghiêm trọng của trạng thái cặp. Số nhỏ lên trước.
 #:
@@ -306,3 +308,81 @@ def _so(gia_tri: Any) -> str:
     if gia_tri is None:
         return "—"
     return f"{float(gia_tri):.2f}"
+
+
+def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
+    """Mọi thứ trang Cấu hình cần, trong một lượt đọc.
+
+    Gộp bốn nhóm vào một endpoint chứ không tách bốn: trang này mở ra là để **so** chúng với nhau
+    — một Client đặt `close_route = UI` mà clicker của nó chưa khai số tài khoản là một cấu hình
+    hỏng, và chỉ nhìn thấy khi hai khối nằm cạnh nhau.
+    """
+    clients = [dict(r) for r in db.query_all("SELECT * FROM client_account ORDER BY client_id")]
+    return {
+        "agents": [_mo_ta_agent_cau_hinh(r) for r in db.query_all(
+            "SELECT * FROM agent ORDER BY role, agent_id")],
+        "clients": clients,
+        "symbol_maps": [dict(r) for r in db.query_all(
+            "SELECT * FROM symbol_map ORDER BY client_id, master_symbol")],
+        "master": {
+            "master_close_route": (db.get_config("master_close_route", "EA") or "EA").upper(),
+            "master_clicker_agent_id": (db.get_config("master_clicker_agent_id", "") or "").strip(),
+        },
+        "he_thong": [
+            {"khoa": khoa, "kieu": kieu, "tu": a, "den": b,
+             "gia_tri": db.get_config(khoa, ""),
+             "chon": list(a) if kieu == "enum" else None}
+            for khoa, (kieu, a, b) in KHOA_SUA_DUOC.items()
+        ],
+        "file_config": _mo_ta_file_config(config),
+        "preview": xem_truoc_he_so(clients[0]["volume_multiplier"] if clients else 1.0),
+    }
+
+
+def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:
+    return {
+        "agent_id": row["agent_id"],
+        "role": row["role"],
+        "role_label": label(AGENT_ROLE, row["role"]),
+        "status": row["status"],
+        "status_label": label(AGENT_STATUS, row["status"]),
+        "account_login": row["account_login"],
+        "magic_number": row["magic_number"],
+        "enabled": row["enabled"],
+    }
+
+
+def _mo_ta_file_config(config: Any) -> list[dict[str, str]]:
+    """Các khoá `config.toml` đang có hiệu lực, **chỉ đọc** và đã che bí mật.
+
+    Dashboard không bao giờ ghi `config.toml`: mấy khoá này chỉ được đọc lúc Bridge khởi động, nên
+    một nút "Lưu" ở đây sẽ hứa điều nó không làm được. Hiện chúng ra là để trả lời câu hỏi "máy
+    đang chạy bằng cấu hình nào" mà không phải mở file qua RDP.
+
+    Giá trị bí mật **không** đi qua JSON. Chỉ báo có hay không: biết `dashboard_password` đang
+    trống là thông tin vận hành cần thiết, còn biết nó là gì thì không.
+    """
+    if config is None:
+        return []
+    def _co(muc: Any, khoa: str) -> str:
+        return UI["cfg_file_masked"] if (muc or {}).get(khoa) else ""
+
+    return [
+        {"khoa": "bridge.host", "gia_tri": str(config.bridge.host)},
+        {"khoa": "bridge.port", "gia_tri": str(config.bridge.port)},
+        {"khoa": "bridge.web_port", "gia_tri": str(config.bridge.web_port)},
+        {"khoa": "bridge.db_path", "gia_tri": str(config.bridge.db_path)},
+        {"khoa": "security.dashboard_password", "gia_tri": _co(config.security,
+                                                               "dashboard_password")},
+        {"khoa": "security.telegram_token", "gia_tri": _co(config.security, "telegram_token")},
+        {"khoa": "clicker.token", "gia_tri": _co(config.clicker, "token")},
+        {"khoa": "clicker.account_login",
+         "gia_tri": str((config.clicker or {}).get("account_login", "") or "")},
+        {"khoa": "clicker.terminal_title",
+         "gia_tri": str((config.clicker or {}).get("terminal_title", "") or "")},
+        {"khoa": "clicker_master.token", "gia_tri": _co(config.clicker_master, "token")},
+        {"khoa": "clicker_master.account_login",
+         "gia_tri": str((config.clicker_master or {}).get("account_login", "") or "")},
+        {"khoa": "clicker_master.terminal_title",
+         "gia_tri": str((config.clicker_master or {}).get("terminal_title", "") or "")},
+    ]

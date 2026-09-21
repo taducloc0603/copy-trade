@@ -576,7 +576,13 @@ def sua_client(db: Database, client_id: str, copy_mode: str | None = None,
     dang_mo = db.query_one(
         "SELECT COUNT(*) n FROM pair WHERE client_id = ? "
         "AND status NOT IN ('CLOSED','OPEN_FAILED')", (client_id,))["n"]
-    db.upsert_client_account(client_id, agent_id=client["agent_id"], **doi)
+    # `clicker_agent_id` đi kèm dù không đổi: `upsert_client_account` dựng một câu UPSERT, và
+    # SQLite kiểm `CHECK (open_route = 'EA' OR clicker_agent_id IS NOT NULL)` trên **dòng sắp
+    # chèn**, không phải trên dòng sau khi gộp. Thiếu nó thì đổi `open_route` sang UI cho một
+    # Client đã có clicker vẫn ném IntegrityError — lỗi có sẵn từ trước, lộ ra khi bấm nút trên
+    # dashboard.
+    db.upsert_client_account(client_id, agent_id=client["agent_id"],
+                             clicker_agent_id=client["clicker_agent_id"], **doi)
     log.info("Doi cau hinh client %s: %s", client_id, doi)
     return doi, int(dang_mo)
 

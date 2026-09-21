@@ -35,6 +35,39 @@ CLOSE_SOURCE = {"MASTER": "Từ Master", "CLIENT": "Từ Client", "BOT": "Bot đ
 ALERT_LEVEL = {"INFO": "Thông tin", "WARNING": "Cảnh báo",
                "ERROR": "Lỗi", "CRITICAL": "Nghiêm trọng"}
 MASTER_POSITION_STATUS = {"OPEN": "Đang mở", "CLOSED": "Đã đóng", "UNPAIRED": "Chưa ghép cặp"}
+AGENT_ROLE = {"MASTER": "Master", "CLIENT": "Client", "CLICKER": "Clicker"}
+ROUTE = {"EA": "Qua EA", "UI": "Qua giao diện"}
+
+#: Mã lỗi của `ops.LoiCauHinh` → câu hiện trên dashboard. Cùng bộ mã mà `bridge/admin.py` dịch
+#: sang câu không dấu cho dòng lệnh: một chỗ kiểm, hai chỗ dịch. Dấu `{...}` được tầng web điền
+#: bằng `ngu_canh` của chính lỗi đó, nên JavaScript không bao giờ phải dựng câu (D-16).
+LOI_CAU_HINH = {
+    "AGENT_DA_TON_TAI": "Đã có agent {agent_id}. Muốn đổi token thì dùng nút cấp lại token.",
+    "KHONG_CO_AGENT": "Không có agent {agent_id}",
+    "SAI_ROLE": "Agent {agent_id} đang là {role}, chỗ này cần {can}.",
+    "ROLE_LA": "Vai trò {role} không hợp lệ.",
+    "LOGIN_KHONG_DUONG": "Số tài khoản phải là số dương, nhận được {login}.",
+    "CLIENT_DA_TON_TAI": "Đã có client {client_id}.",
+    "KHONG_CO_CLIENT": "Không có client {client_id}",
+    "CAN_CLICKER": ("Đặt {truong} qua giao diện thì Client phải có một clicker. "
+                    "Chưa khai clicker thì lệnh sẽ không có ai bấm."),
+    "CAN_CLICKER_MASTER": ("Đóng phía Master qua giao diện cần một clicker riêng lái terminal "
+                           "Master. Khai clicker trước."),
+    "CLICKER_DA_DUNG": ("Agent {agent_id} đang là clicker của Client {client_id}. "
+                        "Mỗi terminal cần một clicker riêng."),
+    "HE_SO_KHONG_DUONG": "Hệ số volume phải lớn hơn 0, nhận được {gia_tri}.",
+    "CHIEU_COPY_LA": "Chiều copy {gia_tri} không hợp lệ.",
+    "DUONG_LA": "Giá trị {gia_tri} không hợp lệ cho {truong}.",
+    "THIEU_SYMBOL": "Thiếu tên symbol.",
+    "SAN_KHONG_CO_SYMBOL": ("Sàn Client chưa báo có symbol {client_symbol}. Kiểm tra EA Client "
+                            "đang chạy và symbol đã kéo vào Market Watch."),
+    "KHONG_CO_ANH_XA": "Không có ánh xạ cho {master_symbol}",
+    "KHOA_NGOAI_DANH_SACH": "Khoá {khoa} không sửa được trên dashboard.",
+    "GIA_TRI_LA": "Giá trị không hợp lệ cho {khoa}.",
+    "NGOAI_MIEN": "{khoa} phải trong khoảng {tu}…{den}, nhận được {gia_tri}.",
+    "CHUA_DAT_MAT_KHAU": ("Dashboard chưa đặt mật khẩu nên không cấp token ở đây. Đặt "
+                          "dashboard_password trong config.toml, hoặc dùng bridge.admin."),
+}
 
 #: Nhóm nhãn **ánh xạ từ enum trong DB**. Key phải là enum tiếng Anh viết hoa, đúng như giá trị
 #: được lưu. Nhóm `UI` ở cuối file KHÔNG thuộc đây: key của nó là id chuỗi giao diện, không phải
@@ -47,6 +80,9 @@ ENUM_GROUPS: dict[str, dict[str, str]] = {
     "CLOSE_SOURCE": CLOSE_SOURCE,
     "ALERT_LEVEL": ALERT_LEVEL,
     "MASTER_POSITION_STATUS": MASTER_POSITION_STATUS,
+    "AGENT_ROLE": AGENT_ROLE,
+    "ROUTE": ROUTE,
+    "LOI_CAU_HINH": LOI_CAU_HINH,
 }
 
 #: Mọi nhóm nhãn, dùng cho test và cho việc duyệt toàn bộ bảng nhãn.
@@ -151,7 +187,45 @@ UI = {
     "confirm_open_route_ui": ("Chuyển sang kênh giao diện: thông lượng còn khoảng một lệnh mỗi "
                               "giây, độ trễ copy tăng lên khoảng nửa giây tới vài giây. "
                               "Bắt buộc phải có một clicker đang kết nối. Tiếp tục?"),
+    "cfg_copy_mode": "Chiều copy",
+    "cfg_same": "Cùng chiều",
+    "cfg_opposite": "Khác chiều (Master BUY thì Client SELL)",
+    "cfg_route_ea": "Qua EA",
+    "cfg_route_ui": "Qua giao diện MT5",
+    "cfg_save": "Lưu",
+    "cfg_saved": "Đã lưu",
+    "cfg_open_pairs_keep": "{n} cặp đang chạy giữ nguyên tỷ lệ cũ",
+    "cfg_system_title": "Khoá hệ thống",
+    "cfg_file_title": "config.toml — chỉ đọc, sửa bằng cách mở file trên VPS",
+    "cfg_file_masked": "(đã che)",
+    "cfg_master_close_title": "Đường đóng phía Master",
+    "cfg_master_clicker": "Clicker lái terminal Master",
+    "cfg_master_route": "Kênh đóng lệnh phía Master",
+    "confirm_master_close_ui": ("Đóng phía Master sẽ đi qua giao diện MT5: terminal Master phải "
+                                "luôn mở Toolbox ở tab Trade và clicker Master phải đang chạy. "
+                                "Tiếp tục?"),
+
+    "agent_title": "Agent",
+    "agent_role": "Vai trò",
+    "agent_login": "Số tài khoản",
+    "agent_terminal": "Tiêu đề cửa sổ terminal",
+    "agent_status": "Trạng thái",
+    "agent_new": "Thêm agent",
+    "agent_magic": "Magic number",
+    "btn_new_token": "Cấp lại token",
+    "confirm_new_token": ("Cấp token mới làm token cũ hết hiệu lực ngay: EA hoặc clicker đang "
+                          "dùng nó sẽ rớt cho tới khi bạn dán token mới. Tiếp tục?"),
+    "token_once": "Token chỉ hiện một lần, không đọc lại được. Chép ngay bây giờ.",
+    "btn_close": "Đóng",
+
     "map_title": "Ánh xạ symbol",
+    "map_master_symbol": "Symbol phía Master",
+    "map_client_symbol": "Symbol phía Client",
+    "map_add": "Thêm ánh xạ",
+    "map_disable": "Tắt",
+    "map_enabled": "Đang bật",
+    "map_disabled": "Đã tắt",
+    "confirm_map_disable": "Tắt ánh xạ này thì Master vào lệnh symbol đó sẽ không được copy. Tiếp tục?",
     "btn_verify": "Kiểm tra với sàn",
     "map_unverified": "Chưa kiểm tra — không lưu được",
     "map_verify_failed": "Sàn Client không có symbol này",

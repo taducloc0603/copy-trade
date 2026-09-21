@@ -235,54 +235,285 @@ async function taiNhatKy() {
   }
 }
 
+// -- man cau hinh ---------------------------------------------------------------------------
+// Trang nay SUA duoc (D-32). Moi rang buoc nam o bridge/ops.py; o day chi gui JSON va hien lai
+// cau tra ve. Khong mot phep kiem nghiep vu nao duoc lam o file nay: JS chay tren may nguoi
+// dung, nen mot phep kiem chi o day la mot phep kiem co the bo qua.
+
+let CAU_HINH = null;
+
+function nhan(chu, lop) {
+  const e = document.createElement("div");
+  if (lop) e.className = lop;
+  e.textContent = chu || "";
+  return e;
+}
+
+function tieuDe(chu) {
+  const h = document.createElement("h3");
+  h.textContent = chu || "";
+  return h;
+}
+
+function oChon(giaTri, chon) {
+  const s = document.createElement("select");
+  for (const c of chon) {
+    const o = document.createElement("option");
+    o.value = c.gia_tri;
+    o.textContent = c.nhan;
+    if (String(c.gia_tri) === String(giaTri)) o.selected = true;
+    s.appendChild(o);
+  }
+  return s;
+}
+
+function oSo(giaTri, buoc) {
+  const i = document.createElement("input");
+  i.type = "number";
+  i.step = buoc || "any";
+  i.value = giaTri === null || giaTri === undefined ? "" : giaTri;
+  return i;
+}
+
+function oChu(giaTri) {
+  const i = document.createElement("input");
+  i.type = "text";
+  i.value = giaTri || "";
+  return i;
+}
+
+function hang(nhanChu, oDieuKhien) {
+  const d = document.createElement("div");
+  d.className = "hang-cau-hinh";
+  d.append(nhan(nhanChu, "nhan"), oDieuKhien);
+  return d;
+}
+
+function nut(chu, lop) {
+  const b = document.createElement("button");
+  b.textContent = chu;
+  if (lop) b.className = lop;
+  return b;
+}
+
+// Moi lan ghi di qua day: mot cho bao loi, mot cho tai lai. Endpoint nao tra {error, message}
+// thi hien message do — JS khong tu dung cau nao.
+async function ghiCauHinh(duong, than, sauKhiXong) {
+  const r = await goi(duong, { method: "POST", body: JSON.stringify(than) });
+  if (!r.ok) {
+    alert(r.data.message || r.data.error || "");
+    return false;
+  }
+  if (sauKhiXong) sauKhiXong(r.data);
+  await taiCauHinh();
+  return true;
+}
+
+function hienToken(el, token) {
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom token-moi";
+  const pre = document.createElement("pre");
+  pre.textContent = token;
+  const dong = nut(UI.btn_close);
+  dong.onclick = () => box.remove();
+  box.append(nhan(UI.token_once, "canh-bao-nho"), pre, dong);
+  el.prepend(box);
+}
+
+function khoiAgent(el) {
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom";
+  box.appendChild(tieuDe(UI.agent_title));
+  const bang = document.createElement("table");
+  const dau = bang.createTHead().insertRow();
+  for (const h of ["agent_id", UI.agent_role, UI.agent_login, UI.agent_status, ""]) {
+    const th = document.createElement("th");
+    th.textContent = h;
+    dau.appendChild(th);
+  }
+  const than = bang.createTBody();
+  for (const a of CAU_HINH.agents) {
+    const tr = than.insertRow();
+    for (const v of [a.agent_id, a.role_label, a.account_login || "—", a.status_label]) {
+      tr.insertCell().textContent = v;
+    }
+    const b = nut(UI.btn_new_token);
+    b.onclick = async () => {
+      if (!(await hoiXacNhan(UI.confirm_new_token, null))) return;
+      await ghiCauHinh("/api/agent/" + encodeURIComponent(a.agent_id) + "/token", {},
+                       (d) => hienToken(el, d.token));
+    };
+    tr.insertCell().appendChild(b);
+  }
+  box.appendChild(bang);
+  el.appendChild(box);
+}
+
+function khoiClient(el) {
+  for (const c of CAU_HINH.clients) {
+    const box = document.createElement("div");
+    box.className = "sai-lech-nhom";
+    box.appendChild(tieuDe(c.client_id));
+    // "Master dong thi Client dong" hien dang CHU, khong phai nut gat: FR-13 noi day la chuc
+    // nang bat buoc, va thu khong duoc phep tat thi khong nen trong giong thu tat duoc.
+    box.appendChild(nhan(UI.cfg_master_close_always, "canh-bao-nho"));
+
+    const chieu = oChon(c.copy_mode, [{ gia_tri: "SAME", nhan: UI.cfg_same },
+                                      { gia_tri: "OPPOSITE", nhan: UI.cfg_opposite }]);
+    const heSo = oSo(c.volume_multiplier, "0.01");
+    const duongMo = oChon(c.open_route, CAU_HINH.chon_duong);
+    const duongDong = oChon(c.close_route, CAU_HINH.chon_duong);
+    const dongMaster = document.createElement("input");
+    dongMaster.type = "checkbox";
+    dongMaster.checked = !!c.can_close_master;
+
+    box.append(hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
+               hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong),
+               hang(UI.cfg_can_close_master, dongMaster),
+               nhan(UI.cfg_effect_next_open, "canh-bao-nho"));
+
+    const xemTruoc = document.createElement("pre");
+    xemTruoc.textContent = (CAU_HINH.preview || []).join("\n");
+    box.append(nhan(UI.cfg_preview + ":"), xemTruoc);
+
+    const luu = nut(UI.cfg_save, "chinh");
+    luu.onclick = async () => {
+      // Ma sat dat dung cho: hai thay doi nay doi cach he thong hanh xu voi tien, khong phai
+      // doi mot con so.
+      if (duongMo.value === "UI" && c.open_route !== "UI"
+          && !(await hoiXacNhan(UI.confirm_open_route_ui, null))) return;
+      if (dongMaster.checked && !c.can_close_master
+          && !(await hoiXacNhan(UI.confirm_can_close_master, null))) return;
+      await ghiCauHinh("/api/client/" + encodeURIComponent(c.client_id), {
+        copy_mode: chieu.value,
+        volume_multiplier: parseFloat(heSo.value),
+        open_route: duongMo.value,
+        close_route: duongDong.value,
+        can_close_master: dongMaster.checked,
+      }, (d) => {
+        if (d.dang_mo) {
+          alert(UI.cfg_open_pairs_keep.replace("{n}", d.dang_mo));
+        }
+      });
+    };
+    box.appendChild(luu);
+    el.appendChild(box);
+  }
+}
+
+function khoiMaster(el) {
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom";
+  box.appendChild(tieuDe(UI.cfg_master_close_title));
+  const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
+    .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
+  const chonClicker = oChon(CAU_HINH.master.master_clicker_agent_id, [{ gia_tri: "", nhan: "—" }]
+    .concat(clickers));
+  const duong = oChon(CAU_HINH.master.master_close_route, CAU_HINH.chon_duong);
+  box.append(hang(UI.cfg_master_clicker, chonClicker), hang(UI.cfg_master_route, duong));
+  const luu = nut(UI.cfg_save, "chinh");
+  luu.onclick = async () => {
+    if (duong.value === "UI" && CAU_HINH.master.master_close_route !== "UI"
+        && !(await hoiXacNhan(UI.confirm_master_close_ui, null))) return;
+    await ghiCauHinh("/api/master_close_route", {
+      clicker_agent: chonClicker.value || null,
+      close_route: duong.value,
+    });
+  };
+  box.appendChild(luu);
+  el.appendChild(box);
+}
+
+function khoiAnhXa(el) {
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom";
+  box.appendChild(tieuDe(UI.map_title));
+  for (const x of CAU_HINH.symbol_maps) {
+    const d = document.createElement("div");
+    d.className = "dong-sai-lech";
+    d.append(nhan(x.client_id + " · " + x.master_symbol + " → " + x.client_symbol),
+             nhan(x.enabled ? UI.map_enabled : UI.map_disabled, "canh-bao-nho"));
+    if (!x.verified_at) d.appendChild(nhan(UI.map_unverified, "loi"));
+    if (x.enabled) {
+      const b = nut(UI.map_disable);
+      b.onclick = async () => {
+        if (!(await hoiXacNhan(UI.confirm_map_disable, null))) return;
+        await ghiCauHinh("/api/symbol_map/disable",
+                         { client_id: x.client_id, master_symbol: x.master_symbol });
+      };
+      d.appendChild(b);
+    }
+    box.appendChild(d);
+  }
+
+  const chonClient = oChon(null, CAU_HINH.clients.map(
+    (c) => ({ gia_tri: c.client_id, nhan: c.client_id })));
+  const sMaster = oChu("");
+  const sClient = oChu("");
+  box.append(hang("client", chonClient), hang(UI.map_master_symbol, sMaster),
+             hang(UI.map_client_symbol, sClient));
+  const them = nut(UI.map_add, "chinh");
+  // Nut nay LUU, va phia server kiem symbol voi san truoc khi luu. Khong co duong nao luu mot
+  // anh xa chua kiem: sai ten symbol mot ky tu chi lo ra dung luc co lenh that di qua.
+  them.onclick = () => ghiCauHinh("/api/symbol_map", {
+    client_id: chonClient.value,
+    master_symbol: sMaster.value,
+    client_symbol: sClient.value,
+  });
+  box.appendChild(them);
+  el.appendChild(box);
+}
+
+function khoiHeThong(el) {
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom";
+  box.appendChild(tieuDe(UI.cfg_system_title));
+  for (const k of CAU_HINH.he_thong) {
+    const o = k.chon
+      ? oChon(k.gia_tri, k.chon.map((v) => ({ gia_tri: v, nhan: v })))
+      : oSo(k.gia_tri, "1");
+    const luu = nut(UI.cfg_save);
+    luu.onclick = () => ghiCauHinh("/api/system_config",
+                                   { khoa: k.khoa, gia_tri: o.value });
+    const d = document.createElement("div");
+    d.className = "hang-cau-hinh";
+    d.append(nhan(k.khoa, "nhan"), o, luu);
+    box.appendChild(d);
+  }
+  el.appendChild(box);
+}
+
+function khoiFileConfig(el) {
+  if (!CAU_HINH.file_config.length) return;
+  const box = document.createElement("div");
+  box.className = "sai-lech-nhom";
+  box.appendChild(tieuDe(UI.cfg_file_title));
+  const bang = document.createElement("table");
+  const than = bang.createTBody();
+  for (const k of CAU_HINH.file_config) {
+    const tr = than.insertRow();
+    tr.insertCell().textContent = k.khoa;
+    tr.insertCell().textContent = k.gia_tri || "—";
+  }
+  box.appendChild(bang);
+  el.appendChild(box);
+}
+
 async function taiCauHinh() {
   const r = await goi("/api/config");
   UI = r.data.ui || UI;
+  CAU_HINH = r.data;
+  CAU_HINH.chon_duong = [{ gia_tri: "EA", nhan: UI.cfg_route_ea },
+                         { gia_tri: "UI", nhan: UI.cfg_route_ui }];
   dat("tieu-de-cau-hinh", UI.cfg_title);
   const el = $("noi-dung-cau-hinh");
   el.innerHTML = "";
-  for (const c of r.data.clients) {
-    const d = document.createElement("div");
-    d.className = "dong-sai-lech";
-    const them = (chu, lop) => {
-      const x = document.createElement("div");
-      if (lop) x.className = lop;
-      x.textContent = chu;
-      d.appendChild(x);
-      return x;
-    };
-    them(c.client_id);
-    // "Master dong thi Client dong" hien dang CHU, khong phai nut gat: FR-13 noi day la chuc
-    // nang bat buoc, va thu khong duoc phep tat thi khong nen trong giong thu tat duoc.
-    them(UI.cfg_master_close_always);
-    them(UI.cfg_multiplier + ": " + c.volume_multiplier);
-    them(UI.cfg_effect_next_open, "canh-bao-nho");
-    const pre = document.createElement("pre");
-    pre.textContent = (r.data.preview || []).join("\n");
-    them(UI.cfg_preview + ":").appendChild(pre);
-    them(UI.cfg_open_route + ": " + c.open_route);
-    them(UI.cfg_close_route + ": " + c.close_route);
-    them(UI.cfg_can_close_master + ": " + (c.can_close_master ? "1" : "0"));
-    el.appendChild(d);
-  }
-  const m = document.createElement("div");
-  m.className = "sai-lech-nhom";
-  const h = document.createElement("h3");
-  h.textContent = UI.map_title;
-  m.appendChild(h);
-  for (const x of r.data.symbol_maps) {
-    const d = document.createElement("div");
-    d.className = "dong-sai-lech";
-    d.textContent = x.master_symbol + " → " + x.client_symbol;
-    if (!x.verified_at) {
-      const w = document.createElement("div");
-      w.className = "loi";
-      w.textContent = UI.map_unverified;
-      d.appendChild(w);
-    }
-    m.appendChild(d);
-  }
-  el.appendChild(m);
+  khoiAgent(el);
+  khoiClient(el);
+  khoiMaster(el);
+  khoiAnhXa(el);
+  khoiHeThong(el);
+  khoiFileConfig(el);
 }
 
 // -- vong day thoi gian thuc ------------------------------------------------------------------

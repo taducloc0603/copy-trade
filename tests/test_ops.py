@@ -1144,3 +1144,15 @@ def test_khoa_he_thong_hop_le_thi_ghi_va_doc_lai_duoc(db: Database) -> None:
     assert sua_khoa_he_thong(db, "ui_open_queue_max_age_ms", 20000) == "20000"
     assert db.get_config_int("ui_open_queue_max_age_ms", 0) == 20000
     assert sua_khoa_he_thong(db, "close_degraded_fallback", "SKIP") == "SKIP"
+
+
+def test_sua_client_bat_duong_giao_dien_khi_da_co_clicker_thi_luu_duoc(seeded: Database) -> None:
+    """Lỗi có sẵn: UPSERT thiếu `clicker_agent_id` làm SQLite từ chối vì CHECK của bảng."""
+    _them_clicker(seeded)
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id=CLICKER_AGENT)
+    doi, _ = sua_client(seeded, CLIENT_ID, open_route="UI", close_route="UI")
+    assert doi == {"open_route": "UI", "close_route": "UI"}
+    dong = seeded.get_client_account(CLIENT_ID)
+    assert dong["open_route"] == "UI"
+    assert dong["clicker_agent_id"] == CLICKER_AGENT

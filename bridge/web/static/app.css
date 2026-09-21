@@ -80,3 +80,9 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
   th, td { padding: 6px; font-size: 13px; }
   .dieu-khien { flex-direction: column; align-items: stretch; }
 }
+
+/* Trang cau hinh: nhan ben trai, o dieu khien ben phai, cao du de bam bang chuot tren RDP. */
+.hang-cau-hinh { display: flex; align-items: center; gap: .6rem; margin: .35rem 0; }
+.hang-cau-hinh .nhan { min-width: 16rem; }
+.hang-cau-hinh input, .hang-cau-hinh select { padding: .25rem .4rem; min-width: 12rem; }
+.token-moi pre { user-select: all; word-break: break-all; white-space: pre-wrap; }
