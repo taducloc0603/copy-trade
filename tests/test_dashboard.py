@@ -15,6 +15,7 @@ import re
 import tomllib
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -23,6 +24,7 @@ from bridge.clock import to_iso, utc_now
 from bridge.config import parse_config
 from bridge.db.repo import Database
 from bridge.labels_vi import UI
+from bridge.ops import dat_terminal_clicker
 from bridge.protocol.auth import verify_token
 from bridge.web import views
 from bridge.web.app import CUM_DAT_LAI, Dashboard, tao_app
@@ -970,3 +972,88 @@ async def test_xem_truoc_he_so_theo_tung_client(client: httpx.AsyncClient,
 
     assert set(preview) == {CLIENT_ID, "CL-02"}
     assert preview[CLIENT_ID] != preview["CL-02"]
+
+
+# -- khoi "Can lam" -----------------------------------------------------------------------------
+#
+# Day la cua chan duy nhat cua luong cai mot lenh: tro ly khong con hoi gi ve nghiep vu, nen neu
+# khoi nay bo sot mot cach hong thi khong con ai bat no nua.
+
+def _ma_can_lam(db: Database, config: Any = None) -> set[str]:
+    return {v["ma"] for v in views.viec_can_lam(db, config)}
+
+
+def test_can_lam_bat_clicker_chua_khai_so_tai_khoan(seeded_web: Database) -> None:
+    """Chưa khai thì clicker thoát mã 4 mỗi 60 giây, còn dashboard trông bình thường."""
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001)
+    assert "CLICKER_CHUA_KHAI" in _ma_can_lam(seeded_web)
+
+    dat_terminal_clicker(seeded_web, "AG-CLICKER-X", 538217, "538217 - Demo")
+    assert "CLICKER_CHUA_KHAI" not in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_tieu_de_khong_chua_so_tai_khoan(seeded_web: Database) -> None:
+    """Tiêu đề không chứa số tài khoản là hàng rào chống lái nhầm terminal bị vô hiệu."""
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001,
+                            account_login=538217, terminal_title="MetaTrader 5")
+    assert "TIEU_DE_KHONG_CHUA_SO_TK" in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_thieu_anh_xa_symbol(seeded_web: Database) -> None:
+    """Thiếu ánh xạ là MỌI lệnh Master bị bỏ qua — cách hỏng im lặng đắt nhất."""
+    assert "THIEU_ANH_XA" in _ma_can_lam(seeded_web)
+
+    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    assert "THIEU_ANH_XA" not in _ma_can_lam(seeded_web)
+
+    # Ánh xạ bị TẮT cũng là không có ánh xạ nào dùng được.
+    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=0)
+    assert "THIEU_ANH_XA" in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_algo_trading_tat_nhung_khong_bat_khi_chua_biet(
+        seeded_web: Database) -> None:
+    """`None` là "agent chưa báo", khác hẳn "biết là tắt". Chặn vì không biết là tự dừng hệ thống."""
+    assert "ALGO_TRADING_TAT" not in _ma_can_lam(seeded_web)
+
+    with seeded_web.transaction() as conn:
+        conn.execute("UPDATE agent SET trade_allowed = 0 WHERE agent_id = ?", (CLIENT_AGENT,))
+    assert "ALGO_TRADING_TAT" in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_duong_dong_master_UI_ma_chua_khai_clicker(seeded_web: Database) -> None:
+    seeded_web.set_config("master_close_route", "UI")
+    seeded_web.set_config("master_clicker_agent_id", "")
+    assert "MASTER_THIEU_CLICKER" in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_chua_bat_copy_va_khong_bat_khi_dang_RUNNING(seeded_web: Database) -> None:
+    assert "CHUA_BAT_COPY" in _ma_can_lam(seeded_web)
+    seeded_web.set_config("run_mode", "RUNNING")
+    assert "CHUA_BAT_COPY" not in _ma_can_lam(seeded_web)
+
+
+def test_can_lam_bat_chua_dat_mat_khau_dashboard(seeded_web: Database, tmp_path: Path) -> None:
+    """Không mật khẩu thì mọi nút Lưu trả 403 — người dùng phải biết trước khi bấm."""
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    assert "CHUA_DAT_MAT_KHAU" not in _ma_can_lam(seeded_web, dashboard.config)
+
+    trong = MAU_FILE_CONFIG.replace('dashboard_password = "mat-khau-thu-nghiem"',
+                                    'dashboard_password = ""')
+    cfg = parse_config(tomllib.loads(trong), source_path=tmp_path / "config.toml",
+                       project_root=tmp_path)
+    assert "CHUA_DAT_MAT_KHAU" in _ma_can_lam(seeded_web, cfg)
+
+
+async def test_can_lam_di_theo_api_config_va_muc_CHAN_len_truoc(client: httpx.AsyncClient,
+                                                                seeded_web: Database) -> None:
+    """Thứ tự là thứ tự phải sửa: mục chặn việc copy lên trước, bật copy xuống cuối."""
+    r = await client.get("/api/config")
+    can_lam = r.json()["can_lam"]
+
+    assert can_lam, "Mot ban cai chua khai gi phai co viec can lam"
+    muc = [v["muc"] for v in can_lam]
+    assert muc == sorted(muc, key=lambda m: 0 if m == "CHAN" else 1)
+    assert can_lam[-1]["ma"] == "CHUA_BAT_COPY"
+    # Cau chu phai noi LAM GI O DAU, khong chi noi cai gi sai.
+    assert all(v["chu"].strip() for v in can_lam)

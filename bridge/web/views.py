@@ -315,6 +315,118 @@ def _so(gia_tri: Any) -> str:
     return f"{float(gia_tri):.2f}"
 
 
+# =============================================================================================
+# "Cần làm" — cái gì còn thiếu để hệ thống copy được lệnh
+# =============================================================================================
+#
+# Cài đặt nay chỉ còn một lệnh, và mọi cấu hình nghiệp vụ khai trên trang này (D-32). Nghĩa là
+# **một bản cài xong vẫn có thể không copy được lệnh nào** — và trước khối này, cách duy nhất để
+# biết là chạy `kiem-tra.ps1` trên VPS rồi tự đối chiếu chín mục với trí nhớ.
+#
+# Mỗi mục dưới đây là một cách hệ thống hỏng **trong im lặng** đã gặp thật:
+#
+# * Clicker chưa khai số tài khoản hay tiêu đề cửa sổ → clicker thoát mã 4 mỗi 60 giây, dashboard
+#   trông bình thường, không lệnh nào được bấm.
+# * Tiêu đề không chứa số tài khoản → hàng rào chống lái nhầm terminal thành vô hiệu.
+# * Client không có ánh xạ symbol → **mọi** lệnh Master bị bỏ qua, chỉ còn một alert trong danh
+#   sách dài.
+# * Algo Trading tắt phía Client → lệnh đóng dự phòng (D-28) không chạy được.
+#
+# Thứ tự trong danh sách là thứ tự phải sửa: mục chặn nhiều nhất lên trước, `run_mode` xuống cuối
+# vì nó là việc làm **sau khi** mọi thứ khác xanh.
+
+#: Mức của một việc cần làm. `CHAN` = chắc chắn không copy được lệnh; `LUU_Y` = nên sửa.
+MUC_CHAN = "CHAN"
+MUC_LUU_Y = "LUU_Y"
+
+
+def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
+    """Danh sách việc còn thiếu, đã sắp theo thứ tự nên sửa."""
+    viec: list[dict[str, Any]] = []
+
+    def them(muc: str, ma: str, chu: str) -> None:
+        viec.append({"muc": muc, "ma": ma, "chu": chu})
+
+    agents = [dict(r) for r in db.query_all("SELECT * FROM agent ORDER BY role, agent_id")]
+    clients = [dict(r) for r in db.query_all(
+        "SELECT * FROM client_account ORDER BY client_id")]
+
+    if not agents:
+        them(MUC_CHAN, "CHUA_CO_AGENT", UI["can_lam_chua_co_agent"])
+    if not clients:
+        them(MUC_CHAN, "CHUA_CO_CLIENT", UI["can_lam_chua_co_client"])
+
+    # -- clicker: hai ô phải có, và tiêu đề phải chứa số tài khoản ------------------------------
+    for a in agents:
+        if a["role"] != "CLICKER" or not a["enabled"]:
+            continue
+        login = a["account_login"] or 0
+        tieu_de = (a["terminal_title"] or "").strip()
+        if not login or not tieu_de:
+            them(MUC_CHAN, "CLICKER_CHUA_KHAI",
+                 UI["can_lam_clicker_chua_khai"].format(agent_id=a["agent_id"]))
+        elif str(login) not in tieu_de:
+            # Số tài khoản phải nằm trong tiêu đề: đó là thứ clicker đối chiếu với cửa sổ thật ở
+            # MỖI cú bấm. Lệch nhau thì clicker không bấm được gì — hoặc, nếu tiêu đề chung như
+            # "MetaTrader 5", nó khớp cả terminal khác.
+            them(MUC_CHAN, "TIEU_DE_KHONG_CHUA_SO_TK",
+                 UI["can_lam_tieu_de_lech"].format(agent_id=a["agent_id"], login=login,
+                                                   tieu_de=tieu_de))
+
+    # -- agent chưa nối, hoặc terminal mất kết nối sàn -------------------------------------------
+    for a in agents:
+        if not a["enabled"]:
+            continue
+        if a["status"] == "ONLINE":
+            continue
+        them(MUC_CHAN, "AGENT_CHUA_ONLINE",
+             UI["can_lam_agent_chua_online"].format(
+                 agent_id=a["agent_id"], role=label(AGENT_ROLE, a["role"]),
+                 status=label(AGENT_STATUS, a["status"])))
+
+    # -- Algo Trading: lưới cuối của đường đóng (B-09) ------------------------------------------
+    for a in agents:
+        if a["role"] == "CLICKER" or not a["enabled"]:
+            continue
+        # `None` nghĩa là agent chưa báo (EA bản cũ), KHÁC hẳn "biết là tắt". Chỉ nói khi biết.
+        if a["trade_allowed"] == 0:
+            them(MUC_CHAN, "ALGO_TRADING_TAT",
+                 UI["can_lam_algo_tat"].format(agent_id=a["agent_id"]))
+
+    # -- từng Client: ánh xạ symbol và clicker --------------------------------------------------
+    for c in clients:
+        if not c["enabled"]:
+            continue
+        co_anh_xa = db.query_one(
+            "SELECT 1 FROM symbol_map WHERE client_id = ? AND enabled = 1 LIMIT 1",
+            (c["client_id"],))
+        if co_anh_xa is None:
+            them(MUC_CHAN, "THIEU_ANH_XA",
+                 UI["can_lam_thieu_anh_xa"].format(client_id=c["client_id"]))
+        if (c["open_route"] == "UI" or c["close_route"] == "UI") and not c["clicker_agent_id"]:
+            them(MUC_CHAN, "CLIENT_THIEU_CLICKER",
+                 UI["can_lam_client_thieu_clicker"].format(client_id=c["client_id"]))
+
+    # -- đường đóng Master qua giao diện --------------------------------------------------------
+    if (db.get_config("master_close_route", "EA") or "EA").upper() == "UI":
+        clicker_master = (db.get_config("master_clicker_agent_id", "") or "").strip()
+        if not clicker_master or db.get_agent(clicker_master) is None:
+            them(MUC_CHAN, "MASTER_THIEU_CLICKER", UI["can_lam_master_thieu_clicker"])
+
+    # -- mật khẩu dashboard: không có thì mọi nút Lưu bị chặn -----------------------------------
+    if config is not None:
+        mat_khau = str((getattr(config, "security", None) or {}).get("dashboard_password") or "")
+        if not mat_khau.strip():
+            them(MUC_LUU_Y, "CHUA_DAT_MAT_KHAU", UI["can_lam_chua_dat_mat_khau"])
+
+    # -- cuối cùng: bật copy -------------------------------------------------------------------
+    run_mode = db.get_config("run_mode", "PAUSED") or "PAUSED"
+    if run_mode != "RUNNING":
+        them(MUC_LUU_Y, "CHUA_BAT_COPY",
+             UI["can_lam_chua_bat_copy"].format(run_mode=label(RUN_MODE, run_mode)))
+    return viec
+
+
 def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
     """Mọi thứ trang Cấu hình cần, trong một lượt đọc.
 
@@ -345,6 +457,9 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
         # hai Client khác hệ số thì khối CL-02 hiển thị con số của CL-01 — một bảng xem trước
         # nói sai chính là thứ tệ hơn không có bảng nào.
         "preview": {c["client_id"]: xem_truoc_he_so(c["volume_multiplier"]) for c in clients},
+        # Đặt ngay trong endpoint này chứ không tách riêng: người mở trang Cấu hình cần thấy
+        # "còn thiếu gì" **trước** khi cuộn qua tám khối cấu hình.
+        "can_lam": viec_can_lam(db, config),
     }
 
 

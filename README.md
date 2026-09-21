@@ -26,7 +26,7 @@ EA (MQL5) là agent mỏng: báo sự kiện, thực thi lệnh, gửi heartbeat
 
 **[docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md)** — tài liệu cài đặt duy nhất:
 
-- **Phần A** — VPS chưa có hệ thống: cài mới bằng `scripts\cai-dat.ps1` + `scripts\tro-ly.ps1`.
+- **Phần A** — VPS chưa có hệ thống: **một lệnh** (`scripts\cai-dat.ps1`, tự chạy tiếp `tro-ly.ps1`) rồi khai nốt cấu hình trên dashboard — trình duyệt tự mở.
 - **Phần B** — VPS đã có hệ thống: cập nhật (`cai-dat.ps1 -CapNhat`), lùi bản, bật thêm tính năng,
   đổi tài khoản, chuyển VPS, thêm Client, và **gỡ sạch** (`scripts\go-bo.ps1`, B7).
 - **Phần C** — vận hành hằng ngày.

@@ -265,6 +265,41 @@ UI = {
     "cfg_file_readonly": ("Bản cài cũ còn giá trị trong file — file THẮNG database. Xoá "
                           "dòng này trong config.toml để dùng giá trị khai trên dashboard."),
     "cfg_file_saved": "Đã lưu. Khởi động lại dịch vụ CopyBridge để có hiệu lực.",
+
+    # -- khối "Cần làm" ------------------------------------------------------------------------
+    #
+    # Mỗi câu phải nói **làm gì ở đâu**, không chỉ nói cái gì sai: đây là thứ người vận hành đọc
+    # ngay sau khi cài xong, và họ chưa biết trang này có những khối nào.
+    "can_lam_title": "Cần làm",
+    "can_lam_xong": "Đủ rồi — không còn việc nào đang chặn việc copy lệnh.",
+    "can_lam_muc_chan": "CHẶN",
+    "can_lam_muc_luu_y": "Lưu ý",
+    "can_lam_chan_hint": ("Còn mục CHẶN thì hệ thống **không** copy được lệnh nào, dù dashboard "
+                          "trông bình thường."),
+    "can_lam_chua_co_agent": ("Chưa có agent nào. Khối Agent bên dưới → Thêm agent (Master, "
+                              "Client, và một Clicker cho mỗi Client đi đường giao diện)."),
+    "can_lam_chua_co_client": "Chưa có Client nào. Khối Thêm Client bên dưới.",
+    "can_lam_clicker_chua_khai": ("Clicker {agent_id} chưa khai số tài khoản hoặc tiêu đề cửa sổ "
+                                  "terminal. Khối Agent bên dưới. Chưa khai thì clicker thoát và "
+                                  "thử lại mỗi 60 giây — không bấm được lệnh nào."),
+    "can_lam_tieu_de_lech": ("Tiêu đề cửa sổ của {agent_id} là “{tieu_de}” nhưng không chứa số "
+                             "tài khoản {login}. Đó là thứ clicker đối chiếu trước MỖI cú bấm, "
+                             "nên nó sẽ không bấm — hoặc bấm vào terminal khác."),
+    "can_lam_agent_chua_online": ("{agent_id} ({role}) đang {status}. Gắn EA lên chart với token "
+                                  "của agent này, hoặc kiểm clicker đang chạy."),
+    "can_lam_algo_tat": ("Algo Trading đang TẮT trên terminal của {agent_id}. Bật nút Algo "
+                         "Trading trong MT5: đó là lưới cuối của đường đóng lệnh."),
+    "can_lam_thieu_anh_xa": ("Client {client_id} chưa có ánh xạ symbol nào đang bật. Khối Ánh xạ "
+                             "symbol bên dưới. Thiếu là MỌI lệnh Master bị bỏ qua."),
+    "can_lam_client_thieu_clicker": ("Client {client_id} đi đường giao diện nhưng chưa gán "
+                                     "clicker. Xoá rồi tạo lại Client kèm clicker (gán clicker "
+                                     "chỉ đặt được lúc tạo)."),
+    "can_lam_master_thieu_clicker": ("Đường đóng Master đặt UI nhưng chưa khai clicker của "
+                                     "Master. Khối Đường đóng phía Master bên dưới."),
+    "can_lam_chua_dat_mat_khau": ("Chưa đặt mật khẩu dashboard, nên mọi nút Lưu đều bị từ chối. "
+                                  "Khối config.toml bên dưới → security.dashboard_password."),
+    "can_lam_chua_bat_copy": ("Đang ở chế độ {run_mode}. Xong các mục trên thì bấm Bắt đầu copy "
+                              "ở thanh trên cùng."),
     "cfg_clicker_new_title": "Thêm token cho một clicker mới",
     "cfg_clicker_new_hint": ("Mỗi Client đi đường giao diện cần một clicker riêng, và mỗi clicker "
                              "một mục trong config.toml. Đặt tên theo mã Client, ví dụ cl02 cho "

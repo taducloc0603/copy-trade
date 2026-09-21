@@ -194,7 +194,7 @@ món nợ đó đã một lần làm mất token của clicker.
 > Số clicker **không giới hạn** (D-35): mỗi Client đi đường giao diện có một mục `[clicker_<tên>]`
 > riêng và một tác vụ riêng, ví dụ `-TacVuClicker clicker_master,clicker_cl02`.
 >
-> **Không phải chạm vào token.** `scripts\tro-ly.ps1` hỏi một câu ở bước thông số, rồi tự tạo agent,
+> **Không phải chạm vào token.** `scripts\tro-ly.ps1` tự tạo agent,
 > **ghi token thẳng vào `[clicker_master]`** và đăng ký tác vụ — token của cả hai clicker không bao
 > giờ hiện ra màn hình, không bao giờ đi qua dòng lệnh. Token vẫn cần vì Bridge **tìm agent bằng
 > token**: nó là danh tính, không phải thủ tục. Dùng chung một token cho hai clicker thì

@@ -644,3 +644,41 @@ Ràng buộc **không** đổi: hai Client không dùng chung một clicker, và
 của Master (`_clicker_con_trong` trong `ops.py`). Một clicker lái hai terminal là hai hộp thoại
 New Order cùng được điền — và cái hàng rào duy nhất chống lái nhầm terminal là số tài khoản phải
 khớp tiêu đề cửa sổ, kiểm lại ở **mỗi** cú bấm.
+
+
+### D-36 — Cài bằng một lệnh; mọi cấu hình nghiệp vụ khai trên dashboard
+
+D-32 đưa cấu hình nghiệp vụ vào database và cho sửa trên dashboard, nhưng **đường cài đặt vẫn hỏi
+chúng trên console**: trợ lý hỏi ánh xạ symbol, chờ EA lên `ONLINE` tới 5 phút, và in token thô ra
+màn hình. Tức cùng một giá trị có **hai** chỗ khai, và chỗ khó dùng hơn lại là chỗ bắt buộc đi qua
+trước.
+
+Từ nay:
+
+* **`cai-dat.ps1` tự chạy tiếp `tro-ly.ps1 -TuDongDongY`** trên đường cài mới. Năm việc trong khối
+  "BUOC TIEP THEO" phải làm **đúng thứ tự**, một việc cần token vừa hiện một lần, và bỏ sót việc
+  nào thì hệ thống dựng xong vẫn không copy được lệnh nào — hỏng trong im lặng. Một lệnh duy nhất
+  là cách duy nhất không bao giờ sai thứ tự. `-BoQuaTroLy` để quay lại cách cũ.
+* **Trợ lý không hỏi gì về nghiệp vụ nữa**, và bỏ hẳn hai bước chờ EA + hỏi ánh xạ symbol. Cả hai
+  đều cần EA đã gắn xong — việc nằm trong giao diện MT5 — nên hỏi ở đó là dừng script lại hàng
+  phút để chờ một việc nó không làm được.
+* **Token của EA không in ra console.** Lấy trên dashboard: Agent → *Cấp lại token*, hiện một lần
+  ngay trên trang. Một token in ra console là một token nằm trong scrollback của cửa sổ RDP cho
+  tới khi ai đó đóng nó.
+* **Trợ lý mở dashboard trong trình duyệt** ở bước cuối (`-KhongMoDashboard` để tắt), sau khi chờ
+  cổng web thật sự lắng nghe — mở sớm thì trình duyệt báo "không kết nối được" và người dùng kết
+  luận là bản cài hỏng.
+* **`master_close_route = UI` thành mặc định BẬT.** Bật sau đòi đăng ký thêm một Scheduled Task
+  trên VPS, tức đúng cái ma sát vừa bỏ đi; còn tắt nó thì sửa được ngay trên dashboard. An toàn
+  khi chưa khai xong: clicker Master chưa sẵn sàng thì đường đóng **rơi về EA kèm alert** (D-28).
+
+**Cái giá, và cách trả:** bỏ mọi câu hỏi nghĩa là không còn ai bắt người dùng khai ánh xạ symbol —
+mà thiếu nó thì **mọi** lệnh Master bị bỏ qua trong im lặng. Nên cửa chặn chuyển vào dashboard:
+khối **"Cần làm"** ở đầu tab Cấu hình (`views.viec_can_lam`) liệt kê chính xác cái gì còn thiếu,
+mỗi mục nói **làm gì ở đâu**, và mục `CHẶN` nghĩa là hệ thống chưa copy được lệnh nào. Nó bắt: agent
+chưa `ONLINE`, clicker chưa khai số tài khoản/tiêu đề, **tiêu đề không chứa số tài khoản**, Algo
+Trading tắt, Client thiếu ánh xạ symbol, Client đi đường giao diện mà không có clicker, đường đóng
+Master `UI` mà chưa khai clicker, chưa đặt mật khẩu dashboard, và `run_mode` chưa `RUNNING`.
+
+Khối đó **không biến mất khi rỗng** — "không còn việc nào" là thông tin người vận hành cần, và một
+khối thỉnh thoảng mới xuất hiện thì không ai học được chỗ để tìm nó.

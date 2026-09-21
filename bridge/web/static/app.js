@@ -386,6 +386,38 @@ function khoiAgent(el) {
   el.appendChild(box);
 }
 
+// Khoi "Can lam" nam o DAU tab Cau hinh, truoc moi khoi khac. Mot ban cai xong van co the
+// khong copy duoc lenh nao (thieu anh xa symbol, clicker chua khai so tai khoan), va truoc khoi
+// nay cach duy nhat de biet la chay kiem-tra.ps1 tren VPS roi tu doi chieu chin muc voi tri nho.
+//
+// Danh sach trong khong duoc lam khoi bien mat: "khong con viec nao" la thong tin nguoi dung can,
+// va mot khoi thi thoang moi xuat hien thi khong ai hoc duoc cho de tim no.
+function khoiCanLam(el) {
+  const viec = CAU_HINH.can_lam || [];
+  const chan = viec.filter((v) => v.muc === "CHAN");
+  const box = khoi(UI.can_lam_title + (chan.length ? " (" + chan.length + ")" : ""));
+  if (chan.length) box.appendChild(nhan(UI.can_lam_chan_hint, "canh-bao-nho"));
+
+  if (!viec.length) {
+    box.appendChild(nhan(UI.can_lam_xong, "ghi-chu"));
+    el.appendChild(box);
+    return;
+  }
+  const ds = document.createElement("ul");
+  ds.className = "ds-can-lam";
+  for (const v of viec) {
+    const li = document.createElement("li");
+    li.className = v.muc === "CHAN" ? "chan" : "luu-y";
+    const the = document.createElement("span");
+    the.className = "the-muc";
+    the.textContent = v.muc === "CHAN" ? UI.can_lam_muc_chan : UI.can_lam_muc_luu_y;
+    li.append(the, document.createTextNode(" " + v.chu));
+    ds.appendChild(li);
+  }
+  box.appendChild(ds);
+  el.appendChild(box);
+}
+
 function khoiClient(el) {
   for (const c of CAU_HINH.clients) {
     const box = khoi(UI.cfg_client_title + " " + c.client_id);
@@ -705,6 +737,7 @@ async function taiCauHinh() {
   dat("tieu-de-cau-hinh", UI.cfg_title);
   const el = $("noi-dung-cau-hinh");
   el.innerHTML = "";
+  khoiCanLam(el);
   khoiAgent(el);
   khoiClient(el);
   khoiMaster(el);

@@ -3210,3 +3210,40 @@ dong lai thi khoa hien ra dang "(da dat)" — token khong bao gio di ra JSON.
 
 **Con lai:** TEST-33 trong `ACCEPTANCE.md` — bai chay that tren demo voi hai tai khoan demo khac
 nhau. Do la dieu B-06 dang cho; dat (e) va (f) thi TEST-05 va TEST-15 len DEMO.
+
+## Cai bang mot lenh, roi tu mo trinh duyet (2026-09-21)
+
+Yeu cau: "don gian nhat co the, sau do tu mo trinh duyet de nguoi dung tu setting va kiem tra".
+
+D-32 da dua cau hinh nghiep vu vao database va cho sua tren dashboard, nhung duong CAI DAT van hoi
+chung tren console: tro ly hoi anh xa symbol, cho EA len ONLINE toi 5 phut, va in token tho ra man
+hinh. Tuc cung mot gia tri co HAI cho khai, va cho kho dung hon lai la cho bat buoc di qua truoc.
+
+Nay: `cai-dat.ps1` tu chay tiep `tro-ly.ps1 -TuDongDongY` (co `-BoQuaTroLy` de quay lai cach cu),
+tro ly khong hoi gi ve nghiep vu, bo hai buoc cho EA + hoi anh xa symbol, khong in token EA (lay
+tren dashboard: Agent > Cap lai token), va mo dashboard o buoc cuoi sau khi CHO cong web that su
+lang nghe -- mo som thi trinh duyet bao "khong ket noi duoc" va nguoi dung ket luan ban cai hong.
+`master_close_route = UI` thanh mac dinh BAT: bat sau doi dang ky them mot Scheduled Task tren VPS,
+con tat thi sua duoc ngay tren dashboard.
+
+Cai gia phai tra, va cach tra: bo moi cau hoi nghia la khong con ai bat nguoi dung khai anh xa
+symbol -- ma thieu no thi MOI lenh Master bi bo qua trong im lang. Nen cua chan chuyen vao
+dashboard: khoi "Can lam" o dau tab Cau hinh (`views.viec_can_lam`) liet ke chinh xac cai gi con
+thieu, moi muc noi LAM GI O DAU, va muc CHAN nghia la he thong chua copy duoc lenh nao. Khoi do
+khong bien mat khi rong -- "khong con viec nao" la thong tin can, va mot khoi thi thoang moi xuat
+hien thi khong ai hoc duoc cho de tim no.
+
+**Hai lo tu chinh viec do giay to thanh viec chay that:**
+
+1. `hoi_chuoi` KHONG doc `-TuDongDongY` -- chi `hoi_co_khong` doc. Nen luong "mot lenh khong hoi
+   gi" se treo ngay o cau "Magic number", va treo trong im lang vi con tro nam sau mot dong
+   Write-Host khong xuong dong. Bat duoc bang cach trich ba ham hoi dap tu chinh file roi chay voi
+   stdin la mot file rong: co -TuDongDongY thi in ra gia tri da lay va di tiep; khong co thi nem
+   "Het dau vao" -- dung hai hanh vi mong doi, chung minh bang doi chieu chu khong bang doc code.
+2. `buoc_nen` cua tro ly goi lai `cai-dat.ps1` khi thieu `config.toml`, ma `cai-dat.ps1` nay lai
+   goi tro ly o cuoi -- hai script goi nhau khong ngung. Duong binh thuong khong cham vao (venv +
+   config.toml da co nen buoc do in BO QUA), nhung mot nhanh loi hiem thanh vong lap vo han thi
+   khong the de lai. Tro ly nay truyen `-BoQuaTroLy` khi goi cai-dat.
+
+Do giao dien bang Playwright: khoi "Can lam (3)" nam dau tab Cau hinh, muc CHAN vien do co the
+"CHẶN", muc LUU_Y vien cam. 915 test xanh, ruff sach.

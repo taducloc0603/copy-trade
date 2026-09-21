@@ -4,7 +4,7 @@ Tài liệu cài đặt **duy nhất** của dự án. Chọn phần theo tình 
 
 | Tình trạng VPS | Đọc |
 |---|---|
-| **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống) |
+| **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống): **một lệnh**, rồi khai nốt trên dashboard |
 | **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 thêm/tắt/xoá Client · B7 gỡ sạch toàn bộ |
 | Hằng ngày, sau mỗi lần khởi động lại | [Phần C — Vận hành](#phần-c--vận-hành-hằng-ngày) |
 
@@ -37,6 +37,9 @@ Terminal Client + EA ─┘   (dịch vụ Windows)       └─ Clicker Master 
 
 # Phần A — Cài mới trên VPS chưa có hệ thống
 
+**Một lệnh dựng xong hệ thống, rồi trình duyệt tự mở để bạn khai nốt cấu hình.** Ba việc còn lại
+đều nằm trên dashboard và trong MT5 — không có bước nào phải gõ lệnh nữa.
+
 ## A0. Chuẩn bị máy
 
 **Cấu hình:** Windows Server 2019/2022, **4 GB RAM** (mỗi MT5 ~160 MB, Bridge ~50 MB), 2 CPU.
@@ -51,8 +54,9 @@ Terminal Client + EA ─┘   (dịch vụ Windows)       └─ Clicker Master 
    ```
 3. **Tắt khoá màn hình:** Screen saver → bỏ tick *On resume, display logon screen*.
 
-**Hai terminal MT5** (một Master, một Client), đăng nhập sẵn, tài khoản chế độ **Hedging**.
-Cài MT5 thứ hai vào thư mục khác (ví dụ `C:\Program Files\MetaTrader 5 1`).
+**Terminal MT5**: một cho Master, một cho **mỗi** Client (mỗi Client một tài khoản riêng, chế độ
+**Hedging**). Cài mỗi bản vào thư mục khác nhau (`C:\Program Files\MetaTrader 5`,
+`...\MetaTrader 5 1`, …).
 
 Trên **mỗi** terminal:
 - Tools → Options → Expert Advisors: tick **Allow WebRequest for listed URL**, thêm `127.0.0.1`.
@@ -65,15 +69,9 @@ Trên **mỗi** terminal:
 > **MT5 và clicker phải cùng mức quyền.** Cả hai chạy thường, hoặc cả hai "Run as administrator".
 > Lệch nhau thì Windows chặn mọi thao tác của clicker mà không báo lỗi.
 
-Ghi lại **số tài khoản** Master và Client. Xem nhanh bằng:
+## A1. Một lệnh
 
-```powershell
-Get-Process terminal64 | Select-Object Id, MainWindowTitle
-```
-
-Tiêu đề có dạng `538217 - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]` — số đầu là số tài khoản.
-
-## A1. Tải mã nguồn và dựng nền
+PowerShell **Administrator**, đứng ở `C:\`:
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -82,111 +80,81 @@ Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/mai
 & "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge
 ```
 
-Script tự cài Python 3.12 và git nếu thiếu, clone vào `C:\CopyBridge`, tạo `.venv`, cài gói, tạo
-`data\`, `logs\`, tạo `config.toml` (mật khẩu dashboard ngẫu nhiên, in ra một lần), khởi tạo database
-và chạy bộ test (vài phút). Chạy lại bao nhiêu lần cũng được — bước đã xong in `BO QUA`.
-
 Dòng đầu phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không có `(ban ...)` là bạn đang chạy
 một bản script cũ — tải lại.
 
-Tuỳ chọn hay dùng: `-BoQuaTest` (bỏ bộ test), `-BoQuaGit` (thư mục đã chép sẵn qua RDP, không
-clone), `-LamMoiVenv` (tạo lại `.venv`).
+Nó làm liền một mạch: cài Python 3.12 + git nếu thiếu → clone vào `C:\CopyBridge` → dựng `.venv`,
+cài gói → tạo `config.toml` (**mật khẩu dashboard ngẫu nhiên, in ra một lần — chép ngay**) → khởi
+tạo database → chạy bộ test → tạo agent, ghi token clicker vào `config.toml` → tạo `CL-01` với
+đường mở/đóng qua giao diện → đăng ký dịch vụ `CopyBridge` và các Scheduled Task → biên dịch EA →
+**mở dashboard trong trình duyệt**.
 
-## A2. Chạy trợ lý cài đặt
+**Chỉ dừng hỏi đúng một chỗ:** mật khẩu tài khoản Windows, để dịch vụ chạy bằng đúng tài khoản
+autologon. Bỏ trống thì dịch vụ chạy bằng `LocalSystem` (vẫn được).
 
-```powershell
-C:\CopyBridge\scripts\tro-ly.ps1 -ThuMuc C:\CopyBridge
-```
+Chạy lại bao nhiêu lần cũng được — bước nào xong rồi in `BO QUA`.
 
-Trợ lý hỏi xác nhận từng bước, bước đã xong thì bỏ qua. Nó sẽ hỏi:
-
-| Câu hỏi | Trả lời |
+| Tuỳ chọn hay dùng | Ý nghĩa |
 |---|---|
-| Magic number | Enter (`770001`) |
-| Tên agent Master / Client / Clicker | Enter (`AG-MASTER`, `AG-CLIENT`, `AG-CLICKER`) |
-| **Bật đường ĐÓNG phía Master qua giao diện?** | **Có** nếu muốn lệnh đóng trên Master hiện *Placed by manual* (cần clicker thứ hai, terminal Master cũng phải để tab Trade) |
-| Mã client | Enter (`CL-01`) |
+| `-BoQuaTest` | Bỏ bộ test (nhanh hơn vài phút) |
+| `-BoQuaGit` | Thư mục đã chép sẵn qua RDP, không clone |
+| `-BoQuaTroLy` | Chỉ dựng nền rồi dừng, in danh sách việc phải làm tay |
+| `-LamMoiVenv` | Tạo lại `.venv` |
 
-Trợ lý **không hỏi số tài khoản MT5 hay tiêu đề cửa sổ** nữa: EA tự báo số tài khoản của nó lúc kết
-nối, còn của clicker thì khai trên dashboard ở bước A4. Thêm `-TuDongDongY` thì trợ lý lấy hết giá
-trị mặc định và chỉ dừng ở hai chỗ phải làm tay: chép token vào EA, và mật khẩu tài khoản Windows.
+## A2. Ba việc còn lại — làm trên trình duyệt và trong MT5
 
-Rồi nó tự làm theo thứ tự:
+Trình duyệt vừa mở ở `http://127.0.0.1:8080` (mật khẩu in ra ở A1). Vào tab **Cấu hình**. Khối
+**Cần làm** ở đầu trang liệt kê **chính xác** cái gì còn thiếu, và mục `CHẶN` nghĩa là hệ thống
+chưa copy được lệnh nào.
 
-1. Tạo agent và **ghi token clicker thẳng vào `config.toml`** (mục `[clicker]`, `[clicker_master]`).
-2. **In token của `AG-MASTER` và `AG-CLIENT` một lần** — chép lại ngay, dùng ở bước gắn EA.
-3. Tạo client `CL-01` với đường mở và đóng qua giao diện.
-4. Đăng ký dịch vụ `CopyBridge` và các Scheduled Task (hỏi mật khẩu tài khoản autologon — nên nhập).
-   Bridge bắt đầu chạy từ đây, ở `PAUSED`.
-5. Biên dịch hai EA.
-6. **Dừng chờ bạn gắn EA** (A3).
-7. Chờ EA lên `ONLINE`, rồi hỏi **ánh xạ symbol** (Master `XAUUSD` → Client `XAUUSDm`...).
-   Thiếu ánh xạ thì **mọi lệnh Master bị bỏ qua im lặng**.
-8. Chạy `kiem-tra.ps1`.
+**1. Lấy token và gắn EA.** Khối **Agent** → *Cấp lại token* cho `AG-MASTER` và `AG-CLIENT`; token
+hiện **một lần** ngay trên trang. Rồi trong MT5:
 
-> **Token hiện đúng một lần**, không vào log. Mất thì cấp lại:
-> `.\.venv\Scripts\python.exe -m bridge.admin cap-token AG-MASTER` rồi dán vào EA.
-> Không bao giờ đưa token clicker lên dòng lệnh.
-
-## A3. Gắn EA (làm tay, trong lúc trợ lý chờ)
-
-1. Chép `ea\CopyBridgeMaster.ex5` vào `MQL5\Experts` của terminal **Master**,
-   `ea\CopyBridgeClient.ex5` vào terminal **Client** (File → Open Data Folder).
-2. Kéo EA lên **đúng MỘT chart** mỗi terminal. Client: chart của symbol đang copy.
-3. Tham số: `AgentToken` = token vừa in; `BridgeHost` = `127.0.0.1`; `BridgePort` = `8787`.
-   Tab Common: tick **Allow Algo Trading**.
-4. Tab **Experts** phải hiện `CopyBridgeMaster khoi dong ...` / `CopyBridgeClient khoi dong ...`.
+- Chép `C:\CopyBridge\ea\CopyBridgeMaster.ex5` vào `MQL5\Experts` của terminal **Master**,
+  `CopyBridgeClient.ex5` vào terminal **Client** (File → Open Data Folder).
+- Kéo EA lên **đúng MỘT chart** mỗi terminal. `AgentToken` = token vừa lấy,
+  `BridgeHost` = `127.0.0.1`, `BridgePort` = `8787`. Tab Common: tick **Allow Algo Trading**.
+- Tab **Experts** phải hiện `CopyBridgeMaster khoi dong ...` / `CopyBridgeClient khoi dong ...`.
 
 > **Hai chart cùng gắn EA = hai kết nối cùng token đá nhau liên tục** (đã gây 388 nghìn alert
 > 12→15/09). Kiểm menu **Window** và tab Experts: tên chart trong ngoặc chỉ được có **một**.
 
-Quay lại cửa sổ trợ lý, bấm Enter để đi tiếp.
-
-## A4. Cấu hình trên dashboard
-
-Mở `http://127.0.0.1:8080` (mật khẩu in ra ở bước A1, và nằm trong `config.toml`) → tab **Cấu hình**.
-
-**Bắt buộc — khối Agent:** khai **số tài khoản** và **tiêu đề cửa sổ terminal** cho từng clicker.
+**2. Khai clicker.** Khối **Agent** → với **từng** clicker, khai **số tài khoản** và **tiêu đề cửa
+sổ terminal**:
 
 | Clicker | Số tài khoản | Tiêu đề cửa sổ |
 |---|---|---|
 | `AG-CLICKER` | tài khoản **Client** | thường chính là số tài khoản Client |
-| `AG-CLICKER-MASTER` (nếu bật) | tài khoản **Master** | thường chính là số tài khoản Master |
+| `AG-CLICKER-MASTER` | tài khoản **Master** | thường chính là số tài khoản Master |
 
 Tiêu đề **phải chứa số tài khoản** — cửa sổ MT5 mở đầu tiêu đề bằng số tài khoản, và đó là thứ
-clicker đối chiếu trước khi bấm. Đừng dùng chuỗi chung như `MetaTrader 5`: nó khớp cả hai terminal.
-Bấm Lưu xong, clicker tự nối lại trong vài giây; chưa khai thì clicker **không chạy** (thoát mã 4 và
+clicker đối chiếu trước **mỗi** cú bấm. Đừng dùng chuỗi chung như `MetaTrader 5`: nó khớp cả hai
+terminal. Khối **Cần làm** bắt cả hai lỗi này. Chưa khai thì clicker **không chạy** (thoát mã 4 và
 thử lại mỗi 60 giây).
 
-**Bắt buộc — khối Ánh xạ symbol:** khai symbol Master ứng với symbol nào phía Client
-(`XAUUSD` → `XAUUSDm`). Dashboard kiểm với sàn trước khi lưu. **Thiếu ánh xạ là mọi lệnh Master bị
-bỏ qua trong im lặng.**
+**3. Ánh xạ symbol.** Khối **Ánh xạ symbol**: symbol Master ứng với symbol nào phía Client
+(`XAUUSD` → `XAUUSDm`). Dashboard kiểm với sàn trước khi lưu — nên nó vừa khai báo vừa nghiệm thu.
+**Thiếu ánh xạ là mọi lệnh Master bị bỏ qua trong im lặng.** Cần EA Client đang chạy và symbol đã
+kéo vào Market Watch, nên làm sau việc 1.
 
-**Khối Client — tuỳ chọn:** chiều copy (`OPPOSITE` = Master BUY thì Client SELL), hệ số volume,
-đường mở/đóng lệnh, và *Cho phép Client đóng ngược Master*.
+**Tuỳ chọn, cùng trang:** chiều copy (`OPPOSITE` = Master BUY thì Client SELL), hệ số volume,
+đường mở/đóng lệnh, *Cho phép Client đóng ngược Master* (mặc định **tắt**), và *Đường đóng phía
+Master* (A1 đặt sẵn **UI** để deal đóng trên Master mang `CLIENT`; đổi về EA được).
 
 - **Mở lệnh chỉ đi một chiều Master → Client.** Mở tay ở Client không làm Master vào lệnh.
 - **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi
-  *Cho phép Client đóng ngược Master* được bật (mặc định **tắt**).
+  *Cho phép Client đóng ngược Master* được bật.
 - Đổi cấu hình chỉ áp cho **lệnh mới**; cặp đang mở giữ tỷ lệ cũ.
 
-Làm bằng dòng lệnh cũng được, cùng một bộ ràng buộc:
+## A3. Bật copy
+
+Khối **Cần làm** hết mục `CHẶN` là xong phần khai. Bấm **Bắt đầu copy** trên thanh trên cùng —
+hoặc kiểm bằng dòng lệnh trước cho chắc:
 
 ```powershell
-$py = ".\.venv\Scripts\python.exe"
-& $py -m bridge.admin cau-hinh-client CL-01                              # xem cấu hình hiện tại
-& $py -m bridge.admin cau-hinh-client CL-01 --copy-mode OPPOSITE --multiplier 1.0
-& $py -m bridge.admin cau-hinh-client CL-01 --can-close-master bat
-& $py -m bridge.admin sua-agent AG-CLICKER --login <so-tk-Client> --terminal-title "<so-tk-Client>"
-& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
-```
-
-## A5. Kiểm tra và bật copy
-
-```powershell
+Set-Location C:\CopyBridge
 .\scripts\kiem-tra.ps1
-& $py -m bridge.admin liet-ke        # 4 (hoặc 3) agent ONLINE
-& $py -m bridge.admin run-mode RUNNING
+.\.venv\Scripts\python.exe -m bridge.admin liet-ke        # cac agent ONLINE
 ```
 
 Thử trên **demo**, volume nhỏ nhất:
@@ -195,11 +163,11 @@ Thử trên **demo**, volume nhỏ nhất:
 |---|---|
 | Mở 1 lệnh ở **Master** | Client có lệnh tương ứng trong ~1 giây, đúng chiều theo `copy_mode` |
 | Đóng lệnh đó ở **Master** | Client đóng theo |
-| Mở lại, đóng ở **Client** (khi `can-close-master bat`) | Master đóng theo; bật đường đóng Master UI thì deal hiện *Placed by manual* |
-| `& $py -m bridge.admin kiem-reason` | `DAT` |
-| `& $py -m bridge.admin kiem-dong-sai` | `[A] [B] [C]` đều 0 |
+| Mở lại, đóng ở **Client** (khi bật *đóng ngược Master*) | Master đóng theo; deal Master hiện *Placed by manual* |
+| `bridge.admin kiem-reason` | `DAT` |
+| `bridge.admin kiem-dong-sai` | `[A] [B] [C]` đều 0 |
 
-Xong phần A. Từ giờ theo **Phần C** mỗi lần đăng nhập.
+Thêm Client thứ hai: mục **B6**. Xong phần A — từ giờ theo **Phần C** mỗi lần đăng nhập.
 
 ---
 

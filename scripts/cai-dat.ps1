@@ -38,7 +38,10 @@ param(
     # Bo test khong duoc phep chay vo han: mot test TREO thi lan cai ket cung, khong bao
     # gio tu thoat, va nguoi cai khong phan biet duoc "dang chay" voi "da treo".
     [int] $GiayChoTest = 900,
-    [switch] $KhongCaiPython
+    [switch] $KhongCaiPython,
+    # Dung lai sau khi dung nen, in khoi "BUOC TIEP THEO" nhu truoc thay vi tu chay tro ly.
+    # Dung khi ban muon lam tung buoc bang tay, hoac khi may nay chi dung de dung ma nguon.
+    [switch] $BoQuaTroLy
 )
 
 Set-StrictMode -Version Latest
@@ -53,7 +56,7 @@ $ErrorActionPreference = 'Continue'
 # dong nay thi no ra ky tu rac trong console dung code page he thong.
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
-$script:TongBuoc = 11
+$script:TongBuoc = 12
 # Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
 # Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
 # nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
@@ -529,6 +532,34 @@ function cho_clicker_moi([int[]] $pidCu) {
               "Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName $_" }) -join '; '))
 }
 
+# Cai moi thi chay tiep tro ly NGAY o day, thay vi in ra sau lenh de nguoi dung go tay.
+#
+# Ly do: nam viec trong khoi "BUOC TIEP THEO" phai lam DUNG THU TU, mot viec can token vua hien
+# mot lan, va bo sot bat ky viec nao thi he thong dung xong van khong copy duoc lenh nao -- hong
+# trong im lang. Mot lenh duy nhat la cach duy nhat khong bao gio sai thu tu.
+#
+# `-TuDongDongY` nen tro ly khong hoi gi ve nghiep vu; phan do khai tren dashboard, va tro ly mo
+# san trinh duyet o buoc cuoi.
+function chay_tro_ly() {
+    buoc_moi "Tro ly cai dat"
+    if ($CapNhat)     { bo_qua "-CapNhat: khong dung lai he thong dang chay"; return $false }
+    if ($BoQuaTroLy)  { bo_qua "-BoQuaTroLy"; return $false }
+
+    $troLy = Join-Path $ThuMuc "scripts\tro-ly.ps1"
+    if (-not (Test-Path $troLy)) { canh "khong thay $troLy"; return $false }
+    if (-not (la_admin)) {
+        # Khong nem: nen da dung xong that. Nhung tro ly can quyen Administrator o buoc dich vu,
+        # nen noi ro va de nguoi dung chay lai dung mot lenh.
+        canh "khong co quyen Administrator, khong chay duoc tro ly (buoc dich vu can quyen do)."
+        canh "Mo lai PowerShell bang 'Run as administrator' roi chay: $troLy -ThuMuc `"$ThuMuc`""
+        return $false
+    }
+
+    & $troLy -ThuMuc $ThuMuc -TenDichVu $TenDichVu -TuDongDongY
+    if ($LASTEXITCODE -ne 0) { canh "tro-ly.ps1 tra ve $LASTEXITCODE -- doc phan tren"; return $false }
+    return $true
+}
+
 function sau_khi_cap_nhat([string] $commitCu) {
     buoc_moi "Ket thuc cap nhat"
     if (-not $CapNhat) { bo_qua "khong phai -CapNhat"; return }
@@ -664,7 +695,9 @@ try {
     bao_dam_config $venvPy
     khoi_tao_va_kiem $venvPy
     sau_khi_cap_nhat $commitCu
-    in_buoc_tiep
+    # Tro ly da in khoi ket cua rieng no (ba viec con lai, canh-bao.txt) va da mo dashboard, nen
+    # in tiep khoi "BUOC TIEP THEO" nam viec nua chi lam nguoi doc khong biet phai theo cai nao.
+    if (-not (chay_tro_ly)) { in_buoc_tiep }
     exit 0
 } catch {
     Write-Host ""

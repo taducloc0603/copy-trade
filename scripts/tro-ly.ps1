@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Dan qua toan bo viec cai dat MT5 Copy Bridge, hoi xac nhan truoc tung buoc.
+    Dung xong he thong bang MOT lenh, roi mo dashboard de nguoi dung tu khai cau hinh.
 
 .DESCRIPTION
     cai-dat.ps1 dung nguoi dung lai o mot khoi "BUOC TIEP THEO" gom nam viec, moi viec vai lenh
@@ -12,8 +12,16 @@
     kiem-tra.ps1) chu khong chep lai viec cua chung. Moi buoc idempotent: chay lai bao nhieu lan
     cung duoc, buoc nao xong roi se in BO QUA.
 
-    Co dung hai cho phai dung lai cho con nguoi, va ca hai deu khong tu dong hoa duoc:
-    gan EA len chart trong giao dien MT5, va bam RUNNING.
+    KHONG hoi mot cau nao ve NGHIEP VU. Anh xa symbol, chieu copy, he so, duong dong Master --
+    tat ca khai tren dashboard (D-32), va khoi "Can lam" o dau tab Cau hinh liet ke chinh xac cai
+    gi con thieu. Hoi tren console nhung thu do la bat nguoi ta tra loi mot lan, roi ve sau sua o
+    mot cho khac -- hai giao dien cho cung mot viec.
+
+    Cung KHONG in token cua EA ra man hinh. Lay chung tren dashboard: tab Cau hinh > Agent >
+    Cap lai token, hien mot lan ngay tren trang. Mot token in ra console la mot token nam trong
+    scrollback cua cua so RDP cho toi khi ai do dong no.
+
+    Con dung mot viec phai lam bang tay va no nam trong giao dien MT5: gan EA len chart.
 
 .EXAMPLE
     .\tro-ly.ps1
@@ -21,15 +29,18 @@
 
 .EXAMPLE
     .\tro-ly.ps1 -ThuMuc D:\CopyBridge -TuDongDongY
-    Khong hoi xac nhan tung buoc, chi hoi nhung gia tri bat buoc phai co.
+    Khong hoi mot cau nao. Chi dung o mot cho: mat khau tai khoan Windows cho dich vu.
+    Day la duong ma cai-dat.ps1 goi.
 #>
 [CmdletBinding()]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     [string] $TenDichVu = "CopyBridge",
-    [int]    $GiayChoEA = 300,
     [switch] $TuDongDongY,
-    [switch] $BoQuaDichVu
+    [switch] $BoQuaDichVu,
+    # Mo dashboard trong trinh duyet o buoc cuoi. Mac dinh CO: cai xong la sang ngay cho lam viec
+    # tiep theo, thay vi bat nguoi ta tu go dia chi va tu doan phai khai gi.
+    [switch] $KhongMoDashboard
 )
 
 Set-StrictMode -Version Latest
@@ -39,7 +50,7 @@ $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
 $script:PhienBan = "2026-09-08"
-$script:TongBuoc = 13
+$script:TongBuoc = 10
 $script:BuocHienTai = 0
 
 function buoc_moi([string] $ten) {
@@ -88,6 +99,21 @@ function hoi_co_khong([string] $cauHoi, [bool] $macDinh = $true) {
 
 function hoi_chuoi([string] $cauHoi, [string] $macDinh = "", [bool] $choPhepRong = $false) {
     $nhan = if ($macDinh) { "  $cauHoi [$macDinh]: " } else { "  ${cauHoi}: " }
+
+    # -TuDongDongY phai tra loi CA cau hoi gia tri, khong chi cau hoi co/khong. Truoc ban nay chi
+    # `hoi_co_khong` doc cong tac do, nen mot lan chay "khong hoi gi" van dung lai o "Magic
+    # number" va cho go tay -- tuc luong cai MOT LENH treo ngay o buoc hai, va treo trong im lang
+    # vi con tro nam sau mot dong Write-Host khong xuong dong.
+    if ($TuDongDongY) {
+        if ($macDinh) {
+            # IN ra gia tri da lay: mot lua chon im lang la mot lua chon khong ai kiem lai duoc.
+            Write-Host ($nhan + $macDinh + "   (tu dong)") -ForegroundColor DarkGray
+            return $macDinh
+        }
+        if ($choPhepRong) { return "" }
+        throw "-TuDongDongY nhung cau hoi '$cauHoi' khong co gia tri mac dinh. Chay lai khong kem -TuDongDongY."
+    }
+
     while ($true) {
         Write-Host $nhan -ForegroundColor Yellow -NoNewline
         $tl = (doc_dong).Trim()
@@ -104,20 +130,6 @@ function hoi_so([string] $cauHoi, [int] $macDinh = 0) {
         if ([int]::TryParse($tl, [ref] $so)) { return $so }
         canh "'$tl' khong phai mot so."
     }
-}
-
-function cho_den_khi([string] $moTa, [scriptblock] $kiemTra, [int] $giay) {
-    # Vong cho co gio, khong treo vinh vien: buoc nay doi mot viec lam trong giao dien MT5, va
-    # nguoi dung co the dang ket o do chu khong phai dang cho script.
-    Write-Host "        Dang cho $moTa (toi da $giay giay, Ctrl+C de dung)..." -ForegroundColor DarkGray
-    $het = (Get-Date).AddSeconds($giay)
-    while ((Get-Date) -lt $het) {
-        if (& $kiemTra) { return $true }
-        Start-Sleep -Seconds 5
-        Write-Host "." -ForegroundColor DarkGray -NoNewline
-    }
-    Write-Host ""
-    return $false
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -208,7 +220,9 @@ function buoc_nen() {
     if (-not (hoi_co_khong "Chay cai-dat.ps1 de dung nen truoc?")) {
         throw "Khong co nen thi khong lam tiep duoc. Chay scripts\cai-dat.ps1 roi quay lai."
     }
-    & $caiDat -ThuMuc $ThuMuc
+    # -BoQuaTroLy la BAT BUOC o day, khong phai cho gon: cai-dat.ps1 tu chay tiep tro ly o cuoi
+    # duong cai moi (D-36), nen thieu co nay thi hai script goi nhau khong ngung.
+    & $caiDat -ThuMuc $ThuMuc -BoQuaTroLy
     if ($LASTEXITCODE -ne 0) { throw "cai-dat.ps1 that bai. Xem thong bao o tren." }
     if (-not (Test-Path $script:VenvPy)) { throw "cai-dat.ps1 chay xong nhung khong thay $script:VenvPy." }
     ok "nen da san sang"
@@ -278,7 +292,14 @@ function buoc_thong_so() {
         "Token cua clicker nay cung duoc ghi THANG vao config.toml, khong hien ra man hinh.",
         "So tai khoan va tieu de cua so cua ca hai clicker khai tren dashboard sau khi cai xong."
     )
-    $script:BatDongMaster = hoi_co_khong "Bat duong DONG phia Master qua giao dien?" $false
+    # Mac dinh CO. Duong nay la ly do phase 12 ton tai: deal dong phia Master mang
+    # "Placed by manual" thay vi dau vet cua EA. Tat no la mot lua chon, va lua chon do sua duoc
+    # tren dashboard (khoi Duong dong phia Master) -- con BAT no ve sau thi phai dang ky them mot
+    # Scheduled Task tren VPS, tuc dung cai ma sat luong cai mot lenh vua bo di.
+    #
+    # An toan khi chua khai xong: clicker Master chua san sang thi duong dong ROI VE EA kem alert
+    # (D-28), khong phai khong dong duoc.
+    $script:BatDongMaster = hoi_co_khong "Bat duong DONG phia Master qua giao dien?" $true
     if ($script:BatDongMaster) {
         $script:IdClickerMaster = hoi_chuoi "Ten agent Clicker Master" "AG-CLICKER-MASTER"
     }
@@ -380,8 +401,9 @@ function buoc_token() {
     buoc_moi "Token"
     giai_thich @(
         "Token cua CLICKER duoc ghi THANG vao config.toml, khong hien ra man hinh.",
-        "Hai token con lai BUOC PHAI hien ra vi ban phai go chung vao tham so EA trong MT5.",
-        "Token tho chi hien DUNG MOT LAN va khong doc lai duoc. Mat thi phai cap lai."
+        "Token cua EA thi LAY TREN DASHBOARD: tab Cau hinh > Agent > Cap lai token.",
+        "Khong in ra day: mot token in ra console la mot token nam trong scrollback cua cua so",
+        "RDP cho toi khi ai do dong no, va con nam trong lich su cuon cua Terminal."
     )
 
     # Token clicker di thang vao config.toml. Khong in ra man hinh, khong qua dong lenh: dong
@@ -408,27 +430,15 @@ function buoc_token() {
         ok "token cua $($script:IdClickerMaster) da ghi vao config.toml (khong hien ra man hinh)"
     }
 
-    # Hai token con lai BUOC PHAI hien ra: chung duoc go vao tham so EA trong giao dien MT5,
-    # khong co duong nao khac.
+    # Token cua EA KHONG in ra day. Token vua sinh luc tao agent bi bo di, va nguoi dung lay mot
+    # token moi tren dashboard (Agent > Cap lai token) roi dan vao EA. Doi mot token la viec binh
+    # thuong: EA dang chay se rot cho toi khi go token moi, ma o day chua co EA nao chay.
     if ($script:TokenMaster -or $script:TokenClient) {
-        Write-Host ""
-        tach
-        Write-Host " TOKEN -- CHI HIEN MOT LAN, CHEP NGAY BAY GIO" -ForegroundColor Yellow
-        tach
-        if ($script:TokenMaster) {
-            Write-Host " $($script:IdMaster) (tham so AgentToken cua EA Master):" -ForegroundColor Yellow
-            Write-Host "   $($script:TokenMaster)" -ForegroundColor White
-        }
-        if ($script:TokenClient) {
-            Write-Host " $($script:IdClient) (tham so AgentToken cua EA Client):" -ForegroundColor Yellow
-            Write-Host "   $($script:TokenClient)" -ForegroundColor White
-        }
-        tach
-        Write-Host ""
-        Write-Host "  Da chep hai token vao cho an toan chua? Enter de di tiep " -ForegroundColor Yellow -NoNewline
-        [void] (Read-Host)
+        $script:TokenMaster = $null
+        $script:TokenClient = $null
+        ok "da tao agent cho EA -- lay token tren dashboard (tab Cau hinh > Agent > Cap lai token)"
     } else {
-        bo_qua "khong co token moi"
+        bo_qua "khong co agent EA moi"
     }
 }
 
@@ -469,7 +479,7 @@ function buoc_client() {
 }
 
 # ---------------------------------------------------------------------------------------------
-# B6. Bien dich EA
+# B6. Duong DONG phia Master
 # ---------------------------------------------------------------------------------------------
 function buoc_dong_master() {
     buoc_moi "Duong DONG phia Master"
@@ -533,45 +543,12 @@ function buoc_bien_dich() {
 # ---------------------------------------------------------------------------------------------
 # B7 + B8. Gan EA (tay) roi cho no len ONLINE
 # ---------------------------------------------------------------------------------------------
-function buoc_gan_ea() {
-    buoc_moi "Gan EA len chart -- VIEC NAY PHAI LAM BANG TAY"
-    giai_thich @(
-        "Gan EA la buoc duy nhat trong ca quy trinh khong tu dong hoa duoc: no nam trong",
-        "giao dien MT5. Lam theo dung nam viec duoi day roi Enter."
-    )
-    Write-Host @"
-
-        Script khong bam ho duoc phan nay. Trong tung terminal MT5:
-
-          1. Chep ea\*.ex5 vao MQL5\Experts cua terminal do
-             (File > Open Data Folder trong MT5).
-          2. Keo EA len chart: Master len terminal Master, Client len terminal Client.
-          3. Dien AgentToken bang token da hien o buoc 4.
-             BridgeHost = 127.0.0.1, BridgePort = 8787.
-          4. Bat nut Algo Trading tren CA HAI terminal.
-
-        Bien dich lai roi thi PHAI GO EA KHOI CHART ROI GAN LAI. Doi khung thoi gian
-        KHONG lam MT5 doc lai .ex5 tu dia.
-"@ -ForegroundColor Gray
-    Write-Host ""
-    Write-Host "  Gan xong ca hai EA chua? Enter de di tiep " -ForegroundColor Yellow -NoNewline
-    [void] (Read-Host)
-}
-
-function agent_online([string] $id) {
-    $kq = admin @('liet-ke')
-    foreach ($d in $kq.ra) {
-        if ($d -match ("^" + [regex]::Escape($id) + "\s+\S+\s+ONLINE")) { return $true }
-    }
-    return $false
-}
-
 # Hoi chinh Bridge xem no dang nghe cong nao, khong tu parse TOML trong PowerShell -- giong het
 # cach `doc_cau_hinh` cua kiem-tra.ps1 lam.
-function cong_bridge() {
+function cong_theo_khoa([string] $khoa) {
     Push-Location $ThuMuc
     try {
-        $ra = & $script:VenvPy -c "from bridge.config import load_config; print(load_config().bridge.port)" 2>$null
+        $ra = & $script:VenvPy -c "from bridge.config import load_config; print(load_config().bridge.$khoa)" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
         $p = 0
         if ([int]::TryParse("$ra".Trim(), [ref] $p)) { return $p }
@@ -579,76 +556,22 @@ function cong_bridge() {
     } finally { Pop-Location }
 }
 
-function bridge_dang_nghe() {
-    $cong = cong_bridge
-    if ($null -eq $cong) { return $false }
+function cong_bridge()  { return (cong_theo_khoa "port") }
+function cong_web()     { return (cong_theo_khoa "web_port") }
+
+function dang_nghe([int] $cong) {
     return $null -ne (Get-NetTCPConnection -State Listen -LocalPort $cong -ErrorAction SilentlyContinue)
 }
 
-function buoc_cho_ea() {
-    buoc_moi "Cho EA ket noi"
-    giai_thich @(
-        "Doi hai EA bat tay voi Bridge va len trang thai ONLINE.",
-        "Kiem cong truoc de phan biet `"Bridge chua chay`" voi `"loi phia EA`" -- hai the that bai",
-        "khac han nhau nhung nhin giong nhau neu khong kiem."
-    )
-    if ((agent_online $script:IdMaster) -and (agent_online $script:IdClient)) {
-        bo_qua "ca hai EA da ONLINE"; return $true
+# Cho dashboard len TRUOC khi mo trinh duyet. Mo som thi trinh duyet bao "khong ket noi duoc" va
+# nguoi dung ket luan la ban cai hong, trong khi dich vu chi dang khoi dong.
+function cho_dashboard([int] $cong, [int] $giay = 30) {
+    $han = (Get-Date).AddSeconds($giay)
+    while ((Get-Date) -lt $han) {
+        if (dang_nghe $cong) { return $true }
+        Start-Sleep -Seconds 2
     }
-
-    # Phan biet dut khoat hai the that bai. Khong co phep kiem nay thi ca hai deu hien ra giong
-    # nhau -- "khong thay EA" -- va nguoi dung di soi token voi Algo Trading trong khi that ra
-    # chua co ai nghe cong.
-    if (-not (bridge_dang_nghe)) {
-        $cong = cong_bridge
-        canh "BRIDGE CHUA CHAY: khong ai nghe cong $cong. EA co gan dung den may cung khong len duoc."
-        canh "Sua bang mot trong hai duong:"
-        canh "  1. Dang ky dich vu: $ThuMuc\scripts\tao-dich-vu.ps1 -ThuMuc `"$ThuMuc`""
-        canh "  2. Chay tay o cua so khac: $ThuMuc\.venv\Scripts\python.exe -m bridge"
-        return (hoi_co_khong "Di tiep du Bridge chua chay? (anh xa symbol se that bai)" $false)
-    }
-    ok "Bridge dang nghe cong $(cong_bridge)"
-
-    $len = cho_den_khi "$($script:IdMaster) va $($script:IdClient) len ONLINE" {
-        (agent_online $script:IdMaster) -and (agent_online $script:IdClient)
-    } $GiayChoEA
-    if ($len) { ok "ca hai EA da ONLINE"; return $true }
-
-    canh "Bridge dang chay nhung EA chua len. Loi nam o phia EA: chua gan EA len chart, sai"
-    canh "AgentToken, sai BridgeHost/BridgePort, hoac chua bat Algo Trading. Xem logs\bridge.log."
-    [void] (admin_in @('liet-ke'))
-    return (hoi_co_khong "Di tiep du chua thay EA? (anh xa symbol se that bai)" $false)
-}
-
-# ---------------------------------------------------------------------------------------------
-# B9. Anh xa symbol
-# ---------------------------------------------------------------------------------------------
-function buoc_anh_xa() {
-    buoc_moi "Anh xa symbol"
-    giai_thich @(
-        "Khai bao symbol ben Master ung voi symbol nao ben Client. Hai san KHONG mac dinh dung",
-        "cung ten (XAUUSD voi XAUUSDm), nen phai khai tuong minh chu khong doan.",
-        "Lenh kiem symbol co that tren san Client truoc khi luu, nen no vua khai bao vua nghiem thu."
-    )
-    Write-Host "        THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang." -ForegroundColor Yellow
-    $kq = admin @('anh-xa-symbol', $script:IdClientAcc)
-    if ($kq.ma -eq 0) {
-        bo_qua "da co anh xa"
-        $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor DarkGray }
-        if (-not (hoi_co_khong "Them mot anh xa nua?" $false)) { return }
-    }
-
-    while ($true) {
-        $mS = hoi_chuoi "Symbol phia Master (Enter de dung)" "" $true
-        if (-not $mS) { break }
-        $cS = hoi_chuoi "Symbol tuong ung phia Client" $mS
-        # Lenh nay kiem symbol co that tren san Client truoc khi luu, nen no vua la buoc khai bao
-        # vua la buoc nghiem thu.
-        $ma = admin_in @('anh-xa-symbol', $script:IdClientAcc, $mS, '--client-symbol', $cS)
-        if ($ma -eq 0) { ok "$mS -> $cS" }
-        else { canh "khong luu duoc. Kiem EA Client dang chay va symbol da vao Market Watch chua." }
-        if (-not (hoi_co_khong "Them anh xa nua?" $false)) { break }
-    }
+    return $false
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -718,32 +641,41 @@ function buoc_kiem_tra() {
 # B12. Ket
 # ---------------------------------------------------------------------------------------------
 function buoc_ket() {
-    buoc_moi "Xong"
+    buoc_moi "Xong -- con ba viec, lam het tren trinh duyet va trong MT5"
+
+    $congWeb = cong_web
+    if ($null -eq $congWeb) { $congWeb = 8080 }
+    $diaChi = "http://127.0.0.1:$congWeb"
+
     Write-Host ""
     tach
-    Write-Host " CON DUNG MOT VIEC, VA NO PHAI LAM BANG TAY" -ForegroundColor Yellow
+    Write-Host " HE THONG DA DUNG XONG. CON BA VIEC, VA CHUNG NAM O HAI CHO:" -ForegroundColor Yellow
     tach
     Write-Host @"
- Bridge LUON khoi dong o PAUSED, ke ca luc may tu bat lai 3 gio sang. Day la
- chu dich. Dich vu tu bat lai KHONG co nghia la he thong dang copy lenh.
 
- TRUOC TIEN, mo dashboard http://127.0.0.1:8080 > tab Cau hinh va khai:
-   - Agent: so tai khoan MT5 va tieu de cua so terminal cho TUNG clicker.
-     Clicker khong lai duoc terminal nao khi hai o nay con trong (no thoat va
-     thu lai moi 60 giay cho toi khi co).
-     Tieu de phai chua so tai khoan: do la thu clicker doi chieu truoc khi bam.
-   - Anh xa symbol, neu buoc anh xa o tren bi bo qua.
-   Sua cau hinh copy (chieu, he so, duong mo/dong) cung o trang nay.
+  Tren dashboard ($diaChi -- tab Cau hinh):
 
- Bat theo DUNG THU TU BA BUOC:
-   1. De backlog trong outbox cua EA chay het vao va duoc ghi nhan IGNORED.
-   2. Kiem canary cua clicker XANH tren dashboard http://127.0.0.1:8080
-   3. Cho 0 event PENDING, roi moi dat RUNNING:
-        .venv\Scripts\python.exe -m bridge.admin run-mode RUNNING
+    1. Khoi Agent > Cap lai token cho AG-MASTER va AG-CLIENT. Token hien MOT LAN
+       ngay tren trang; dan vao tham so AgentToken cua EA tuong ung.
+    2. Khoi Agent > khai SO TAI KHOAN va TIEU DE CUA SO cho tung clicker.
+       Tieu de phai chua so tai khoan: do la thu clicker doi chieu truoc MOI cu bam.
+    3. Khoi Anh xa symbol > khai symbol Master ung voi symbol nao ben Client.
 
- Moi lan dang nhap VPS:  .\scripts\kiem-tra.ps1
-"@
-    Write-Host ""
+  Trong MT5 (viec duy nhat khong tu dong hoa duoc):
+
+    - Chep ea\*.ex5 vao MQL5\Experts cua tung terminal (File > Open Data Folder),
+      keo EA len DUNG MOT chart, dien AgentToken vua lay, BridgeHost = 127.0.0.1,
+      BridgePort = $(cong_bridge).
+    - Bat nut Algo Trading, va mo Toolbox (Ctrl+T) o tab Trade.
+
+  Khoi "Can lam" o dau tab Cau hinh liet ke chinh xac cai gi con thieu, va no la
+  thu quyet dinh khi nao duoc bam "Bat dau copy" -- khong phai tri nho cua ban.
+  Con muc CHAN nao thi he thong KHONG copy duoc lenh nao.
+
+  Moi lan dang nhap VPS:  $ThuMuc\scripts\kiem-tra.ps1
+
+"@ -ForegroundColor Gray
+
     $canhBao = @(
         (Join-Path $PSScriptRoot "canh-bao.txt"),
         (Join-Path $ThuMuc "scripts\canh-bao.txt")
@@ -753,6 +685,21 @@ function buoc_ket() {
     } else {
         canh "Khong tim thay canh-bao.txt. Doc docs\CAI-DAT-VPS.md muc 'Nhung gi script KHONG lam duoc'."
     }
+
+    if ($KhongMoDashboard) { bo_qua "-KhongMoDashboard: tu mo $diaChi"; return }
+    Write-Host ""
+    if (-not (cho_dashboard $congWeb)) {
+        canh "dashboard chua nghe cong $congWeb sau 30 giay. Xem logs\service-err.log, roi mo $diaChi bang tay."
+        return
+    }
+    # Start-Process voi mot URL: Windows mo no bang trinh duyet mac dinh. Mot lan that bai (may
+    # khong co trinh duyet mac dinh) khong duoc lam ca lan cai dat that bai theo.
+    try {
+        Start-Process $diaChi
+        ok "da mo $diaChi trong trinh duyet"
+    } catch {
+        canh "khong mo duoc trinh duyet ($($_.Exception.Message)). Mo tay: $diaChi"
+    }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -760,7 +707,7 @@ try {
     Write-Host ""
     Write-Host " MT5 Copy Bridge -- tro ly cai dat (ban $script:PhienBan)" -ForegroundColor Cyan
     Write-Host " Thu muc: $ThuMuc" -ForegroundColor DarkGray
-    Write-Host " Moi buoc deu hoi truoc khi lam. Chay lai bao nhieu lan cung duoc." -ForegroundColor DarkGray
+    Write-Host " Khong hoi gi ve nghiep vu -- phan do khai tren dashboard. Chay lai duoc nhieu lan." -ForegroundColor DarkGray
 
     $script:TokenMaster = $null
     $script:TokenClient = $null
@@ -780,17 +727,10 @@ try {
     # bi bo qua -- dung cai hố khien moi lenh Master bi bo qua trong im lang.
     buoc_dich_vu
     buoc_bien_dich
-    buoc_gan_ea
-    # Chua co EA thi anh xa symbol chac chan that bai (`anh-xa-symbol` kiem `symbol_spec` truoc
-    # khi luu, ma bang do chi co du lieu khi EA Client dang chay). Bo qua han thay vi bat nguoi
-    # dung go symbol vao mot lenh se bao loi.
-    if (buoc_cho_ea) {
-        buoc_anh_xa
-    } else {
-        buoc_moi "Anh xa symbol"
-        canh "bo qua vi chua co EA. CHAY LAI SCRIPT NAY sau khi gan EA xong --"
-        canh "THIEU ANH XA LA MOI LENH MASTER BI BO QUA trong im lang."
-    }
+    # KHONG cho EA, KHONG hoi anh xa symbol. Ca hai deu can EA da gan xong -- viec phai lam trong
+    # giao dien MT5 -- nen hoi o day la dung script lai hang phut de cho mot viec no khong lam
+    # duoc. Anh xa symbol khai tren dashboard (D-32), va khoi "Can lam" o dau tab Cau hinh la thu
+    # nhac rang no con thieu.
     buoc_kiem_tra
     buoc_ket
     exit 0

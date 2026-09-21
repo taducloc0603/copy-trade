@@ -108,6 +108,23 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--vien);
 }
 .chan-khoi .ghi-chu { color: var(--mo); font-size: 12px; }
+/* Danh sach "Can lam". Muc CHAN va muc LUU_Y phai khac nhau bang MAU va bang THE, khong chi
+   bang thu tu: mot danh sach dai ma moi dong trong giong nhau thi nguoi doc bo qua ca danh sach. */
+.ds-can-lam { margin: 0; padding-left: 0; list-style: none; }
+.ds-can-lam li {
+  padding: 6px 0 6px 10px; border-left: 3px solid var(--vien); margin-bottom: 6px;
+  font-size: 13px; line-height: 1.5;
+}
+.ds-can-lam li.chan  { border-left-color: var(--do); }
+.ds-can-lam li.luu-y { border-left-color: var(--cam); }
+.ds-can-lam .the-muc {
+  display: inline-block; min-width: 3.5rem; text-align: center; margin-right: 6px;
+  padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .03em;
+}
+.ds-can-lam li.chan  .the-muc { background: var(--do);   color: #fff; }
+.ds-can-lam li.luu-y .the-muc { background: var(--cam); color: #1a1a1a; }
+
 /* Vung phu ben trong mot khoi: no co nut Luu RIENG va lam mot viec khac han (them mot khoa moi
    vao file, khong phai sua khoa dang co), nen phai nhin ra la mot vung khac -- neu khong thi hai
    nut Luu trong cung mot khoi la mot cai bay. */
