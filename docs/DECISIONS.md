@@ -499,3 +499,43 @@ Hàng đợi nằm trong DB chứ không trong bộ nhớ, vì `tinh-hinh` phả
 sẵn — ghép bằng thẻ `open_tag` riêng từng lệnh, mất thẻ thì `STRICT` từ chối đoán và nhiều ứng viên
 cùng khớp thì `UI_CORRELATE_AMBIGUOUS`. Hàng đợi làm **tăng tần suất** các nhánh đó, không tạo
 nhánh mới.
+
+### D-32 — Cấu hình nghiệp vụ nằm ở database và sửa trên dashboard; `config.toml` chỉ giữ thứ cần trước khi Bridge chạy
+
+**Vấn đề:** mọi giá trị cấu hình phải nhập lúc cài (`scripts/tro-ly.ps1` hỏi 9 giá trị), rồi muốn
+xem hay sửa lại phải RDP vào VPS gõ `bridge.admin`. Người vận hành không thấy được mình đang chạy
+cấu hình gì — và đó là loại không-biết dẫn tới quyết định sai lúc có sự cố.
+
+**Ranh giới đã chốt:**
+
+* **Database** giữ cấu hình *nghiệp vụ*: agent (số tài khoản, magic, tiêu đề cửa sổ terminal của
+  clicker), `client_account`, `symbol_map`, `system_config`. Sửa được trên dashboard, có hiệu lực
+  ngay vì mọi khoá ở đây đều được đọc lại mỗi lần dùng.
+* **`config.toml`** chỉ giữ thứ **phải có trước khi Bridge chạy**: cổng, đường dẫn DB, mật khẩu
+  dashboard, và token của clicker. Dashboard **hiện** chúng (đã che bí mật) nhưng **không bao giờ
+  ghi**: một nút "Lưu" ở đó sẽ hứa điều nó không làm được, vì các khoá này chỉ đọc lúc khởi động.
+* **Ràng buộc nằm ở `bridge/ops.py`, không ở tầng web và không ở CLI.** Hai đường vào cùng gọi một
+  bộ hàm; lỗi là một **mã** ASCII, CLI dịch sang câu không dấu còn dashboard dịch qua
+  `labels_vi.py` (D-16). Trước đó phép kiểm nằm lẫn với `print` trong `admin.py`, nên tầng web
+  không gọi lại được — và hai đường vào kiểm khác nhau thì cái lỏng hơn mới là cái thật.
+
+**Hệ quả cho clicker.** Số tài khoản và tiêu đề cửa sổ rời `config.toml` vào DB, nên clicker nhận
+chúng trong `hello_ack` và đọc lại ở **mỗi lần bắt tay**; dashboard đổi giá trị thì Bridge cắt kết
+nối và ba giây sau clicker lái đúng cửa sổ mới, không phải đăng ký lại Scheduled Task. Thứ tự ưu
+tiên `--tham-so` > `config.toml` > Bridge giữ cho bản cài cũ chạy y như trước.
+
+**Hai hàng rào phải đổi theo, và cả hai đổi theo hướng chặt hơn:**
+
+1. `ACCOUNT_MISMATCH` ở Bridge so DB với con số agent gửi lên. Khi con số đến **từ** Bridge thì
+   phép so đó tự khớp với chính nó, nên hàng rào chuyển sang clicker và đối chiếu với **cửa sổ
+   thật**: số tài khoản đọc từ tiêu đề cửa sổ phải khớp số Bridge giao, kiểm mỗi nhịp heartbeat.
+   Bản cũ đúng vĩnh viễn với một dòng cấu hình; bản mới bắt được cả terminal đăng nhập sang tài
+   khoản khác giữa phiên.
+2. Chưa khai tiêu đề thì clicker **thoát** (mã 4) chứ không chạy tiếp ở canary đỏ. Canary đỏ chỉ
+   chặn đường MỞ; đường ĐÓNG rơi về `OrderSend` của EA theo `close_degraded_fallback = EA`, tức
+   deal đóng mang `EXPERT` — đúng thứ đường đóng qua giao diện tồn tại để ngăn.
+
+**Cấp token trên dashboard bị chặn khi dashboard không có mật khẩu.** `Dashboard.hop_le` cho qua
+mọi request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải
+loopback — nên trên đúng cấu hình đang dùng, một nút cấp token sẽ là đường phát hành danh tính
+không cần xác thực. Sửa cấu hình thì vẫn cho: hỏng thì sửa lại được, còn token là danh tính.

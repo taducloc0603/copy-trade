@@ -55,12 +55,12 @@ Mới có `NONE` (mặc định) và `IF_STILL_OPEN`. Bản `IF_STILL_OPEN` hi�
 kiện rồi cảnh báo, **chưa thực sự mở bù** — cố ý: "được tự động ĐÓNG, không được tự động MỞ"
 (D-13) nên việc mở bù cần người bấm.
 
-### B-05 — Trang cấu hình trên dashboard mới ở mức đọc
+### B-05 — Trang cấu hình trên dashboard mới ở mức đọc — **ĐÃ ĐÓNG** (2026-09-21)
 
-*(Thu hẹp ở phase 11: `copy_mode`, `volume_multiplier`, `open_route` và `can_close_master` nay
-sửa được bằng `python -m bridge.admin cau-hinh-client`, không phải SQL tay nữa — B-11.)*
-
-Còn lại: **dashboard** chưa có API ghi, và **ánh xạ symbol** vẫn phải sửa trong DB.
+Trang Cấu hình nay sửa được: cấu hình Client, đường đóng phía Master, ánh xạ symbol (kiểm với sàn
+rồi mới lưu), các khoá `system_config` trong danh sách trắng, và số tài khoản + tiêu đề cửa sổ
+terminal của từng clicker. Ràng buộc nằm một chỗ ở `bridge/ops.py`, dùng chung với `bridge.admin`
+(D-32). `config.toml` vẫn **chỉ đọc** trên dashboard.
 
 ### B-06 — Cascade chưa chạy trên demo
 

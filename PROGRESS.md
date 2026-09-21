@@ -3130,3 +3130,34 @@ dòng không phải vị thế (một dòng phụ rồi dòng Balance), không p
 Sửa: `PhepDo(bo_cuoi=…)` loại các dòng cuối khỏi phép nhị phân (vẫn mở ở lượt quét cuối — `already_closed` không đổi);
 driver mặc định `bo_cuoi = 1` và **tự học** lên tới 3 khi thấy dòng ở đuôi không ra hộp thoại. Bỏ bước nhấp lại chẩn
 đoán (tốn ~1,3 s mỗi lần).
+
+
+## Cau hinh len dashboard (2026-09-21)
+
+Yeu cau: "cac thong tin can nhap o buoc cai dat ... dua len UI ... o buoc cai dat se khong can
+nhap". Lam theo bon buoc, moi buoc mot commit, `pytest` + `ruff` xanh giua cac buoc.
+
+| Buoc | Commit | Noi dung |
+|---|---|---|
+| 1 | `2e1b20a` | Tach rang buoc cau hinh tu `admin.py` ra `ops.py` (`LoiCauHinh` mang MA ASCII) |
+| 2+3 | `dd60d39` | API ghi + trang Cau hinh sua duoc (dong B-05) |
+| 4 | `8fff013` | Clicker nhan so tai khoan + tieu de cua so tu Bridge (migration 008) |
+| 5 | (commit nay) | Tro ly bo cac cau hoi, tai lieu |
+
+**Ba lo co san lo ra trong lan nay**, deu do go duong that chu khong do doc code:
+
+1. `upsert_client_account` thieu `clicker_agent_id` nen doi `open_route` sang UI tren mot Client
+   da co lam vo `CHECK` cua bang. Lo ra khi **bam nut Luu** tren dashboard, ca duong CLI cu cung
+   dinh. Truoc do khong ai gap vi khong ai doi `open_route` tren client da tao.
+2. `anh-xa-symbol --tat` ghi rong `client_symbol` khi khong truyen `--client-symbol`: bat lai la
+   anh xa toi mot symbol khong ton tai.
+3. Bat tay ghi `account_login = 0` de len so da khai: se xoa mat cau hinh vua dat tren dashboard.
+   Bat duoc khi doc lai `server.py` de them cau hinh clicker vao `hello_ack`.
+
+**Mot bai hoc ve cach thu:** lan smoke test dau tien chay `bridge.admin` tu mot thu muc tam, tuong
+la dung DB tam. `load_config` tim len goc du an, nen no dung DB dev **that** cua laptop va doi
+`volume_multiplier` cua CL-01 xuong 0.5. Da tra lai 1.0 ngay. Tu do smoke test goi thang `lenh_*`
+voi mot `Database(tmp)` trong tien trinh, khong qua CLI.
+
+**Do giao dien bang Playwright** chu khong chi doc code: chay dashboard tren DB tam, dang nhap, doi
+he so volume roi doc lai DB. Chinh lan bam do lo ra lo (1).

@@ -103,11 +103,13 @@ Trợ lý hỏi xác nhận từng bước, bước đã xong thì bỏ qua. Nó
 | Câu hỏi | Trả lời |
 |---|---|
 | Magic number | Enter (`770001`) |
-| Số tài khoản Master / Client | Số đã ghi ở A0 |
-| Mẫu tiêu đề cửa sổ terminal Client | Enter (dùng số tài khoản Client) |
 | Tên agent Master / Client / Clicker | Enter (`AG-MASTER`, `AG-CLIENT`, `AG-CLICKER`) |
 | **Bật đường ĐÓNG phía Master qua giao diện?** | **Có** nếu muốn lệnh đóng trên Master hiện *Placed by manual* (cần clicker thứ hai, terminal Master cũng phải để tab Trade) |
 | Mã client | Enter (`CL-01`) |
+
+Trợ lý **không hỏi số tài khoản MT5 hay tiêu đề cửa sổ** nữa: EA tự báo số tài khoản của nó lúc kết
+nối, còn của clicker thì khai trên dashboard ở bước A4. Thêm `-TuDongDongY` thì trợ lý lấy hết giá
+trị mặc định và chỉ dừng ở hai chỗ phải làm tay: chép token vào EA, và mật khẩu tài khoản Windows.
 
 Rồi nó tự làm theo thứ tự:
 
@@ -140,21 +142,44 @@ Rồi nó tự làm theo thứ tự:
 
 Quay lại cửa sổ trợ lý, bấm Enter để đi tiếp.
 
-## A4. Bật các tuỳ chọn copy
+## A4. Cấu hình trên dashboard
+
+Mở `http://127.0.0.1:8080` (mật khẩu in ra ở bước A1, và nằm trong `config.toml`) → tab **Cấu hình**.
+
+**Bắt buộc — khối Agent:** khai **số tài khoản** và **tiêu đề cửa sổ terminal** cho từng clicker.
+
+| Clicker | Số tài khoản | Tiêu đề cửa sổ |
+|---|---|---|
+| `AG-CLICKER` | tài khoản **Client** | thường chính là số tài khoản Client |
+| `AG-CLICKER-MASTER` (nếu bật) | tài khoản **Master** | thường chính là số tài khoản Master |
+
+Tiêu đề **phải chứa số tài khoản** — cửa sổ MT5 mở đầu tiêu đề bằng số tài khoản, và đó là thứ
+clicker đối chiếu trước khi bấm. Đừng dùng chuỗi chung như `MetaTrader 5`: nó khớp cả hai terminal.
+Bấm Lưu xong, clicker tự nối lại trong vài giây; chưa khai thì clicker **không chạy** (thoát mã 4 và
+thử lại mỗi 60 giây).
+
+**Bắt buộc — khối Ánh xạ symbol:** khai symbol Master ứng với symbol nào phía Client
+(`XAUUSD` → `XAUUSDm`). Dashboard kiểm với sàn trước khi lưu. **Thiếu ánh xạ là mọi lệnh Master bị
+bỏ qua trong im lặng.**
+
+**Khối Client — tuỳ chọn:** chiều copy (`OPPOSITE` = Master BUY thì Client SELL), hệ số volume,
+đường mở/đóng lệnh, và *Cho phép Client đóng ngược Master*.
+
+- **Mở lệnh chỉ đi một chiều Master → Client.** Mở tay ở Client không làm Master vào lệnh.
+- **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi
+  *Cho phép Client đóng ngược Master* được bật (mặc định **tắt**).
+- Đổi cấu hình chỉ áp cho **lệnh mới**; cặp đang mở giữ tỷ lệ cũ.
+
+Làm bằng dòng lệnh cũng được, cùng một bộ ràng buộc:
 
 ```powershell
 $py = ".\.venv\Scripts\python.exe"
 & $py -m bridge.admin cau-hinh-client CL-01                              # xem cấu hình hiện tại
-& $py -m bridge.admin cau-hinh-client CL-01 --copy-mode OPPOSITE         # Master BUY -> Client SELL (SAME = cùng chiều)
-& $py -m bridge.admin cau-hinh-client CL-01 --multiplier 1.0             # hệ số volume
-& $py -m bridge.admin cau-hinh-client CL-01 --can-close-master bat       # đóng tay ở Client -> Master đóng theo
-& $py -m bridge.admin cau-hinh-master                                    # xem đường đóng phía Master
+& $py -m bridge.admin cau-hinh-client CL-01 --copy-mode OPPOSITE --multiplier 1.0
+& $py -m bridge.admin cau-hinh-client CL-01 --can-close-master bat
+& $py -m bridge.admin sua-agent AG-CLICKER --login <so-tk-Client> --terminal-title "<so-tk-Client>"
+& $py -m bridge.admin anh-xa-symbol CL-01 XAUUSD --client-symbol XAUUSDm
 ```
-
-- **Mở lệnh chỉ đi một chiều Master → Client.** Mở tay ở Client không làm Master vào lệnh.
-- **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi
-  `can_close_master` bật (mặc định **tắt**).
-- Đổi cấu hình chỉ áp cho **lệnh mới**; cặp đang mở giữ tỷ lệ cũ.
 
 ## A5. Kiểm tra và bật copy
 
@@ -270,8 +295,10 @@ Get-ScheduledTask -TaskPath '\CopyBridge\' | Select-Object TaskName, State   # c
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-master                   # close_route UI
 ```
 
-- Thiếu tác vụ `ClickerMaster`: `.\scripts\tao-dich-vu.ps1 -ChiTacVuClicker -AccountLoginMaster <so-tk-Master> -TerminalTitleMaster "<so-tk-Master>"`
-- Log clicker Master báo `ACCOUNT_MISMATCH`: `.\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER-MASTER --login <so-tk-Master>`
+- Thiếu tác vụ `ClickerMaster`: `.\scripts\tao-dich-vu.ps1 -ChiTacVuClicker`
+- Clicker Master chưa lái terminal nào: khai số tài khoản + tiêu đề cửa sổ cho `AG-CLICKER-MASTER`
+  trên dashboard (tab Cấu hình → Agent), hoặc
+  `.\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER-MASTER --login <so-tk-Master> --terminal-title "<so-tk-Master>"`
 
 **Đổi chiều copy, hệ số, đóng hai chiều:** các lệnh `cau-hinh-client` ở [A4](#a4-bật-các-tuỳ-chọn-copy).
 
@@ -285,13 +312,12 @@ chart đang gắn EA.
 $py = ".\.venv\Scripts\python.exe"
 & $py -m bridge.admin run-mode PAUSED
 & $py -m bridge.admin tinh-hinh                          # phải 0 cặp đang hedge
-& $py -m bridge.admin sua-agent AG-CLIENT  --login <so-tk-moi>
-& $py -m bridge.admin sua-agent AG-CLICKER --login <so-tk-moi>
 ```
 
-Rồi sửa `account_login` và `terminal_title` trong mục `[clicker]` của `config.toml` (Notepad, lưu
-**UTF-8 không BOM**), chạy lại clicker (lệnh ở B1). Đổi tài khoản Master thì làm tương tự với
-`AG-MASTER`, `AG-CLICKER-MASTER` và mục `[clicker_master]`. Token giữ nguyên.
+Rồi trên dashboard, tab **Cấu hình** → khối **Agent**: sửa số tài khoản của `AG-CLIENT` và sửa
+**cả số tài khoản lẫn tiêu đề cửa sổ** của `AG-CLICKER`. Clicker tự nối lại và lái cửa sổ mới trong
+vài giây — **không** phải sửa `config.toml`, không phải đăng ký lại tác vụ. Đổi tài khoản Master thì
+làm tương tự với `AG-MASTER` và `AG-CLICKER-MASTER`. Token giữ nguyên; EA giữ nguyên token cũ.
 
 ## B5. Chuyển sang VPS mới, giữ nguyên dữ liệu
 
@@ -311,7 +337,9 @@ Rồi sửa `account_login` và `terminal_title` trong mục `[clicker]` của `
    gắn EA với **token cũ** (A3), rồi A5.
 
 Token nằm trong database (dạng hash) và `config.toml`, nên chép đủ hai thứ này thì EA và clicker
-dùng lại được token cũ. Mất token EA thì `cap-token` rồi dán lại vào EA.
+dùng lại được token cũ. Mất token EA thì cấp lại trên dashboard (tab Cấu hình → Agent → *Cấp lại
+token*, chỉ dùng được khi dashboard có mật khẩu) hoặc bằng `bridge.admin cap-token`, rồi dán lại
+vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao lưu — không phải khai lại.
 
 ## B6. Cài lại sạch từ đầu
 
@@ -367,9 +395,15 @@ Dừng khẩn cấp: nút trên dashboard, gõ `DONG TAT CA`. Thử một lần 
 | `kiem-dong-sai [--ngay YYYY-MM-DD]` | Có lệnh nào bị đóng nhầm không |
 | `xac-nhan-alert --code <MA> --truoc <moc> [--that]` | Đánh dấu đã xem alert cũ |
 | `sao-luu` | Sao lưu ngay |
-| `cap-token <agent>` / `sua-agent <agent> --login N` | Cấp lại token / sửa số tài khoản |
+| `cap-token <agent>` | Cấp lại token (token cũ hết hiệu lực ngay) |
+| `sua-agent <agent> --login N --terminal-title "N"` | Sửa số tài khoản / tiêu đề cửa sổ của clicker |
 
 **Log:** `logs\bridge.log`, `logs\clicker.log`, `logs\clicker_master.log`, `logs\service-err.log`.
+
+**Cấu hình nằm ở đâu:** cấu hình *nghiệp vụ* (agent, client, ánh xạ symbol, khoá hệ thống) nằm
+trong database và sửa trên dashboard — đổi là có hiệu lực ngay. `config.toml` chỉ giữ thứ cần
+**trước khi** Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker; sửa nó phải mở
+file trên VPS và khởi động lại dịch vụ. Dashboard hiện các khoá đó nhưng không ghi (D-32).
 
 **Không bao giờ** sửa database bằng tay, và không đưa token lên dòng lệnh hay ảnh chụp màn hình.
 
@@ -403,7 +437,9 @@ Rủi ro không phải kỹ thuật: hai tài khoản vào lệnh ngược chi�
 | Log EA `REPLACED`, alert `AGENT_DUPLICATE_CONNECTION` | EA gắn trên hai chart — gỡ bớt (A3) |
 | `Khong co client CL-01` | Chưa tạo client — chạy lại trợ lý |
 | Lệnh Master không copy | `run_mode` chưa `RUNNING`, thiếu ánh xạ symbol, hoặc clicker chưa `ONLINE` |
-| Clicker thoát mã 2 | Thiếu `token`/`account_login` trong `[clicker]` của `config.toml` |
+| Clicker thoát mã 2 | Thiếu `token` trong `[clicker]` của `config.toml` |
+| Clicker thoát mã 4, log `chua khai terminal` | Chưa khai số tài khoản + tiêu đề cửa sổ cho clicker đó trên dashboard (A4) |
+| Canary clicker đỏ, log `Tieu de cua so la tai khoan ...` | Tiêu đề đang trỏ vào terminal của tài khoản khác — sửa trên dashboard |
 | Clicker thoát mã 3 / `Da co mot clicker khac` | Đã có clicker khác lái terminal đó — đúng thiết kế |
 | Log clicker `ACCOUNT_MISMATCH` | `sua-agent <agent> --login <so-dung>` |
 | Clicker chạy mà không bấm được gì | Lệch mức quyền với MT5, hoặc tác vụ không chạy kiểu *Interactive* |

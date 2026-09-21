@@ -352,6 +352,15 @@ class BridgeServer:
         self.connections[agent_id] = connection
 
         last_seq = int(agent["last_seq"] or 0)
+        if agent["account_login"] is None and hello.account_login:
+            # Agent tạo mà chưa khai số tài khoản (trợ lý cài đặt không hỏi nữa) thì lần bắt tay
+            # đầu tiên **gắn** nó với con số EA báo lên. Từ đó phép đối chiếu ở trên có hiệu lực.
+            # Ghi WARNING vì đây là lúc một token gắn vĩnh viễn với một tài khoản: gắn nhầm token
+            # vào terminal khác là gắn nhầm ở đây, và dòng log này là chỗ duy nhất thấy được.
+            log.warning("Agent %s gan voi tai khoan MT5 %s (lan dau). Sai thi doi bang "
+                        "bridge.admin sua-agent hoac tren dashboard.",
+                        agent_id, hello.account_login, extra={"agent_id": agent_id})
+
         # Số tài khoản chỉ ghi đè khi agent **biết** nó. Clicker gửi 0 vì nó đang xin con số từ
         # Bridge; ghi 0 đè lên giá trị khai trên dashboard là tự xoá mất cấu hình vừa đặt, rồi
         # lần bắt tay sau không còn gì để giao.

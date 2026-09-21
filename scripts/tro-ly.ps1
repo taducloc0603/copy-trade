@@ -245,36 +245,14 @@ function buoc_thong_so() {
     )
     $script:Magic = hoi_so "Magic number" 770001
 
-    Write-Host ""
-    giai_thich @(
-        "SO TAI KHOAN -- so tai khoan MT5 cua tung terminal. Day la KHOA AN TOAN, khong",
-        "phai nhan: luc EA bat tay, Bridge so so no khai bao voi so ban dien o day, lech thi",
-        "TU CHOI ket noi (ERR_ACCOUNT_MISMATCH). Dien nham thi EA khong bao gio len ONLINE du",
-        "token dung -- va trieu chung nhin y het 'sai token'.",
-        "",
-        "Vi du   : KHONG dat vi du o day. Mot so 6 chu so trong nhu that qua de bi go theo,",
-        "          va go theo thi EA khong bao gio len ONLINE -- dung cai bay noi tren.",
-        "Cach lay: so nam ngay DAU tieu de cua so MT5 (xem lenh o tren).",
-          "          Hoac trong MT5: Navigator (Ctrl+N) > muc Accounts, dong dang in dam."
-    )
-    $script:LoginMaster = hoi_so "So tai khoan Master"
-    $script:LoginClient = hoi_so "So tai khoan Client"
-
-    Write-Host ""
-    giai_thich @(
-        "TIEU DE CUA SO CLIENT -- clicker tim cua so terminal Client bang chuoi con nay de bam",
-        "lenh vao do. Chuoi phai khop terminal CLIENT va KHONG khop terminal Master; khop nham",
-        "thi clicker bam lenh vao dung cai terminal khong nen bam, va khong co gi bao ban biet.",
-        "So tai khoan la chuoi phan biet an toan nhat.",
-        "",
-        "Vi du   : tieu de la  <so-tai-khoan-Client> - Connext-Demo: Demo Account - Hedge - [XAUUSD,M1]",
-        "          thi dien    <so-tai-khoan-Client>",
-        "Cach lay: Enter de lay so tai khoan Client vua dien o tren -- gan nhu luon dung,",
-        "          vi tieu de MT5 bat dau bang so tai khoan.",
-        "Luu y   : chuoi khop NHIEU HON MOT cua so thi clicker tu choi chay chu khong doan.",
-        "          Nen dung so tai khoan, dung dung chuoi chung nhu MetaTrader hay Demo."
-    )
-    $script:TieuDe = hoi_chuoi "Mau tieu de cua so terminal Client" ([string] $script:LoginClient)
+    # So tai khoan va tieu de cua so KHONG hoi o day nua: chung nam trong database va khai tren
+    # dashboard (tab Cau hinh > Agent). EA tu bao so tai khoan cua no luc bat tay dau tien; clicker
+    # nhan so tai khoan + tieu de tu Bridge moi lan bat tay. Doi terminal ve sau la sua tren
+    # dashboard, khong phai RDP vao sua config.toml roi dang ky lai tac vu.
+    $script:LoginMaster = 0
+    $script:LoginClient = 0
+    $script:TieuDe = ""
+    $script:TieuDeMaster = ""
 
     Write-Host ""
     giai_thich @(
@@ -297,19 +275,12 @@ function buoc_thong_so() {
         "Cai gia: them MOT tien trinh clicker nua lai terminal MASTER, va tu do terminal",
         "Master phai LUON mo Toolbox o tab Trade -- y het dieu kien ben Client.",
         "Khong bat thi lenh dong Master di OrderSend cua EA nhu cu.",
-        "Token cua clicker nay cung duoc ghi THANG vao config.toml, khong hien ra man hinh."
+        "Token cua clicker nay cung duoc ghi THANG vao config.toml, khong hien ra man hinh.",
+        "So tai khoan va tieu de cua so cua ca hai clicker khai tren dashboard sau khi cai xong."
     )
     $script:BatDongMaster = hoi_co_khong "Bat duong DONG phia Master qua giao dien?" $false
     if ($script:BatDongMaster) {
-        # So tai khoan Master la danh tinh cua clicker thu hai: Bridge so khop no luc bat tay, va
-        # SingleInstance khoa theo no. 0 o day la agent bi tu choi ACCOUNT_MISMATCH mai (VPS 2026-09-15).
-        while ($script:LoginMaster -le 0) {
-            canh "Bat duong dong Master can so tai khoan Master that, dang la $($script:LoginMaster)."
-            $script:LoginMaster = hoi_so "So tai khoan Master"
-        }
         $script:IdClickerMaster = hoi_chuoi "Ten agent Clicker Master" "AG-CLICKER-MASTER"
-        $script:TieuDeMaster = hoi_chuoi "Mau tieu de cua so terminal Master" `
-                                         ([string] $script:LoginMaster)
     }
 
     Write-Host ""
@@ -360,8 +331,12 @@ function tao_agent([string] $id, [string] $vaiTro, [int] $login) {
         }
         return $null
     }
-    $kq = admin @('them-agent', $id, '--role', $vaiTro, '--magic', "$($script:Magic)",
-                  '--login', "$login")
+    # KHONG truyen --login: de trong thi cot `account_login` la NULL, va Bridge gan no o lan bat
+    # tay dau tien bang chinh so tai khoan EA bao len. Dien tay o day chi them mot cho go nham ma
+    # trieu chung (EA khong bao gio len ONLINE) nhin y het sai token.
+    $doiSo = @('them-agent', $id, '--role', $vaiTro, '--magic', "$($script:Magic)")
+    if ($login -gt 0) { $doiSo += @('--login', "$login") }
+    $kq = admin $doiSo
     if ($kq.ma -ne 0) {
         $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor Red }
         throw "them-agent $id that bai."
@@ -396,17 +371,8 @@ function buoc_agent() {
     if ($script:BatDongMaster) {
         $script:TokenClickerMaster = tao_agent $script:IdClickerMaster 'CLICKER' `
                                                $script:LoginMaster
-        # Agent da co tu truoc co the mang so tai khoan SAI -- VPS 2026-09-15: tao voi 0, Bridge tu choi
-        # clicker Master voi ACCOUNT_MISMATCH moi 3 giay. `tao_agent` bo qua agent da co, nen phai sua
-        # rieng. `sua-agent` idempotent: chay moi lan cho chac.
-        $kq = admin @('sua-agent', $script:IdClickerMaster, '--login', "$($script:LoginMaster)")
-        if ($kq.ma -ne 0) {
-            $kq.ra | ForEach-Object { Write-Host "        $_" -ForegroundColor Red }
-            canh ("sua-agent $($script:IdClickerMaster) that bai -- clicker Master se bi Bridge tu " +
-                  "choi voi ACCOUNT_MISMATCH")
-        } else {
-            ok "$($script:IdClickerMaster): account_login = $($script:LoginMaster)"
-        }
+        canh ("Clicker Master chua lai duoc terminal nao cho toi khi ban khai so tai khoan va " +
+              "tieu de cua so cho $($script:IdClickerMaster) tren dashboard.")
     }
 }
 
@@ -421,11 +387,12 @@ function buoc_token() {
     # Token clicker di thang vao config.toml. Khong in ra man hinh, khong qua dong lenh: dong
     # lenh cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang
     # `Get-CimInstance Win32_Process`, va clicker chay 24/7.
+    # CHI ghi token. So tai khoan va tieu de cua so nam trong database (khai tren dashboard) va
+    # clicker nhan chung tu Bridge -- ghi chung o day nua la tao mot nguon su that thu hai, ma
+    # `config.toml` lai la nguon THANG, nen sua tren dashboard se khong co tac dung.
     if ($script:TokenClicker) {
         dat_khoa_clicker @{
-            token          = (nhay $script:TokenClicker)
-            account_login  = "$($script:LoginClient)"
-            terminal_title = (nhay $script:TieuDe)
+            token = (nhay $script:TokenClicker)
         }
         $script:TokenClicker = $null
         ok "token cua $($script:IdClicker) da ghi vao config.toml (khong hien ra man hinh)"
@@ -435,9 +402,7 @@ function buoc_token() {
 
     if ($script:TokenClickerMaster) {
         dat_khoa_clicker @{
-            token          = (nhay $script:TokenClickerMaster)
-            account_login  = "$($script:LoginMaster)"
-            terminal_title = (nhay $script:TieuDeMaster)
+            token = (nhay $script:TokenClickerMaster)
         } "clicker_master"
         $script:TokenClickerMaster = $null
         ok "token cua $($script:IdClickerMaster) da ghi vao config.toml (khong hien ra man hinh)"
@@ -708,8 +673,7 @@ function buoc_dich_vu() {
             $tao = Join-Path $PSScriptRoot "tao-dich-vu.ps1"
             if (-not (Test-Path $tao)) { $tao = Join-Path $ThuMuc "scripts\tao-dich-vu.ps1" }
             if (-not (Test-Path $tao)) { canh "khong thay tao-dich-vu.ps1"; return }
-            & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu -ChiTacVuClicker `
-                   -AccountLoginMaster $script:LoginMaster -TerminalTitleMaster $script:TieuDeMaster
+            & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu -ChiTacVuClicker
             if ($LASTEXITCODE -ne 0) { canh "dang ky tac vu ClickerMaster that bai ($LASTEXITCODE)"; return }
             Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName 'ClickerMaster'
             ok "da dang ky va bat tac vu ClickerMaster (dich vu $TenDichVu giu nguyen)"
@@ -723,13 +687,9 @@ function buoc_dich_vu() {
     if (-not (hoi_co_khong "Dang ky dich vu Windows va ba Scheduled Task?")) {
         bo_qua "nguoi dung tu choi"; return
     }
-    $doiSoMaster = @()
-    if ($script:BatDongMaster) {
-        $doiSoMaster = @('-AccountLoginMaster', "$($script:LoginMaster)",
-                         '-TerminalTitleMaster', $script:TieuDeMaster)
-    }
-    & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu -AccountLogin $script:LoginClient `
-           -TerminalTitle $script:TieuDe @doiSoMaster
+    # Tac vu chi mang -Muc: so tai khoan va tieu de cua so nam trong DB. Doi terminal ve sau
+    # khong phai dang ky lai tac vu.
+    & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu
     if ($LASTEXITCODE -ne 0) { canh "tao-dich-vu.ps1 tra ve $LASTEXITCODE" }
     else { ok "da dang ky" }
 }
@@ -762,6 +722,14 @@ function buoc_ket() {
     Write-Host @"
  Bridge LUON khoi dong o PAUSED, ke ca luc may tu bat lai 3 gio sang. Day la
  chu dich. Dich vu tu bat lai KHONG co nghia la he thong dang copy lenh.
+
+ TRUOC TIEN, mo dashboard http://127.0.0.1:8080 > tab Cau hinh va khai:
+   - Agent: so tai khoan MT5 va tieu de cua so terminal cho TUNG clicker.
+     Clicker khong lai duoc terminal nao khi hai o nay con trong (no thoat va
+     thu lai moi 60 giay cho toi khi co).
+     Tieu de phai chua so tai khoan: do la thu clicker doi chieu truoc khi bam.
+   - Anh xa symbol, neu buoc anh xa o tren bi bo qua.
+   Sua cau hinh copy (chieu, he so, duong mo/dong) cung o trang nay.
 
  Bat theo DUNG THU TU BA BUOC:
    1. De backlog trong outbox cua EA chay het vao va duoc ghi nhan IGNORED.

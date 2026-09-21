@@ -41,6 +41,13 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 > Các bước **cài đặt** không nằm ở đây — xem [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Mục này chỉ giải thích các khoá cấu hình và **vì sao**
 > chúng như vậy — thứ bạn cần khi đang vận hành, không phải khi đang cài.
 
+**Cấu hình nằm hai chỗ, và ranh giới là "có cần trước khi Bridge chạy không" (D-32):**
+
+| Nằm ở | Gồm những gì | Sửa bằng |
+|---|---|---|
+| **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
+| **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Mở file trên máy rồi **khởi động lại dịch vụ**. Dashboard chỉ hiện (đã che bí mật), không ghi |
+
 `config.toml` nằm trong `.gitignore`. Các khoá:
 
 ```toml
@@ -124,6 +131,8 @@ món nợ đó đã một lần làm mất token của clicker.
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01                  # xem
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --multiplier 0.5
 .\.venv\Scripts\python.exe -m bridge.admin cau-hinh-client CL-01 --close-route UI  # dong qua giao dien
+# Terminal ma mot clicker phai lai. Khai tren dashboard cung duoc, va la duong chinh (D-32).
+.\.venv\Scripts\python.exe -m bridge.admin sua-agent AG-CLICKER --login 538217 --terminal-title "538217"
 .\.venv\Scripts\python.exe -m bridge.admin run-mode              # xem
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING      # dat
 .\.venv\Scripts\python.exe -m bridge.admin sao-luu

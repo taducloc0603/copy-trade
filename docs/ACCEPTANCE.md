@@ -90,6 +90,21 @@ người dùng đã làm.
 | TEST-31d | Quá tải có chủ đích | Nếu (c) cho thấy 10 lệnh vượt 15 giây: phải thấy `UI_OPEN_QUEUE_EXPIRED` ERROR đúng bằng số lệnh mất, **không** có lệnh nào mất im lặng |
 | TEST-31e | `tinh-hinh` trong lúc đang xếp hàng | In dòng `hang doi mo (UI)` khác 0 |
 
+### TEST-32 — Cấu hình trên dashboard (D-32)
+
+**Chưa chạy trên demo.** Bài này kiểm đúng thứ vừa đổi chỗ: cấu hình rời `config.toml` vào database
+và sửa được trên dashboard.
+
+| | Phép thử | Đạt khi |
+|---|---|---|
+| TEST-32a | Đổi `volume_multiplier` trên trang Cấu hình | `bridge.admin cau-hinh-client CL-01` in đúng giá trị mới; lệnh copy sau đó dùng tỷ lệ mới, cặp đang chạy giữ tỷ lệ cũ (D-19) |
+| TEST-32b | Đặt `close_route = UI` cho một Client **chưa có** clicker | Bị từ chối kèm câu giải thích; DB không đổi |
+| TEST-32c | Khai số tài khoản + tiêu đề cửa sổ cho clicker trên dashboard | Clicker đang chạy nối lại trong ~5 giây và lái đúng cửa sổ; **không** phải đăng ký lại Scheduled Task |
+| TEST-32d | Sửa tiêu đề thành cửa sổ của tài khoản **khác** | Canary đỏ trong một nhịp heartbeat, không lệnh nào được bấm; sửa lại đúng thì tự xanh |
+| TEST-32e | Xoá tiêu đề (để trống) rồi chạy lại tác vụ clicker | Clicker thoát mã 4, `logs\clicker-wrapper.log` ghi "chua khai terminal"; khai lại trên dashboard thì nó tự lên |
+| TEST-32f | Thêm ánh xạ symbol sai một ký tự, rồi đúng | Sai thì bị từ chối và **không** lưu; đúng thì lưu kèm mốc "đã kiểm" |
+| TEST-32g | Cấp lại token cho một agent trên dashboard | Token hiện một lần; `grep -ri token logs\` vẫn rỗng |
+
 ---
 
 ## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì
