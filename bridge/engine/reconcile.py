@@ -495,6 +495,16 @@ class Reconciler:
 
     # -- API xử lý finding (plan 8.7) ----------------------------------------------------------
 
+    #: Hành động **gửi lệnh xuống MT5**, chứ không chỉ sửa sổ sách. Dashboard không được chạm
+    #: vào chúng (D-34): vị thế là việc của người dùng trên terminal MT5, và một cú bấm trên web
+    #: không nên là thứ đóng một vị thế thật. `APPLY_POLICY` nằm đây vì chính sách mở bù có thể
+    #: **mở** một vị thế mới.
+    HANH_DONG_CHAM_MT5 = frozenset({"CLOSE_CLIENT", "APPLY_POLICY"})
+
+    @classmethod
+    def cham_mt5(cls, suggested_action: str | None) -> bool:
+        return (suggested_action or "").split(":")[0] in cls.HANH_DONG_CHAM_MT5
+
     async def accept_finding(self, finding_id: int) -> bool:
         """Thực hiện hành động đề xuất của một finding."""
         f = self.db.get_finding(finding_id)

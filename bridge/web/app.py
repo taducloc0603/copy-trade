@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from bridge.config import ConfigError, sua_config_toml
 from bridge.db.repo import Database
+from bridge.engine.reconcile import Reconciler
 from bridge.labels_vi import LOI_CAU_HINH, UI
 from bridge.logging_setup import get_logger
 from bridge.ops import (
@@ -267,6 +268,14 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     async def api_accept(finding_id: int, sid: str | None = Cookie(None)) -> Any:
         if (loi := _chan(sid)) is not None:
             return loi
+        # Kiểm TRƯỚC khi đụng tới engine: câu trả lời cho một hành động chạm MT5 là "không", và
+        # nó không phụ thuộc việc engine có đang chạy hay không. Dashboard chỉ sửa **sổ sách**;
+        # đóng (hoặc mở) một vị thế thật là việc làm trong MT5, rồi quay lại bấm Bỏ qua kèm ghi
+        # chú (D-34).
+        f = dashboard.db.get_finding(finding_id)
+        if f is not None and Reconciler.cham_mt5(f["suggested_action"]):
+            return _tra_loi(LoiCauHinh("HANH_DONG_CHAM_MT5",
+                                       hanh_dong=f["suggested_action"]))
         if dashboard.processor is None:
             return JSONResponse({"error": "no_engine"}, status_code=503)
         ok = await dashboard.processor.reconciler.accept_finding(finding_id)
@@ -284,24 +293,6 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         if dashboard.processor is None:
             return JSONResponse({"error": "no_engine"}, status_code=503)
         return {"ok": dashboard.processor.reconciler.skip_finding(finding_id, note)}
-
-    @app.post("/api/findings/accept_all_safe")
-    async def api_accept_all_safe(sid: str | None = Cookie(None)) -> Any:
-        """Chỉ áp dụng cho `severity = SAFE`.
-
-        Cố ý **không có** đường nào bỏ qua hàng loạt: bỏ qua là hành động cho từng dòng, và mỗi
-        dòng bị bỏ qua để lại một alert tồn tại. Nút bỏ qua hàng loạt là cách mất tiền âm thầm
-        nhất.
-        """
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if dashboard.processor is None:
-            return JSONResponse({"error": "no_engine"}, status_code=503)
-        so = 0
-        for f in dashboard.db.list_findings(resolution="PENDING", severity="SAFE"):
-            if await dashboard.processor.reconciler.accept_finding(f["id"]):
-                so += 1
-        return {"ok": True, "accepted": so}
 
     @app.post("/api/alerts/{alert_id}/ack")
     async def api_ack(alert_id: int, sid: str | None = Cookie(None)) -> Any:

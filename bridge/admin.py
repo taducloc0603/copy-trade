@@ -75,6 +75,7 @@ CAU_LOI: dict[str, str] = {
     "DAT_LAI_CON_LENH_BAY": "Con {so_lenh} lenh chua xong. Cho chung xong roi hay dat lai.",
     "CUM_TU_SAI": "Go chua dung cum xac nhan.",
     "KIEU_DAT_LAI_LA": "Kieu dat lai {kieu} khong hop le.",
+    "HANH_DONG_CHAM_MT5": "{hanh_dong} la hanh dong gui lenh xuong MT5.",
     "KHONG_TIM_THAY_MAC_DINH": "Khong tim thay cau gieo mac dinh trong schema.sql.",
     "HE_SO_KHONG_DUONG": "volume_multiplier phai duong, nhan duoc {gia_tri}",
     "CHIEU_COPY_LA": "copy_mode {gia_tri} khong hop le (SAME hoac OPPOSITE).",

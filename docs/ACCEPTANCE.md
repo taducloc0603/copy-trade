@@ -113,6 +113,7 @@ và sửa được trên dashboard.
 | TEST-32p | **Đặt lại dữ liệu** khi còn một cặp đang mở | Bị từ chối, không xoá gì. Đóng hết rồi đặt lại: bảng `pair`/`event`/`command`/`alert` trống, client và ánh xạ còn nguyên, có file `data\backup\bridge-*.db` mới |
 | TEST-32q | **Đặt lại toàn bộ** | Client và ánh xạ symbol biến mất, khoá hệ thống về mặc định (`run_mode = PAUSED`), **agent và token còn nguyên** — EA và clicker nối lại được mà không phải dán token mới |
 | TEST-32r | Gõ sai cụm xác nhận ở cả hai nút | Không xoá gì, DB không đổi |
+| TEST-32s | Một sai lệch `MASTER_CLOSED_OFFLINE` (hành động `CLOSE_CLIENT`) trên dashboard | Không có nút **Chấp nhận**, chỉ có dòng chữ bảo đóng tay trong MT5; gọi thẳng API cũng bị từ chối và **không lệnh nào** được gửi |
 | TEST-32n | Đổi tiêu đề cửa sổ của clicker sang terminal của tài khoản khác, rồi ra lệnh đóng | Clicker **không bấm gì**, log `Tieu de cua so la tai khoan ... khac ...`; lệnh đóng rơi về EA kèm alert, không có lệnh nào bấm nhầm terminal |
 | TEST-32o | Mở dashboard khi `dashboard_password` để trống | Xem được, nhưng mọi nút Lưu trả lỗi "chưa đặt mật khẩu" |
 

@@ -588,3 +588,27 @@ tay. Nó nằm trên đúng trang mà người vận hành mở hằng ngày, v�
 nguyên dưới dạng `bridge.admin run-mode EMERGENCY`: cùng cơ chế, cùng thứ tự Client → Master, chỉ
 khác là phải gõ ra một câu lệnh. Endpoint `/api/emergency` bị gỡ hẳn — để một đường HTTP đóng sạch
 vị thế tồn tại mà không ai dùng thì nó chỉ còn là bề mặt tấn công.
+
+### D-34 — Dashboard chỉ **xem và cấu hình**; mọi tác động lên vị thế làm trong MT5
+
+Sau khi gỡ nút đóng khẩn cấp (D-33), trên dashboard vẫn còn một đường gửi lệnh thật xuống MT5, và
+nó kín hơn hẳn: nút **Chấp nhận** ở tab Sai lệch. Sai lệch `MASTER_CLOSED_OFFLINE` mang hành động
+`CLOSE_CLIENT` và được xếp mức **an toàn** — nên nút *"Chấp nhận tất cả mục an toàn"* đóng lệnh
+**hàng loạt** bằng một cú bấm, trên một trang mà mọi thứ khác chỉ là xem.
+
+Ranh giới từ nay:
+
+* **Dashboard sửa sổ sách và cấu hình.** Chấp nhận một sai lệch vẫn làm được khi hành động của nó
+  chỉ ghi vào database: `MARK_CLOSED`, `MARK_ORPHANED`, `REBIND_BY_TAG`, `ALERT_ONLY`.
+* **Vị thế là việc của người dùng trên terminal MT5.** Sai lệch cần đóng (`CLOSE_CLIENT`) hoặc có
+  thể mở (`APPLY_POLICY`) thì dashboard chỉ hiện bằng chứng và nói thẳng: đóng tay trong MT5, rồi
+  quay lại bấm **Bỏ qua kèm ghi chú** — dòng ghi chú đó là thứ giải thích về sau.
+* **Nút *Chấp nhận tất cả mục an toàn* bị gỡ hẳn**, cùng với endpoint của nó. Một nút hàng loạt
+  trên một danh sách có lẫn hành động đóng lệnh là chỗ để mất tiền mà không ai kịp đọc gì.
+
+Danh sách hành động chạm MT5 nằm ở `Reconciler.HANH_DONG_CHAM_MT5` và đi xuống giao diện dưới dạng
+cờ `cham_mt5` trong mỗi dòng sai lệch: JavaScript không được tự suy ra hành động nào là nguy hiểm.
+
+Ba nút đổi chế độ (`RUNNING` / `PAUSE_NEW_ENTRIES` / `PAUSED`) **ở lại** trên dashboard. Chúng
+không gửi lệnh nào; chúng bật hoặc tắt việc copy, và đó là thứ người vận hành phải với tới được
+nhanh. `EMERGENCY` thì vẫn chỉ đặt bằng dòng lệnh (D-33).

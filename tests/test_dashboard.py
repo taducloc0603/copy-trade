@@ -870,3 +870,48 @@ async def test_dat_lai_doi_dang_nhap_va_doi_mat_khau_dashboard(seeded_web: Datab
         r = await c.post("/api/dat_lai",
                          json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
         assert r.status_code == 403
+
+
+# -- dashboard không chạm vào MT5 (D-34) --------------------------------------------------------
+
+async def test_chap_nhan_sai_lech_can_dong_lenh_thi_bi_tu_choi(client: httpx.AsyncClient,
+                                                               seeded_web: Database) -> None:
+    """Dashboard chỉ sửa sổ sách. Đóng một vị thế thật là việc làm trong MT5 (D-34).
+
+    `MASTER_CLOSED_OFFLINE` mang hành động `CLOSE_CLIENT` và được xếp mức **an toàn**, nên trước
+    D-34 nó nằm sau đúng một cú bấm — và cú bấm đó gửi lệnh đóng thật.
+    """
+    pair_id = _cap(seeded_web, 900010)
+    fid = seeded_web.create_finding("REC-MT5", "SAFE", "MASTER_CLOSED_OFFLINE",
+                                    suggested_action="CLOSE_CLIENT", pair_id=pair_id)
+
+    r = await client.post(f"/api/findings/{fid}/accept")
+
+    assert r.status_code == 400
+    assert r.json()["error"] == "HANH_DONG_CHAM_MT5"
+    assert not seeded_web.query_all("SELECT 1 FROM command"), "Khong duoc gui lenh nao"
+    assert seeded_web.get_finding(fid)["resolution"] == "PENDING"
+
+
+async def test_sai_lech_can_dong_lenh_duoc_danh_dau_de_UI_khong_ve_nut(seeded_web: Database,
+                                                                       ) -> None:
+    """JS không tự suy ra hành động nào chạm MT5 — danh sách đó thuộc về engine."""
+    pair_id = _cap(seeded_web, 900011)
+    seeded_web.create_finding("REC-MT5", "SAFE", "MASTER_CLOSED_OFFLINE",
+                              suggested_action="CLOSE_CLIENT", pair_id=pair_id)
+    seeded_web.create_finding("REC-MT5", "SAFE", "BOTH_CLOSED",
+                              suggested_action="MARK_CLOSED", pair_id=pair_id)
+    theo_kind = {f["kind"]: f for f in views.danh_sach_sai_lech(seeded_web)["safe"]}
+    assert theo_kind["MASTER_CLOSED_OFFLINE"]["cham_mt5"] is True
+    assert theo_kind["BOTH_CLOSED"]["cham_mt5"] is False
+
+
+def test_khong_con_duong_nao_tu_dashboard_gui_lenh_xuong_mt5(seeded_web: Database) -> None:
+    """Chốt lại D-34 bằng danh sách route, không bằng trí nhớ.
+
+    Hai đường từng tồn tại: đóng khẩn cấp, và chấp nhận **hàng loạt** các sai lệch mức an toàn —
+    mà `MASTER_CLOSED_OFFLINE` lại là mức an toàn.
+    """
+    duong = {getattr(r, "path", "") for r in tao_app(Dashboard(seeded_web)).routes}
+    assert "/api/emergency" not in duong
+    assert "/api/findings/accept_all_safe" not in duong

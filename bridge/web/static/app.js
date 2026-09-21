@@ -159,15 +159,22 @@ function veNhom(el, nhan, ds, choPhepHangLoat) {
     tieu.textContent = f.kind + " · " + (f.pair_id || "") + " · " + f.suggested_action;
     d.append(tieu, veBangChung(f.evidence));
 
-    const nutOk = document.createElement("button");
-    nutOk.textContent = UI.btn_accept;
-    nutOk.onclick = async () => {
-      // Bridge tu choi finding cu (tinh trang cap da doi). Im lang o day thi nguoi bam tuong da
-      // xong, trong khi finding van nam nguyen do.
-      const r = await goi("/api/findings/" + f.id + "/accept", { method: "POST" });
-      if (!r.data.ok) window.alert(UI.accept_refused);
-      taiSaiLech();
-    };
+    // Sai lech nao can dong (hoac mo) mot vi the THAT thi dashboard khong lam: no chi sua so
+    // sach. Nguoi dung dong tay trong MT5 roi quay lai bam Bo qua kem ghi chu (D-34).
+    let nutOk = null;
+    if (f.cham_mt5) {
+      d.appendChild(nhan(UI.finding_lam_o_mt5, "canh-bao-nho"));
+    } else {
+      nutOk = document.createElement("button");
+      nutOk.textContent = UI.btn_accept;
+      nutOk.onclick = async () => {
+        // Bridge tu choi finding cu (tinh trang cap da doi). Im lang o day thi nguoi bam tuong da
+        // xong, trong khi finding van nam nguyen do.
+        const r = await goi("/api/findings/" + f.id + "/accept", { method: "POST" });
+        if (!r.data.ok) window.alert(r.data.message || UI.accept_refused);
+        taiSaiLech();
+      };
+    }
     // Bo qua la hanh dong CHO TUNG DONG, va moi dong bi bo qua de lai mot alert ton tai.
     // Khong co nut bo qua hang loat: do la cach mat tien am tham nhat.
     const nutBo = document.createElement("button");
@@ -179,17 +186,9 @@ function veNhom(el, nhan, ds, choPhepHangLoat) {
         method: "POST", body: JSON.stringify({ note: note }) });
       taiSaiLech();
     };
-    d.append(nutOk, nutBo);
+    if (nutOk) d.appendChild(nutOk);
+    d.appendChild(nutBo);
     box.appendChild(d);
-  }
-  if (choPhepHangLoat) {
-    const b = document.createElement("button");
-    b.textContent = UI.btn_accept_all_safe;
-    b.onclick = async () => {
-      await goi("/api/findings/accept_all_safe", { method: "POST" });
-      taiSaiLech();
-    };
-    box.appendChild(b);
   }
   el.appendChild(box);
 }

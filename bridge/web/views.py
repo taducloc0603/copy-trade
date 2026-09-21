@@ -17,6 +17,7 @@ from typing import Any
 from bridge.clock import parse_iso
 from bridge.config import KHOA_FILE_SUA_DUOC
 from bridge.db.repo import Database
+from bridge.engine.reconcile import Reconciler
 from bridge.labels_vi import (
     AGENT_ROLE,
     AGENT_STATUS,
@@ -233,6 +234,8 @@ def _mo_ta_sai_lech(row: Any) -> dict[str, Any]:
         "severity": row["severity"],
         "pair_id": row["pair_id"],
         "suggested_action": row["suggested_action"],
+        # JS không được tự suy ra hành động nào chạm MT5: danh sách đó thuộc về engine.
+        "cham_mt5": Reconciler.cham_mt5(row["suggested_action"]),
         "evidence": {
             "db_label": UI["evidence_db"],
             "db": bang_chung.get("db"),

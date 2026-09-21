@@ -72,6 +72,8 @@ LOI_CAU_HINH = {
                              "chỗ để ghi."),
     "CUM_TU_SAI": "Gõ chưa đúng cụm xác nhận.",
     "KIEU_DAT_LAI_LA": "Kiểu đặt lại {kieu} không hợp lệ.",
+    "HANH_DONG_CHAM_MT5": ("{hanh_dong} là hành động gửi lệnh xuống MT5. Dashboard chỉ xem và "
+                           "cấu hình — đóng tay trong MT5 rồi bấm Bỏ qua kèm ghi chú."),
     "KHONG_TIM_THAY_MAC_DINH": "Không tìm thấy câu gieo mặc định trong schema.sql.",
     "HE_SO_KHONG_DUONG": "Hệ số volume phải lớn hơn 0, nhận được {gia_tri}.",
     "CHIEU_COPY_LA": "Chiều copy {gia_tri} không hợp lệ.",
@@ -198,8 +200,9 @@ UI = {
     "btn_accept": "Chấp nhận",
     "accept_refused": ("Không áp dụng được. Thường là vì tình trạng cặp đã đổi kể từ lúc phát "
                        "hiện (finding cũ). Xem lại bằng chứng, hoặc Bỏ qua kèm ghi chú."),
-    "btn_accept_all_safe": "Chấp nhận tất cả mục an toàn",
     "btn_skip": "Bỏ qua",
+    "finding_lam_o_mt5": ("Sai lệch này cần đóng (hoặc mở) một vị thế thật. Dashboard không làm "
+                          "việc đó: đóng tay trong MT5, rồi quay lại bấm Bỏ qua kèm ghi chú."),
     "skip_note_prompt": "Lý do bỏ qua (sẽ để lại một cảnh báo tồn tại):",
     "no_findings": "Không có sai lệch nào",
     "confirm_resume_with_findings": "Còn {n} sai lệch chưa xử lý:",

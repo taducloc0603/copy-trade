@@ -385,6 +385,7 @@ khác), kiểm từ một máy thứ ba rằng hai cổng không lộ ra Interne
 | Alert `CLIENT_TRADE_NOT_ALLOWED` | Bridge **từ chối mở lệnh mới** vì Client không đóng được | Đúng thiết kế: đừng mở cái không đóng được. Bật Algo Trading rồi copy chạy lại. |
 | Alert `FINDING_BO_QUEN` | Có sai lệch nằm chờ quá `finding_nhac_sau_phut` (mặc định 60) | Mở dashboard, xử lý từng finding. Đặt khoá này về 0 để tắt nhắc. |
 | Finding đối chiếu đang chờ | Sổ sách lệch với thực tế trên terminal | Mở finding trên dashboard, đọc `evidence_json` (có đủ ba nguồn) rồi mới `accept`. Không accept khi chưa đọc bằng chứng. Nếu trạng thái cặp đã đổi kể từ lúc phát hiện, Bridge **từ chối** accept (finding cũ, dashboard báo) — xử lý bằng **Bỏ qua** kèm ghi chú. |
+| Finding có hành động `CLOSE_CLIENT` hoặc `APPLY_POLICY` | Sai lệch này cần **đóng hoặc mở một vị thế thật** | Dashboard không làm việc đó (D-34): đóng tay trong MT5, rồi bấm **Bỏ qua kèm ghi chú**. Muốn Bridge tự đóng thì `bridge.admin` — nhưng hãy nhìn terminal trước. |
 | EA gửi bù lặp không dứt | Đã sửa ở Phase 10: trần 3 lần cho mỗi mốc `from_seq` | Nếu tái diễn, xem `bridge/protocol/server.py`. |
 | Lệnh mở bị từ chối vì symbol lệch | Hộp thoại New Order lấy symbol theo chart đang mở | **Giới hạn đã biết** (`BACKLOG.md` B-01): mỗi terminal Client copy được một symbol. Mở đúng chart đó. |
 | Clicker báo "Hop thoai khong dung hinh dang" | `ctrlID` chôn cứng không khớp bản MT5 của sàn này | Đo lại bằng `python -m clicker.ui.dump` — xem **mục 5a**. Đừng đoán hằng số. |
