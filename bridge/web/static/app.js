@@ -380,9 +380,12 @@ function khoiClient(el) {
     const heSo = oSo(c.volume_multiplier, "0.01");
     const duongMo = oChon(c.open_route, CAU_HINH.chon_duong);
     const duongDong = oChon(c.close_route, CAU_HINH.chon_duong);
-    const dongMaster = document.createElement("input");
-    dongMaster.type = "checkbox";
-    dongMaster.checked = !!c.can_close_master;
+    // Select chu khong phai checkbox: mot o tich nho chi noi duoc "co dau tich hay khong", va
+    // nguoi doc phai TU NHO dau tich nghia la gi. Day la cai quyet dinh Master co bi dong theo
+    // hay khong, nen trang thai phai doc duoc bang mot lan liec.
+    const dongMaster = oChon(c.can_close_master ? "1" : "0",
+                             [{ gia_tri: "0", nhan: UI.cfg_close_master_off },
+                              { gia_tri: "1", nhan: UI.cfg_close_master_on }]);
 
     box.append(hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
                hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong),
@@ -399,14 +402,14 @@ function khoiClient(el) {
       // doi mot con so.
       if (duongMo.value === "UI" && c.open_route !== "UI"
           && !(await hoiXacNhan(UI.confirm_open_route_ui, null))) return;
-      if (dongMaster.checked && !c.can_close_master
+      if (dongMaster.value === "1" && !c.can_close_master
           && !(await hoiXacNhan(UI.confirm_can_close_master, null))) return;
       await ghiCauHinh("/api/client/" + encodeURIComponent(c.client_id), {
         copy_mode: chieu.value,
         volume_multiplier: parseFloat(heSo.value),
         open_route: duongMo.value,
         close_route: duongDong.value,
-        can_close_master: dongMaster.checked,
+        can_close_master: dongMaster.value === "1",
       }, (d) => {
         if (d.dang_mo) {
           alert(UI.cfg_open_pairs_keep.replace("{n}", d.dang_mo));

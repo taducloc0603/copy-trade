@@ -187,6 +187,10 @@ UI = {
     "cfg_close_route": "Kênh đóng lệnh phía Client",
     "cfg_master_close_always": "Master đóng thì Client đóng: LUÔN BẬT, không tắt được",
     "cfg_can_close_master": "Cho phép Client đóng ngược Master",
+    # Hai nhãn này là CÂU, không phải "Bật"/"Tắt": ô chọn nói luôn hậu quả, vì đây là chỗ
+    # quyết định Master có bị đóng theo hay không.
+    "cfg_close_master_off": "TẮT — đóng ở Client thì Master vẫn mở",
+    "cfg_close_master_on": "BẬT — đóng ở Client thì Master đóng theo",
     "confirm_can_close_master": ("Bật mục này nghĩa là khi một Client đóng, Bridge sẽ đóng "
                                  "Master, rồi đóng nốt các Client còn lại. Tiếp tục?"),
     "confirm_open_route_ui": ("Chuyển sang kênh giao diện: thông lượng còn khoảng một lệnh mỗi "
