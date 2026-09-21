@@ -24,10 +24,12 @@ from bridge.protocol.dispatcher import CommandDispatcher
 from bridge.protocol.server import BridgeServer, ServerConfig
 from clicker.__main__ import (
     ENV_TOKEN,
+    LOG_FILENAME,
     bo_sung_tham_so,
     build_parser,
     doc_muc_clicker,
     main,
+    nhat_ky_theo_muc,
 )
 from clicker.journal import CommandJournal
 from clicker.link import ClickerLink, LinkConfig, ThieuCauHinh
@@ -327,6 +329,38 @@ def test_hai_clicker_khong_ghi_chung_mot_file_log(monkeypatch: pytest.MonkeyPatc
     assert main(["--dry-run", "--muc", "clicker_master"]) == 2
     assert goi[0]["filename"] != goi[1]["filename"]
     assert goi[1]["filename"] == "clicker_master.log"
+
+
+def test_clicker_thu_ba_co_log_va_nhat_ky_rieng(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mỗi Client đi đường giao diện có một clicker riêng, nên mục nào cũng phải chạy được.
+
+    Dùng chung file log là bẫy đã làm `bridge.log` im 63 giờ; dùng chung nhật ký là **mất lệnh
+    trong im lặng** — clicker này thấy `command_id` của clicker kia là "đã giữ chỗ nhưng chưa có
+    ack".
+    """
+    goi: list[dict[str, object]] = []
+    monkeypatch.setattr("clicker.__main__.setup_logging", lambda **kw: goi.append(kw))
+    monkeypatch.delenv(ENV_TOKEN, raising=False)
+    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
+
+    assert main(["--dry-run", "--muc", "clicker_cl02"]) == 2
+    assert goi[0]["filename"] == "clicker_cl02.log"
+
+    args = build_parser().parse_args(["--muc", "clicker_cl02"])
+    assert nhat_ky_theo_muc(args) == "data/clicker_cl02_commands.ndjson"
+
+
+def test_ten_muc_sai_thi_dung_ngay_va_khong_lay_no_lam_ten_file(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tên mục sai thành tên file log và tên nhật ký, tức một nhật ký không ai đọc."""
+    goi: list[dict[str, object]] = []
+    monkeypatch.setattr("clicker.__main__.setup_logging", lambda **kw: goi.append(kw))
+
+    assert main(["--dry-run", "--muc", "Clicker-Master"]) == 2
+    # Vào log RIÊNG của clicker, không phải `bridge.log`: dừng vì tên sai không phải cái cớ để
+    # ghi chung file log với Bridge.
+    assert goi[0]["filename"] != DEFAULT_LOG_FILENAME
+    assert goi[0]["filename"] == LOG_FILENAME
 
 
 def test_nhip_heartbeat_phai_nho_hon_han_cua_bridge() -> None:

@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-from bridge.config import ConfigError, load_config
+from bridge.config import ConfigError, la_muc_clicker, load_config
 from bridge.logging_setup import get_logger, setup_logging
 from clicker.journal import CommandJournal
 from clicker.link import DEFAULT_HEARTBEAT_SEC, ClickerLink, LinkConfig, ThieuCauHinh
@@ -78,9 +78,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--terminal-title", default="",
                         help="Mau tieu de cua so terminal, thuong chua so tai khoan "
                              "(hoac muc [clicker] config.toml)")
-    parser.add_argument("--muc", default="clicker", choices=("clicker", "clicker_master"),
-                        help="Muc cau hinh trong config.toml. `clicker_master` la clicker thu hai, "
-                             "lai terminal Master (phase 12)")
+    # KHONG dung `choices`: moi Client di duong giao dien can mot muc clicker rieng, nen danh
+    # sach ten khong the biet truoc. `clicker_master` lai terminal Master; `clicker_cl02` lai
+    # terminal cua Client thu hai. Ten duoc kiem theo mau trong `main`.
+    parser.add_argument("--muc", default="clicker",
+                        help="Muc cau hinh trong config.toml: `clicker`, `clicker_master`, "
+                             "`clicker_cl02`, ... Moi clicker mot muc, mot token, mot nhat ky")
     parser.add_argument("--journal", default=DEFAULT_JOURNAL,
                         help=f"Duong dan nhat ky append-only (mac dinh {DEFAULT_JOURNAL})")
     parser.add_argument("--heartbeat-sec", type=float, default=DEFAULT_HEARTBEAT_SEC)
@@ -90,10 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def doc_muc_clicker(ten_muc: str = "clicker") -> dict[str, object]:
-    """Trả về mục cấu hình của clicker này (``[clicker]`` hoặc ``[clicker_master]``).
+    """Trả về mục cấu hình của clicker này (``[clicker]``, ``[clicker_master]``, ``[clicker_cl02]``…).
 
-    Tên mục đi vào đây thay vì cố định, vì từ phase 12 có **hai** clicker: một lái terminal
-    Client, một lái terminal Master, mỗi cái một token riêng. Rỗng nếu không đọc được.
+    Tên mục đi vào đây thay vì cố định, vì mỗi clicker có một mục riêng: một lái terminal Client,
+    một lái terminal Master, thêm một cái nữa cho mỗi Client đi đường giao diện — mỗi cái một
+    token riêng. Rỗng nếu không đọc được.
 
     Không ném: clicker chạy được hoàn toàn bằng tham số dòng lệnh, và một máy chỉ chạy clicker
     thì không nhất thiết có ``config.toml``. Thiếu giá trị thật sự cần thì `bo_sung_tham_so`
@@ -180,14 +184,23 @@ def nhat_ky_theo_muc(args: argparse.Namespace) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Kiem ten muc TRUOC khi mo file log: mot ten sai se thanh ten file log, va `data/<ten>.ndjson`
+    # thanh mot nhat ky khong ai doc. Kiem bang chinh ham ma `config.py` dung, de hai ben khong
+    # bao gio lech nhau ve viec ten nao la hop le.
+    if not la_muc_clicker(args.muc):
+        setup_logging(filename=LOG_FILENAME)
+        log.critical("Ten muc --muc khong hop le: %r. Phai la `clicker` hoac `clicker_<ten>` "
+                     "(chu thuong, so va dau gach duoi), vi du clicker_cl02.", args.muc)
+        return 2
     setup_logging(filename=ten_log_theo_muc(args.muc))
     bo_sung_tham_so(args)
     args.journal = nhat_ky_theo_muc(args)
 
     if not args.token:
-        log.critical("Thieu token. Dat mot trong ba: --token, bien %s, hoac muc [clicker] trong "
-                     "config.toml. Cap token bang: python -m bridge.admin cap-token <AGENT_ID>",
-                     ENV_TOKEN)
+        log.critical("Thieu token cho muc [%s]. Dat mot trong ba: --token, bien %s, hoac "
+                     "%s.token trong config.toml (khai duoc tren dashboard, tab Cau hinh). "
+                     "Cap token bang: python -m bridge.admin cap-token <AGENT_ID>",
+                     args.muc, ENV_TOKEN, args.muc)
         return 2
     # Số tài khoản và tiêu đề cửa sổ **được phép** thiếu ở đây: clicker nhận chúng từ Bridge
     # trong `hello_ack` (khai trên dashboard). Thiếu cả ba nguồn thì `run()` thoát với mã 4 sau

@@ -15,3 +15,6 @@ config.toml.bak-*
 .ruff_cache/
 *.egg-info/
 tools/
+
+# Anh chup/snapshot do Playwright MCP sinh ra khi do giao dien -- khong phai san pham.
+.playwright-mcp/

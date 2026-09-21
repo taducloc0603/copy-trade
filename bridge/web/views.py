@@ -341,7 +341,10 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
         ],
         "ma_client_goi_y": _ma_client_ke_tiep([c["client_id"] for c in clients]),
         "file_config": _mo_ta_file_config(config),
-        "preview": xem_truoc_he_so(clients[0]["volume_multiplier"] if clients else 1.0),
+        # Theo TỪNG Client, không phải một bảng dùng chung. Bản cũ lấy `clients[0]`, nên với
+        # hai Client khác hệ số thì khối CL-02 hiển thị con số của CL-01 — một bảng xem trước
+        # nói sai chính là thứ tệ hơn không có bảng nào.
+        "preview": {c["client_id"]: xem_truoc_he_so(c["volume_multiplier"]) for c in clients},
     }
 
 
@@ -397,12 +400,23 @@ def _mo_ta_file_config(config: Any) -> list[dict[str, Any]]:
             # Bí mật: chỉ nói CÓ hay KHÔNG, không bao giờ nói là gì.
             "gia_tri": (UI["cfg_file_masked"] if gia_tri else "") if bi_mat else str(gia_tri or ""),
         })
+    # Token của các mục clicker **ngoài hai mục có tên cố định** (`clicker_cl02`, …). Chúng
+    # không nằm trong `KHOA_FILE_SUA_DUOC` vì tên do người vận hành đặt, nên phải lấy từ chính
+    # file đang dùng — mỗi Client đi đường giao diện có một mục như vậy.
+    cac_muc = dict(getattr(config, "clickers", None) or {})
+    for muc in sorted(cac_muc):
+        if f"{muc}.token" in KHOA_FILE_SUA_DUOC:
+            continue
+        dong.append({
+            "khoa": f"{muc}.token", "kieu": "str", "bi_mat": True,
+            "gia_tri": UI["cfg_file_masked"] if cac_muc[muc].get("token") else "",
+        })
     # Hai khoá dưới đây không sửa ở đây: chúng đã chuyển vào database (D-32) và chỉ còn hiện ra
     # để người vận hành thấy bản cài cũ còn sót giá trị trong file — mà file thì THẮNG database.
-    for muc in ("clicker", "clicker_master"):
+    for muc in ("clicker", "clicker_master", *sorted(cac_muc)):
         for ten in ("account_login", "terminal_title"):
-            gia_tri = (getattr(config, muc, None) or {}).get(ten, "")
-            if gia_tri:
+            gia_tri = (cac_muc.get(muc) or {}).get(ten, "")
+            if gia_tri and not any(d["khoa"] == f"{muc}.{ten}" for d in dong):
                 dong.append({"khoa": f"{muc}.{ten}", "kieu": "str", "bi_mat": False,
                              "chi_doc": True, "gia_tri": str(gia_tri)})
     return dong

@@ -19,9 +19,14 @@ param(
     # tu do sua tren dashboard se khong con tac dung (thu tu: dong lenh > config.toml > Bridge).
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
-    # Muc cau hinh trong config.toml. `clicker_master` la clicker THU HAI, lai terminal Master
-    # (phase 12) -- token va nhat ky rieng; so tai khoan va tieu de cua so lay tu Bridge.
-    [ValidateSet("clicker", "clicker_master")]
+    # Muc cau hinh trong config.toml, MOT muc cho moi clicker: `clicker` lai terminal Client
+    # dau tien, `clicker_master` lai terminal Master, `clicker_cl02` lai terminal cua Client thu
+    # hai. Moi muc mot token va mot nhat ky rieng; so tai khoan va tieu de cua so lay tu Bridge.
+    #
+    # Mau chu khong phai danh sach co san: so Client la thu doi theo cau hinh, nen mot danh sach
+    # cung se lai chan Client thu ba y nhu truoc (B-19). Mau nay trung voi RE_MUC_CLICKER trong
+    # bridge/config.py.
+    [ValidatePattern('^clicker(_[a-z0-9_]+)?$')]
     [string] $Muc = "clicker",
     [int]    $ChoGiuaHaiLan = 10
 )

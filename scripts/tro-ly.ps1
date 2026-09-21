@@ -692,7 +692,7 @@ function buoc_dich_vu() {
     # phai dang ky lai tac vu. Nhung VIEC CO dang ky tac vu ClickerMaster hay khong thi van phai
     # noi ro o day, neu khong khong ai dang ky no ca.
     $doiSoMaster = @()
-    if ($script:BatDongMaster) { $doiSoMaster = @('-TacVuClickerMaster') }
+    if ($script:BatDongMaster) { $doiSoMaster = @('-TacVuClicker', 'clicker_master') }
     & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu @doiSoMaster
     if ($LASTEXITCODE -ne 0) { canh "tao-dich-vu.ps1 tra ve $LASTEXITCODE" }
     else { ok "da dang ky" }

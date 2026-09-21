@@ -3161,3 +3161,52 @@ voi mot `Database(tmp)` trong tien trinh, khong qua CLI.
 
 **Do giao dien bang Playwright** chu khong chi doc code: chay dashboard tren DB tam, dang nhap, doi
 he so volume roi doc lai DB. Chinh lan bam do lo ra lo (1).
+
+
+## 1 Master x N Client: bo gioi han hai clicker, va co dong nguoc lech nhau (2026-09-21)
+
+**Cau hoi dat ra:** CL-01 khong cho dong nguoc Master, CL-02 cho — hien dang xu ly the nao?
+
+**Tra loi sau khi doc duong chay:** dung, va da dung tu truoc. `can_close_master` la cot rieng cua
+tung dong `client_account`, va `on_client_close` chi doc no tu dong cua **chinh Client vua dong tay**
+(`closing.py:366`). CL-01 dong tay thi cap cua no thanh ORPHANED, Master va CL-02 khong bi dung toi;
+CL-02 dong tay thi Master dong roi CL-01 dong theo **bat ke co cua CL-01** — vi Master da dong thi
+moi Client phai dong (FR-13), co kia chi noi "lan dong tay cua toi co duoc keo Master theo khong".
+
+Cai **thieu** la kiem chung, khong phai chuc nang. Bo fixture cu dat **cung mot co cho moi Client**,
+nen truong hop hay gap nhat chua bao gio duoc chay. Da them muc 7.5b trong `tests/test_close_flow.py`
+voi fixture `env_lech` (CL-01 = 0, CL-02 = 1). Kiem lai bang mot mutation: doi
+`if not client["can_close_master"]` thanh `if False` thi test dau tien do ra ngay.
+
+**Bo giai han hai clicker (B-19 — dong).** De CL-02 chon duoc duong giao dien y nhu CL-01:
+
+* `RE_MUC_CLICKER = ^clicker(_[a-z0-9_]+)?$`, `Config.clickers` giu moi muc doc duoc, `muc_clicker`
+  tra theo ten va khi go sai ten thi **noi ra cac muc dang co** — `clicker_cl2` thay vi
+  `clicker_cl02` ma chi bao "thieu token" thi nguoi ta di tim token trong khi loi nam o cai ten.
+* Token cua muc moi khai duoc **ngay tren dashboard** (`kieu_khoa_file` nhan moi `clicker*.token`),
+  co vung rieng "Them token cho mot clicker moi" duoi khoi `config.toml`.
+* `--muc` va `chay-clicker.ps1` kiem theo mau; `tao-dich-vu.ps1 -TacVuClicker <danh sach>` dang ky
+  mot tac vu cho moi muc, ten tac vu suy ra tu ten muc; `-GoBo` go **moi** tac vu `Clicker*`.
+* `cai-dat.ps1` goi y bat lai liet ke dung cac tac vu Clicker* dang co, khong chi ten "Clicker".
+
+**Hai cho sai chi lo ra khi co hai Client:**
+
+1. Alert `ORPHANED_MASTER` noi "ma khong con doi ung" ke ca khi CL-02 **van dang hedge**. Day la
+   cau nguoi van hanh doc de quyet dinh co vao bu tay hay khong, nen nay no noi dung con may cap
+   doi ung va cua Client nao.
+2. Bang "Xem truoc" he so lay `clients[0]` cho **moi** khoi Client, nen khoi CL-02 hien con so cua
+   CL-01. Nay tra theo tung `client_id`.
+
+**Va mot cho sai khong lien quan toi so Client nhung lo ra khi doc duong EA:** phep kiem Algo
+Trading nam trong `_ui_route_blocked`, tuc Client di duong EA **chua tung duoc kiem** — trong khi o
+duong EA thi Algo Trading tat nghia la chinh lenh **mo** that bai, va voi
+`open_fail_policy = RETRY_CLOSE_MASTER` thi cu that bai do con keo vi the Master dong theo. Nay la
+`_algo_trading_tat`, chay cho ca hai duong.
+
+**Do giao dien bang Playwright** chu khong chi doc code: chay dashboard tren DB tam co CL-01 (he so
+1.0) va CL-02 (he so 2.0), thay hai khoi Client voi hai bang xem truoc **khac nhau**, go ten `cl02`
++ token vao vung moi roi bam Luu → `[clicker_cl02]` xuat hien trong `config.toml`, va sau khi khoi
+dong lai thi khoa hien ra dang "(da dat)" — token khong bao gio di ra JSON.
+
+**Con lai:** TEST-33 trong `ACCEPTANCE.md` — bai chay that tren demo voi hai tai khoan demo khac
+nhau. Do la dieu B-06 dang cho; dat (e) va (f) thi TEST-05 va TEST-15 len DEMO.

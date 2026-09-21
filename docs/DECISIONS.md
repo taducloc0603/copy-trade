@@ -489,8 +489,15 @@ dây rảnh. Ba điều đi kèm, mỗi điều đều là một lựa chọn c�
   ra tới Telegram. Nới trần cho khỏi thấy dòng này là tự bịt mắt trước thông lượng thật.
 * **FIFO tuyệt đối**: khi hàng đợi còn người đứng trước, lệnh mới cũng xếp cuối **dù đường dây đang
   rảnh**. Cho chen là tự chọn hy sinh lệnh cũ nhất — sai thứ tự để hy sinh.
-* **Chỉ cổng 2 dẫn tới xếp hàng.** Clicker hỏng (cổng 1) và Algo Trading tắt (cổng 3) là trạng thái
+* **Chỉ cổng 2 dẫn tới xếp hàng.** Clicker hỏng (cổng 1) và Algo Trading tắt là trạng thái
   **không tự hết**; xếp hàng ở đó chỉ tích lại một đống lệnh rồi hết hạn cả loạt.
+
+*(Bổ sung 2026-09-21)* Phép kiểm Algo Trading — từng là "cổng 3" của đường giao diện — nay là
+`_algo_trading_tat` và chạy cho **cả hai** đường mở. Nó nằm trong `_ui_route_blocked` nên Client đi
+đường EA chưa từng được kiểm, trong khi ở đường EA thì Algo Trading tắt nghĩa là chính lệnh **mở**
+thất bại: người vận hành nhận một `OPEN_FAILED` với retcode của terminal, và nếu Client đó đặt
+`open_fail_policy = RETRY_CLOSE_MASTER` thì cú thất bại ấy còn kéo vị thế Master đóng theo. Đó là
+đường mà một Client thứ hai hay dùng lúc đầu, nên chỗ này không phải trường hợp hiếm.
 
 Hàng đợi nằm trong DB chứ không trong bộ nhớ, vì `tinh-hinh` phải thấy được nó, và một lần khởi
 động lại giữa chừng thì lệnh đang chờ phải hết hạn **có tiếng** chứ không biến mất im lặng.
@@ -612,3 +619,28 @@ cờ `cham_mt5` trong mỗi dòng sai lệch: JavaScript không được tự su
 Ba nút đổi chế độ (`RUNNING` / `PAUSE_NEW_ENTRIES` / `PAUSED`) **ở lại** trên dashboard. Chúng
 không gửi lệnh nào; chúng bật hoặc tắt việc copy, và đó là thứ người vận hành phải với tới được
 nhanh. `EMERGENCY` thì vẫn chỉ đặt bằng dòng lệnh (D-33).
+
+### D-35 — Mỗi Client một clicker riêng, số mục clicker không giới hạn
+
+Trước 2026-09-21 chỉ đúng **hai** mục clicker được chấp nhận (`[clicker]` cho Client, `[clicker_master]`
+cho Master). Hệ quả không nằm ở chỗ "chưa tiện": Client thứ hai **không có chỗ nào để khai token
+clicker**, nên nó buộc phải đi đường EA — và deal của nó mang `DEAL_REASON = EXPERT` thay vì
+`CLIENT`, tức là mất đúng thứ mà cả phase 6b và phase 11 tồn tại để đạt được (B-19).
+
+Từ nay tên mục chỉ cần khớp `RE_MUC_CLICKER` = `^clicker(_[a-z0-9_]+)?$`:
+
+* `Config.clickers` giữ **mọi** mục đọc được, `muc_clicker(ten)` tra theo tên, và khi gõ sai tên nó
+  nói ra **những mục đang có** — gõ `clicker_cl2` thay vì `clicker_cl02` mà chỉ báo "thiếu token"
+  thì người ta đi tìm token trong khi lỗi nằm ở cái tên.
+* Token của mục mới khai được **ngay trên dashboard** (`kieu_khoa_file` cho mọi `clicker*.token`),
+  đúng lý do của D-32: token không được đi qua dòng lệnh, và mở `config.toml` trên VPS chỉ để dán
+  một dòng là việc không nên phải làm.
+* `tao-dich-vu.ps1 -TacVuClicker clicker_master,clicker_cl02` đăng ký **một Scheduled Task cho mỗi
+  mục**, tên tác vụ suy ra từ tên mục (`ClickerCl02`). `-GoBo` gỡ **mọi** tác vụ khớp `Clicker*`
+  thay vì một danh sách cứng — danh sách cứng đã từng bỏ sót đúng `ClickerMaster`, và một tác vụ
+  còn sót là một tiến trình vẫn bấm vào terminal cũ.
+
+Ràng buộc **không** đổi: hai Client không dùng chung một clicker, và không Client nào dùng clicker
+của Master (`_clicker_con_trong` trong `ops.py`). Một clicker lái hai terminal là hai hộp thoại
+New Order cùng được điền — và cái hàng rào duy nhất chống lái nhầm terminal là số tài khoản phải
+khớp tiêu đề cửa sổ, kiểm lại ở **mỗi** cú bấm.

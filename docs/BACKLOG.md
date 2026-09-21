@@ -72,6 +72,10 @@ Cascade (D-09, TEST-05, TEST-15) vẫn chỉ có test tự động — cần ≥
 có ý nghĩa. Đường đóng vị thế Master mà cascade dựa vào thì **đã chạy thật** ở phase 11, nên rủi
 ro còn lại nằm ở phần chờ-xác-nhận-rồi-mới-lan-truyền chứ không còn ở chính khả năng đóng.
 
+Từ 2026-09-21, trường hợp **cờ `can_close_master` lệch nhau giữa các Client** đã có test tự động
+(TEST-33 trong ACCEPTANCE, mục 7.5b của `tests/test_close_flow.py`), và giới hạn hai clicker đã gỡ
+(B-19) nên cả hai Client đều chạy được đường giao diện. Bài chạy thật trên demo là TEST-33.
+
 ### B-07 — Close By không có dữ liệu thực nghiệm
 
 Broker Connext-Demo không hỗ trợ Close By, nên D-12 được cài mà chưa từng đối chiếu với hành vi
@@ -243,16 +247,13 @@ VPS: lọc theo `error_message IS NOT NULL` sẽ **giấu luôn** các lỗi th�
 Đổi ngữ nghĩa của một tín hiệu được thiết kế để tin, dưới sức ép thời gian, là đúng loại thay đổi
 không nên làm.
 
-### B-19 — Chỉ chạy được hai clicker, nên Client thứ hai phải đi đường EA
+### ~~B-19 — Chỉ chạy được hai clicker, nên Client thứ hai phải đi đường EA~~ *(xong 2026-09-21)*
 
-`config.py::muc_clicker` chỉ biết hai mục `[clicker]` và `[clicker_master]`; `clicker --muc` và
-`chay-clicker.ps1` cũng khoá đúng hai tên đó. Nghĩa là thêm `CL-02` thì dòng cấu hình, agent, ánh
-xạ symbol đều khai được trên dashboard (D-32), nhưng nó **không có clicker riêng** — phải đặt
-`open_route = close_route = EA`, và deal của nó mang `EXPERT` thay vì `CLIENT`.
-
-Gỡ bỏ giới hạn này là: cho `muc_clicker` đọc mục theo tên bất kỳ dạng `[clicker_*]`, nới
-`--muc`/`ValidateSet`, và đăng ký thêm một Scheduled Task cho mỗi clicker. Không khó, nhưng nó
-chạm vào đường đang chạy thật nên để thành một việc riêng.
+`muc_clicker` nay đọc mục theo tên bất kỳ dạng `[clicker_<tên>]` (`RE_MUC_CLICKER`), `--muc` và
+`chay-clicker.ps1` kiểm theo mẫu chứ không theo danh sách cứng, `tao-dich-vu.ps1 -TacVuClicker`
+nhận **danh sách mục** và đăng ký một Scheduled Task cho mỗi cái, `-GoBo` gỡ mọi tác vụ `Clicker*`,
+và token của mục mới khai được ngay trên dashboard. Nên `CL-02` chọn được đường giao diện y như
+`CL-01`. Việc còn lại là chạy thật trên demo — đó là B-06.
 
 ## Mở rộng — không thuộc MVP
 

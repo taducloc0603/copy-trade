@@ -189,7 +189,10 @@ món nợ đó đã một lần làm mất token của clicker.
 > `[clicker_master]` của `config.toml` và ghi nhật ký riêng `data/clicker_master_commands.ndjson`
 > — dùng chung nhật ký là mất lệnh trong im lặng. Số tài khoản và tiêu đề cửa sổ của nó khai trên
 > dashboard như mọi clicker khác. Terminal **Master** từ đó phải luôn mở Toolbox ở tab **Trade**,
-> y như Client. Đăng ký tác vụ: `scripts\tao-dich-vu.ps1 -TacVuClickerMaster`.
+> y như Client. Đăng ký tác vụ: `scripts\tao-dich-vu.ps1 -TacVuClicker clicker_master`.
+>
+> Số clicker **không giới hạn** (D-35): mỗi Client đi đường giao diện có một mục `[clicker_<tên>]`
+> riêng và một tác vụ riêng, ví dụ `-TacVuClicker clicker_master,clicker_cl02`.
 >
 > **Không phải chạm vào token.** `scripts\tro-ly.ps1` hỏi một câu ở bước thông số, rồi tự tạo agent,
 > **ghi token thẳng vào `[clicker_master]`** và đăng ký tác vụ — token của cả hai clicker không bao

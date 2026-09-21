@@ -414,7 +414,9 @@ function khoiClient(el) {
                hang(UI.cfg_can_close_master, dongMaster));
 
     const xemTruoc = document.createElement("pre");
-    xemTruoc.textContent = (CAU_HINH.preview || []).join("\n");
+    // Theo dung Client nay. Dung mot bang chung cho moi Client la noi sai voi Client thu hai --
+    // va no con to ra dung, nen khong ai kiem lai.
+    xemTruoc.textContent = ((CAU_HINH.preview || {})[c.client_id] || []).join("\n");
     box.append(nhan(UI.cfg_preview + ":"), xemTruoc);
 
     const luu = nut(UI.cfg_save, "chinh");
@@ -661,6 +663,36 @@ function khoiFileConfig(el) {
     await taiCauHinh();
   };
   box.appendChild(chanKhoi(luu, UI.cfg_file_restart_short));
+
+  // Vung rieng, duoi duong ke: day la THEM mot khoa moi vao file, khong phai sua khoa dang co.
+  // Ten muc do nguoi van hanh dat, nen no khong the nam trong danh sach khoa co san o tren.
+  const vungMoi = document.createElement("div");
+  vungMoi.className = "vung-phu";
+  vungMoi.append(nhan(UI.cfg_clicker_new_title, "nhan"),
+                 nhan(UI.cfg_clicker_new_hint, "ghi-chu"));
+  const oTen = oChu("");
+  oTen.placeholder = "cl02";
+  const oToken = document.createElement("input");
+  oToken.type = "password";
+  oToken.autocomplete = "new-password";
+  vungMoi.append(hang(UI.cfg_clicker_new_name, oTen),
+                 hang(UI.cfg_clicker_new_token, oToken));
+  const luuMoi = nut(UI.cfg_save, "chinh");
+  luuMoi.onclick = async () => {
+    const ten = oTen.value.trim().toLowerCase();
+    const tok = oToken.value.trim();
+    if (!ten || !tok) { alert(UI.cfg_clicker_new_missing); return; }
+    const doi = {};
+    doi["clicker_" + ten + ".token"] = tok;
+    const r = await goi("/api/file_config",
+                        { method: "POST", body: JSON.stringify({ doi: doi }) });
+    if (!r.ok) { alert(r.data.message || r.data.error || ""); return; }
+    oToken.value = "";
+    alert(UI.cfg_file_saved);
+    await taiCauHinh();
+  };
+  vungMoi.appendChild(chanKhoi(luuMoi, UI.cfg_file_restart_short));
+  box.appendChild(vungMoi);
   el.appendChild(box);
 }
 

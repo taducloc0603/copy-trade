@@ -126,7 +126,7 @@ class Env:
 
 
 async def _dung_env(db: Database, so_client: int = 1,
-                    can_close_master: int = 0) -> tuple[Env, list]:
+                    can_close_master: int | dict[str, int] = 0) -> tuple[Env, list]:
     db.upsert_agent(MASTER_AGENT, role="MASTER", token_hash=hash_token(MASTER_TOKEN),
                     magic_number=MAGIC, account_login=MASTER_LOGIN)
     db.replace_symbol_specs(MASTER_AGENT, [{
@@ -140,8 +140,14 @@ async def _dung_env(db: Database, so_client: int = 1,
         tokens[cid] = (aid, tok, 222220 + i)
         db.upsert_agent(aid, role="CLIENT", token_hash=hash_token(tok),
                         magic_number=MAGIC, account_login=222220 + i)
+        # Cờ theo TỪNG Client, không phải một cờ chung cho cả nhóm. `can_close_master` là cột
+        # riêng của mỗi dòng `client_account`, nên một bộ test chỉ biết đặt cùng một giá trị cho
+        # mọi Client không bao giờ chạm tới trường hợp thật hay gặp nhất: một Client được phép
+        # đóng ngược Master, Client kia thì không.
+        co = (can_close_master.get(cid, 0) if isinstance(can_close_master, dict)
+              else can_close_master)
         db.upsert_client_account(cid, agent_id=aid, copy_mode="OPPOSITE",
-                                 volume_multiplier=0.5, can_close_master=can_close_master)
+                                 volume_multiplier=0.5, can_close_master=co)
         db.upsert_symbol_map(cid, SYMBOL, CLIENT_SYMBOL)
         db.replace_symbol_specs(aid, [{
             "symbol": CLIENT_SYMBOL, "digits": 2, "point": 0.01, "volume_min": 0.01,
@@ -169,7 +175,14 @@ async def env_2client(db: Database) -> AsyncIterator[Env]:
         yield e
 
 
-async def _make_env(db: Database, so_client: int, can_close_master: int):
+@pytest.fixture
+async def env_lech(db: Database) -> AsyncIterator[Env]:
+    """Hai Client, cờ LỆCH nhau: CL-01 **không** được đóng ngược Master, CL-02 **được**."""
+    async for e in _make_env(db, so_client=2, can_close_master={"CL-01": 0, "CL-02": 1}):
+        yield e
+
+
+async def _make_env(db: Database, so_client: int, can_close_master: int | dict[str, int]):
     tokens = await _dung_env(db, so_client, can_close_master)
     server = BridgeServer(db, ServerConfig(host="127.0.0.1", port=0, hello_timeout_sec=1.0,
                                            monitor_interval_sec=0.05,
@@ -719,3 +732,116 @@ async def test_he_so_cau_hinh_doi_giua_chung_khong_co_duong_nao_cham_toi_cap_dan
 
     # 50% cua 0.50 con lai = 0.25. He so 5.0 vua doi khong xuat hien o dau ca.
     assert abs(env.db.get_pair(cap_id)["client_current_volume"] - 0.25) < 1e-9
+
+
+# -- 7.5b Cờ `can_close_master` lệch nhau giữa các Client -------------------------------------
+#
+# Cờ này là cột riêng của mỗi Client, và `on_close` chỉ đọc nó từ dòng của **chính Client vừa đóng
+# tay**. Ba test dưới đây khoá đúng ngữ nghĩa đó lại, vì nó dễ bị hiểu thành "cờ của cả nhóm" —
+# và hiểu sai theo hướng nào cũng mất tiền: một bên là Master bị đóng khi không được phép, bên kia
+# là một Client giữ vị thế trong khi Master đã đóng.
+
+async def test_cl01_tat_cong_tac_dong_tay_thi_khong_ai_khac_bi_dung_toi(env_lech: Env) -> None:
+    """CL-01 (cờ TẮT) đóng tay: Master giữ nguyên, và cặp của CL-02 **không bị đụng tới**."""
+    env = env_lech
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: len(env.pairs(status="OPEN")) == 2, timeout=4.0)
+    cap_1 = env.pair_of(900001, "CL-01")
+
+    await env.client_close("CL-01", _client_pos(env, cap_1["pair_id"]))
+    await asyncio.sleep(0.3)
+
+    assert env.db.get_pair(cap_1["pair_id"])["status"] == "ORPHANED"
+    assert env.pair_of(900001, "CL-02")["status"] == "OPEN", "CL-02 khong duoc dong theo"
+    assert env.db.get_master_position(900001)["status"] == "OPEN"
+    assert [c for c in env.commands("CLOSE") if c["target_agent_id"] == MASTER_AGENT] == []
+    assert env.clients["CL-02"].positions, "CL-02 VAN phai giu vi the"
+
+    # Alert phai noi dung: Master VAN con doi ung, chu khong phai "khong con doi ung".
+    canh = env.alerts("ORPHANED_MASTER")
+    assert len(canh) == 1
+    assert "CL-02" in canh[0]["message"], canh[0]["message"]
+    assert "khong con doi ung" not in canh[0]["message"], canh[0]["message"]
+
+
+async def test_cl02_bat_cong_tac_dong_tay_thi_cl01_cung_dong_theo(env_lech: Env) -> None:
+    """CL-02 (cờ BẬT) đóng tay: Master đóng, rồi CL-01 đóng theo **dù cờ của nó TẮT**.
+
+    Cờ nói "lần đóng tay của tôi có được kéo Master theo không". Master đã đóng thì mọi Client
+    phải đóng (FR-13) — cờ của các Client còn lại không còn chỗ nào để nói vào nữa.
+    """
+    env = env_lech
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: len(env.pairs(status="OPEN")) == 2, timeout=4.0)
+    cap_2 = env.pair_of(900001, "CL-02")
+
+    await env.client_close("CL-02", _client_pos(env, cap_2["pair_id"]))
+    await _wait_until(lambda: len(env.pairs(status="CLOSED")) == 2, timeout=8.0)
+
+    assert env.db.get_master_position(900001)["status"] == "CLOSED"
+    assert env.pair_of(900001, "CL-01")["status"] == "CLOSED"
+    assert not env.clients["CL-01"].positions, "CL-01 phai dong theo Master"
+    lenh_master = [c for c in env.commands("CLOSE") if c["target_agent_id"] == MASTER_AGENT]
+    assert len(lenh_master) == 1, f"Sinh {len(lenh_master)} lenh dong Master"
+    assert not env.alerts("CASCADE_MASTER_TIMEOUT")
+
+
+async def test_cascade_qua_han_thi_client_tat_cong_tac_van_giu_vi_the(env_lech: Env) -> None:
+    """Master không xác nhận: CL-01 thành ORPHANED và **vẫn giữ** vị thế (D-10)."""
+    env = env_lech
+    env.db.set_config("cascade_wait_master_ms", "1000")
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: len(env.pairs(status="OPEN")) == 2, timeout=4.0)
+    cap_2 = env.pair_of(900001, "CL-02")
+    env.master.auto_ack = False
+
+    await env.client_close("CL-02", _client_pos(env, cap_2["pair_id"]))
+    await _wait_until(lambda: bool(env.alerts("CASCADE_MASTER_TIMEOUT")), timeout=8.0)
+
+    assert env.pair_of(900001, "CL-01")["status"] == "ORPHANED"
+    assert env.clients["CL-01"].positions, "CL-01 VAN phai giu vi the"
+
+
+async def test_hai_client_dong_tay_lien_tiep_chi_mot_lenh_dong_master(env_cascade: Env) -> None:
+    """Hai Client cùng cờ BẬT đóng tay sát nhau: vẫn đúng **một** lệnh đóng Master.
+
+    Giữ lệnh đóng Master ở trạng thái SENT (Master không ack) để cửa sổ chồng lấn mở suốt bài
+    test — nếu không thì Master đã CLOSED trước cú đóng thứ hai và bài test không kiểm gì cả.
+    """
+    env = env_cascade
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: len(env.pairs(status="OPEN")) == 3, timeout=4.0)
+    cap_1 = env.pair_of(900001, "CL-01")
+    cap_2 = env.pair_of(900001, "CL-02")
+    env.master.auto_ack = False
+
+    await env.client_close("CL-01", _client_pos(env, cap_1["pair_id"]))
+    await env.client_close("CL-02", _client_pos(env, cap_2["pair_id"]))
+    await asyncio.sleep(0.3)
+
+    lenh_master = [c for c in env.commands("CLOSE") if c["target_agent_id"] == MASTER_AGENT]
+    assert len(lenh_master) == 1, f"Sinh {len(lenh_master)} lenh dong Master"
+
+
+async def test_retry_close_master_noi_dung_so_cap_bi_keo_theo(env_2client: Env) -> None:
+    """`RETRY_CLOSE_MASTER` vì một Client mở hỏng sẽ kéo **các Client khác** mất hedge.
+
+    Con số trong alert là thứ người vận hành đọc để biết cú đóng này ảnh hưởng tới mấy sổ, nên nó
+    phải là số cặp **đang mở thật**, không phải một câu chung chung.
+    """
+    env = env_2client
+    env.db.upsert_client_account("CL-01", agent_id="AG-CLIENT-1", copy_mode="OPPOSITE",
+                                 volume_multiplier=0.5, open_fail_policy="RETRY_CLOSE_MASTER",
+                                 max_retry=0)
+    env.clients["CL-01"].next_retcode = 10019
+    # Tra loi CHAM: de cap cua CL-02 kip OPEN truoc khi chinh sach cua CL-01 chay. Khong co no thi
+    # bai test do thu tu hai su kien tren cung mot vong lap.
+    env.clients["CL-01"].execution_delay_sec = 0.4
+
+    await env.master_open(900001, 1.0)
+    await _wait_until(lambda: bool(env.alerts("CLOSE_MASTER_AFFECTS_OTHERS")), timeout=8.0)
+
+    canh = env.alerts("CLOSE_MASTER_AFFECTS_OTHERS")[0]
+    assert canh["level"] == "CRITICAL"
+    assert "1 cap khac" in canh["message"], canh["message"]
+    assert env.pair_of(900001, "CL-02")["pair_id"] in canh["message"], canh["message"]

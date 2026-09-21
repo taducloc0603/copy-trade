@@ -17,8 +17,12 @@
     .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge
 
 .EXAMPLE
-    # Kem clicker thu hai lai terminal Master (phase 12).
-    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -TacVuClickerMaster
+    # Kem clicker lai terminal Master (phase 12).
+    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -TacVuClicker clicker_master
+
+.EXAMPLE
+    # 1 Master x 2 Client, ca hai Client di duong giao dien: ba clicker, ba tac vu.
+    .\tao-dich-vu.ps1 -ThuMuc C:\CopyBridge -TacVuClicker clicker_master,clicker_cl02
 
 .EXAMPLE
     .\tao-dich-vu.ps1 -GoBo
@@ -30,13 +34,18 @@ param(
     [string] $NguoiDung = "$env:USERDOMAIN\$env:USERNAME",
     [int]    $AccountLogin = 0,
     [string] $TerminalTitle = "",
-    # Clicker THU HAI, lai terminal MASTER (phase 12). Ban nao khong bat `master_close_route = UI`
-    # thi khong can no, va mot tac vu thua se chay roi chet lien tuc.
+    # Cac clicker PHU, ngoai `clicker` (terminal Client dau tien) luon duoc dang ky: ten muc
+    # trong config.toml, moi muc mot tac vu. `clicker_master` lai terminal Master (can khi
+    # `master_close_route = UI`); `clicker_cl02` lai terminal cua Client thu hai di duong giao
+    # dien. Khong truyen thi khong dang ky -- mot tac vu thua se chay roi chet lien tuc.
     #
     # So tai khoan va tieu de cua so KHONG con bat buoc (D-32): chung nam trong database va clicker
-    # nhan tu Bridge. Nen phai co mot cong tac rieng de noi "co, dang ky tac vu nay" -- dieu kien
-    # cu la `-AccountLoginMaster > 0`, va khi tro ly thoi truyen so tai khoan thi tac vu
-    # ClickerMaster khong bao gio duoc dang ky nua.
+    # nhan tu Bridge. Nen phai NOI RO muc nao can dang ky -- dieu kien cu la
+    # `-AccountLoginMaster > 0`, va khi tro ly thoi truyen so tai khoan thi tac vu ClickerMaster
+    # khong bao gio duoc dang ky nua.
+    [ValidatePattern('^clicker(_[a-z0-9_]+)?$')]
+    [string[]] $TacVuClicker = @(),
+    # CHI de tuong thich ban cai cu: tuong duong `-TacVuClicker clicker_master`.
     [switch] $TacVuClickerMaster,
     [int]    $AccountLoginMaster = 0,
     [string] $TerminalTitleMaster = "",
@@ -211,6 +220,28 @@ function kiem_tu_bat_lai([string] $nssm) {
 # ---------------------------------------------------------------------------------------------
 # Scheduled Task
 # ---------------------------------------------------------------------------------------------
+function ten_tac_vu([string] $Muc) {
+    # clicker -> Clicker, clicker_master -> ClickerMaster, clicker_cl02 -> ClickerCl02. Ten tac vu
+    # phai suy ra tu ten muc chu khong tu dat: `-GoBo` tim tac vu theo mau `Clicker*`, va mot cai
+    # ten khong theo quy tac se song sot sau khi "go het" -- van bam vao mot terminal cu.
+    $phan = $Muc.Split('_') | ForEach-Object {
+        if ($_.Length -gt 0) { $_.Substring(0, 1).ToUpper() + $_.Substring(1) } else { $_ }
+    }
+    return ($phan -join '')
+}
+
+function kiem_muc_config([string] $Muc) {
+    # Canh bao SOM neu config.toml chua co muc nay. Khong co muc = khong co token = clicker thoat
+    # ma 2 ngay khi bat, va cai do chi thay trong logs\clicker-wrapper.log.
+    $file = Join-Path $ThuMuc "config.toml"
+    if (-not (Test-Path $file)) { return }
+    $mau = "^\s*\[" + [regex]::Escape($Muc) + "\]"
+    if (-not (Select-String -Path $file -Pattern $mau -Quiet)) {
+        canh ("config.toml chua co muc [$Muc]. Khai token cho no tren dashboard (tab Cau hinh > " +
+              "config.toml) truoc khi tac vu " + (ten_tac_vu $Muc) + " chay duoc.")
+    }
+}
+
 function dang_ky_tac_vu_clicker([string] $Ten = "Clicker", [string] $Muc = "clicker",
                                 [int] $Login = 0, [string] $Title = "") {
     tieu_de "Dang ky Scheduled Task '${DuongDanTacVu}$Ten'"
@@ -288,6 +319,16 @@ function dang_ky_tac_vu_bao_tri() {
     ok "tac vu TinhHinh (moi gio; xem cot Last Run Result)"
 }
 
+function dang_ky_mot_clicker([string] $Muc) {
+    kiem_muc_config $Muc
+    # So tai khoan chi con truyen cho muc `clicker_master`, va chi de tuong thich ban cai cu:
+    # tu D-32 thi cho khai la dashboard, con tac vu chi mang ten muc.
+    $login = 0
+    $title = ""
+    if ($Muc -eq "clicker_master") { $login = $AccountLoginMaster; $title = $TerminalTitleMaster }
+    dang_ky_tac_vu_clicker (ten_tac_vu $Muc) $Muc $login $title
+}
+
 function go_bo([string] $nssm) {
     tieu_de "Go bo"
     $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
@@ -296,9 +337,13 @@ function go_bo([string] $nssm) {
         & $nssm remove $TenDichVu confirm | Out-Null
         ok "da go dich vu $TenDichVu"
     }
-    # ClickerMaster PHAI co trong danh sach nay: bo sot no thi sau khi "go het" van con mot
-    # tac vu bam vao terminal Master cu -- va no chi lo ra khi ai do nhin thay lenh dong la.
-    foreach ($t in @("Clicker", "ClickerMaster", "BaoTri", "TinhHinh")) {
+    # MOI tac vu Clicker* phai bien mat, khong phai mot danh sach ten cung: bo sot mot cai thi
+    # sau khi "go het" van con mot tac vu bam vao terminal cu -- va no chi lo ra khi ai do nhin
+    # thay mot lenh dong la. Danh sach cung da tung bo sot dung ClickerMaster.
+    $canGo = @(Get-ScheduledTask -TaskPath $DuongDanTacVu -ErrorAction SilentlyContinue |
+               Where-Object { $_.TaskName -like "Clicker*" } |
+               ForEach-Object { $_.TaskName })
+    foreach ($t in ($canGo + @("BaoTri", "TinhHinh"))) {
         $tv = Get-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $t -ErrorAction SilentlyContinue
         if ($null -ne $tv) {
             Unregister-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $t -Confirm:$false
@@ -316,11 +361,19 @@ try {
 
     if ($GoBo) { go_bo $nssm; exit 0 }
 
+    # Muc phu can dang ky, sau khi gop cong tac tuong thich cu.
+    $mucPhu = @($TacVuClicker | Where-Object { $_ -ne "clicker" })
+    if (($TacVuClickerMaster -or $AccountLoginMaster -gt 0) -and
+        ($mucPhu -notcontains "clicker_master")) {
+        $mucPhu += "clicker_master"
+    }
+
     if ($ChiTacVuClicker) {
-        # Ban cai dang chay: dich vu Bridge giu nguyen, chi them clicker thu hai. Go/cai lai dich vu va
-        # giet Bridge de thu tu bat lai o day la lam gian doan copy lenh cho mot viec khong can.
+        # Ban cai dang chay: dich vu Bridge giu nguyen, chi them clicker. Go/cai lai dich vu va giet
+        # Bridge de thu tu bat lai o day la lam gian doan copy lenh cho mot viec khong can.
         # So tai khoan khong con bat buoc: khai tren dashboard cung duoc.
-        dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" $AccountLoginMaster $TerminalTitleMaster
+        if ($mucPhu.Count -eq 0) { $mucPhu = @("clicker_master") }
+        foreach ($m in $mucPhu) { dang_ky_mot_clicker $m }
         exit 0
     }
 
@@ -329,11 +382,9 @@ try {
     if ($BoQuaTacVu) {
         canh "-BoQuaTacVu: khong dang ky Scheduled Task"
     } else {
+        kiem_muc_config "clicker"
         dang_ky_tac_vu_clicker "Clicker" "clicker" $AccountLogin $TerminalTitle
-        if ($TacVuClickerMaster -or $AccountLoginMaster -gt 0) {
-            dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" `
-                $AccountLoginMaster $TerminalTitleMaster
-        }
+        foreach ($m in $mucPhu) { dang_ky_mot_clicker $m }
         dang_ky_tac_vu_bao_tri
     }
 

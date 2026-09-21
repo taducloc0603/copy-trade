@@ -592,11 +592,23 @@ class CloseFlow:
         self.db.update_pair(pair_id, status="ORPHANED", orphan_side="MASTER",
                             close_source="CLIENT", close_time_client=utc_now_iso(),
                             client_current_volume=0.0)
+        # Còn Client nào đang giữ cặp cho chính vị thế Master này? Với một Client thì câu trả lời
+        # luôn là "không", nhưng với hai Client mà chỉ một cái tắt công tắc thì Master **vẫn còn
+        # đối ứng** — và bản cũ khẳng định thẳng là "khong con doi ung". Alert này là thứ người
+        # vận hành dựa vào để quyết định có vào bù tay hay không, nên nó nói sai là đắt.
+        con_lai = self.db.query_all(
+            "SELECT client_id FROM pair WHERE master_position_id = ? AND pair_id <> ? "
+            "AND status IN ('OPEN', 'PARTIALLY_CLOSED')",
+            (pair["master_position_id"], pair_id),
+        )
+        doi_ung = ("ma khong con doi ung" if not con_lai else
+                   f"con {len(con_lai)} cap doi ung: "
+                   f"{', '.join(r['client_id'] for r in con_lai)}")
         self._alert("ERROR", "ORPHANED_MASTER",
                     f"Client dong cap {pair_id} nhung can_close_master = 0 nen Master giu "
                     f"nguyen. Master {pair['master_position_id']} dang pho nhiem "
                     f"{pair['master_current_volume']} lot tren {pair['client_symbol']} "
-                    "ma khong con doi ung.",
+                    f"{doi_ung}.",
                     pair_id=pair_id, agent_id=agent["agent_id"])
         return "DONE", None, pair_id
 

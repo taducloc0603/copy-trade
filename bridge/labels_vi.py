@@ -265,6 +265,15 @@ UI = {
     "cfg_file_readonly": ("Bản cài cũ còn giá trị trong file — file THẮNG database. Xoá "
                           "dòng này trong config.toml để dùng giá trị khai trên dashboard."),
     "cfg_file_saved": "Đã lưu. Khởi động lại dịch vụ CopyBridge để có hiệu lực.",
+    "cfg_clicker_new_title": "Thêm token cho một clicker mới",
+    "cfg_clicker_new_hint": ("Mỗi Client đi đường giao diện cần một clicker riêng, và mỗi clicker "
+                             "một mục trong config.toml. Đặt tên theo mã Client, ví dụ cl02 cho "
+                             "CL-02, rồi dán token của agent clicker vào đây. Sau khi lưu, đăng ký "
+                             "tác vụ trên VPS bằng: scripts\\tao-dich-vu.ps1 -ChiTacVuClicker "
+                             "-TacVuClicker clicker_cl02"),
+    "cfg_clicker_new_name": "Tên (sau chữ clicker_)",
+    "cfg_clicker_new_token": "Token của clicker",
+    "cfg_clicker_new_missing": "Cần cả tên mục và token.",
     "cfg_master_close_title": "Đường đóng phía Master",
     "cfg_master_clicker": "Clicker lái terminal Master",
     "cfg_master_route": "Kênh đóng lệnh phía Master",

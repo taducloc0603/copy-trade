@@ -36,7 +36,7 @@ sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 | TEST-02 | Copy khác chiều | **DEMO** | Phase 6 và Phase 6b Bước 5: `22:05:02.616` Master buy 0.01 → `22:05:03.819` Client sell 0.01. Journal hai terminal khớp từng cặp. **Chạy lại 2026-09-06 sau khi EA đổi lớn:** Master BUY→Client SELL và Master SELL→Client BUY, 1:1, `reason = 0` cả ba cặp. |
 | TEST-03 | Master đóng một lệnh → chỉ đóng đúng cặp đó | **DEMO** | Phase 7: `PAIR-000024` `CLOSED`, `close_source = MASTER`; cặp đối chứng cùng symbol `PAIR-000026` **không bị động tới**. Khoá thêm bằng `test_khong_co_cau_sql_nao_dong_lenh_theo_symbol`. **Chạy lại 2026-09-06:** `PAIR-000013` `CLOSED` sau **272 ms**, đúng một lệnh `CLOSE` cho `71489809`; hai cặp còn lại cùng symbol không bị đụng. |
 | TEST-04 | Client đóng, công tắc TẮT | **DEMO** | Phase 7: `PAIR-000025` → `ORPHANED`, `orphan_side = MASTER`, Master giữ nguyên 0.01, alert ERROR `ORPHANED_MASTER`. Journal: `22:51:47.487` Client sell → **không có deal Master nào**. |
-| TEST-05 | Client đóng, công tắc BẬT → cascade | **TEST** | `test_cascade_dong_master_va_cac_client_con_lai`. Cần ≥2 Client để cascade có ý nghĩa; cấu hình demo chỉ có một. |
+| TEST-05 | Client đóng, công tắc BẬT → cascade | **TEST** | `test_cascade_dong_master_va_cac_client_con_lai`, và `test_cl02_bat_cong_tac_dong_tay_thi_cl01_cung_dong_theo` cho trường hợp cờ lệch nhau. Cần ≥2 Client thật để nghiệm thu — đó là TEST-33. |
 | TEST-06 | Đóng một phần theo tỷ lệ | **DEMO** | Phase 7: `PAIR-000027` Master 0.05→0.03, Client 0.05→**0.03**, `PARTIALLY_CLOSED`. Chính bài này lộ ra lỗi float và buộc chuyển sang `Decimal`. **Chạy lại 2026-09-06:** `PAIR-000014` Master 0.02→0.01, Client 0.02→**0.01**, `CLOSE_PARTIAL` volume đúng 0.01, sau **285 ms**. |
 | TEST-07 | Nhiều lệnh cùng symbol, đóng một cái | **DEMO** | Phase 7, `PAIR-000026` là cặp đối chứng cùng symbol không bị đụng. Thêm `test_ba_lenh_dong_cai_o_giua` cho trường hợp ba cặp. **Chạy lại 2026-09-06:** ba cặp cùng `BTCUSD.s`, đóng một cặp không đụng hai cặp kia. |
 | TEST-08 | Nhiều symbol đồng thời | **KHÔNG** | **Chặn bởi giới hạn đã biết:** hộp thoại New Order lấy symbol theo chart đang mở, driver chỉ *kiểm tra* rồi từ chối nếu lệch (ComboBox 10331/10325 chưa đo). Mỗi terminal Client hiện copy được **đúng một symbol**. Đã đưa vào `docs/BACKLOG.md` mục B-01. |
@@ -46,7 +46,7 @@ sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 | TEST-12 | Đổi hệ số khi có cặp đang chạy | **TEST** | `test_doi_multiplier_giua_chung_khong_lam_lech_cap_dang_chay`. `effective_multiplier` khoá tại lúc mở cặp (D-19). |
 | TEST-13 | Master và Client cùng đóng trong 50 ms | **TEST** | `test_moi_cap_chi_mot_lenh_dong_dang_chay`, `test_ack_already_closed_van_la_dong_thanh_cong`. Trên demo có gặp `already_closed` thật (Phase 5) nhưng không dựng được đúng cửa sổ 50 ms. |
 | TEST-14 | Close-by để lại phần dư | **TEST** | `test_out_by_de_lai_vi_the_du_thi_bao_unpaired_master`. **Không thể lên DEMO:** broker Connext-Demo không hỗ trợ Close By. D-12 được cài mà không có dữ liệu thực nghiệm — ghi rõ ở đây thay vì để ngầm. |
-| TEST-15 | Cascade, Master không phản hồi trong 15 s | **TEST** | `test_cascade_master_khong_phan_hoi_thi_khong_dong_client_khac`. Cùng lý do TEST-05. |
+| TEST-15 | Cascade, Master không phản hồi trong 15 s | **TEST** | `test_cascade_master_khong_phan_hoi_thi_khong_dong_client_khac` và `test_cascade_qua_han_thi_client_tat_cong_tac_van_giu_vi_the`. Cùng lý do TEST-05. |
 | TEST-16 | Client đóng một phần, công tắc BẬT | **TEST** | `test_client_dong_mot_phan_thi_khong_cascade` (D-11). |
 | TEST-17 | Client offline lúc Master mở, rồi nối lại | **DEMO** | Phase 8: dựng sai lệch thật (`run_mode = PAUSED`, người dùng đóng tay Master `71489357`), vòng đối chiếu tự chạy khi agent nối lại và sinh đúng một finding `MASTER_CLOSED_OFFLINE` với đủ ba nguồn bằng chứng. Mặc định `offline_reopen_policy = NONE`: không mở bù (D-13). |
 | TEST-18 | Terminal mất kết nối broker, EA vẫn sống | **DEMO** | Phase 4 mục 8: xảy ra **thật** lúc `11:44:39` → `broker_connected = false`, agent `DEGRADED`, alert ERROR. Không phải tình huống dựng ra. |
@@ -117,6 +117,25 @@ và sửa được trên dashboard.
 | TEST-32n | Đổi tiêu đề cửa sổ của clicker sang terminal của tài khoản khác, rồi ra lệnh đóng | Clicker **không bấm gì**, log `Tieu de cua so la tai khoan ... khac ...`; lệnh đóng rơi về EA kèm alert, không có lệnh nào bấm nhầm terminal |
 | TEST-32o | Mở dashboard khi `dashboard_password` để trống | Xem được, nhưng mọi nút Lưu trả lỗi "chưa đặt mật khẩu" |
 
+## TEST-33 — 1 Master × 2 Client trên cùng VPS, cờ đóng ngược **lệch nhau**
+
+Chạy trên demo, hai tài khoản demo khác nhau, volume nhỏ nhất, `run_mode = RUNNING`, `CL-01` cờ
+**TẮT** và `CL-02` cờ **BẬT**. Đây là bài B-06 đang chờ; làm (f) **sau cùng** vì nó cố ý tạo ra
+tình huống phải dọn tay.
+
+| | Làm gì | Đạt khi |
+|---|---|---|
+| a | Master mở 1 lệnh | **Hai** cặp được tạo, đúng volume theo hệ số của **từng** Client; `kiem-reason` ĐẠT cho Client đi đường giao diện |
+| b | Master đóng lệnh đó | **Cả hai** Client đóng theo; không cặp nào còn `OPEN` |
+| c | Mở lại, **đóng tay ở CL-01** (cờ TẮT) | Cặp CL-01 `ORPHANED` + alert `ORPHANED_MASTER` **có nêu CL-02 còn đối ứng**; Master và CL-02 không đổi |
+| d | Tiếp đó **đóng tay ở CL-02** (cờ BẬT) | Master đóng; cặp CL-01 đang `ORPHANED` **không** bị đụng lại; có `CASCADE_STARTED` |
+| e | Mở lại cả hai, **đóng tay ở CL-02** trước | Master đóng, rồi CL-01 đóng theo **dù cờ TẮT**; đúng **một** lệnh đóng Master trong bảng `command` |
+| f | Tắt Algo Trading ở terminal Master rồi lặp lại (e) | Master không xác nhận → `CASCADE_MASTER_TIMEOUT`, CL-01 **vẫn giữ vị thế** và thành `ORPHANED` |
+| g | Vào 5 lệnh liên tiếp ở Master | Đủ 10 cặp, đúng thứ tự; hàng đợi giao diện của **từng** clicker chạy độc lập |
+| h | `kiem-dong-sai`, `kiem-reason`, `tinh-hinh` | `[A][B][C]` = 0; không cặp nào "cần can thiệp" ngoài những cặp (c)/(f) cố ý tạo ra |
+
+Đạt (e) và (f) thì TEST-05 và TEST-15 lên **DEMO**, và B-06 đóng.
+
 ---
 
 ## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì
@@ -144,4 +163,4 @@ Chạy bằng `pytest -m cham`. Bài **24 giờ liên tục chưa chạy** — x
 
 ## Bộ test tự động
 
-**875 test xanh** (`pytest`) + **3 test tải**, `ruff` sạch, ngày 2026-09-21.
+**907 test xanh** (`pytest`) + **3 test tải**, `ruff` sạch, ngày 2026-09-21.

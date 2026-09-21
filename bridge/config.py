@@ -32,6 +32,18 @@ DEFAULT_CONFIG_FILENAME = "config.toml"
 EXAMPLE_CONFIG_FILENAME = "config.example.toml"
 
 
+#: Tên mục clicker hợp lệ trong ``config.toml``: ``[clicker]``, hoặc ``[clicker_<tên>]``.
+#:
+#: Trước bản này chỉ đúng hai tên được chấp nhận (``clicker`` và ``clicker_master``), nên Client
+#: thứ hai **không** đi được đường giao diện: nó không có chỗ nào để khai token clicker riêng
+#: (B-19). Mở theo mẫu thay vì thêm tên thứ ba là để lần sau thêm Client không phải sửa code nữa.
+RE_MUC_CLICKER = re.compile(r"^clicker(_[a-z0-9_]+)?$")
+
+
+def la_muc_clicker(ten: str) -> bool:
+    return bool(RE_MUC_CLICKER.match(ten))
+
+
 class ConfigError(Exception):
     """Cấu hình thiếu hoặc sai. Bridge không được khởi động khi gặp lỗi này."""
 
@@ -87,22 +99,31 @@ class Config:
     #: ``SecretSection`` chứ không phải dict thường vì token nằm trong đó: mục đích của mục này
     #: là để token **không** phải đi qua dòng lệnh, nên nó cũng không được rơi vào log.
     clicker: SecretSection = field(default_factory=SecretSection)
-    #: Mục ``[clicker_master]`` — clicker **thứ hai**, lái terminal Master (phase 12). Cùng hình
-    #: dạng với ``[clicker]`` và cùng lý do phải là ``SecretSection``: nó cũng chứa token riêng.
-    #: Để trống là cấu hình bình thường — chỉ bản nào bật `master_close_route = UI` mới cần.
+    #: Mục ``[clicker_master]`` — clicker lái terminal Master (phase 12). Cùng hình dạng với
+    #: ``[clicker]`` và cùng lý do phải là ``SecretSection``: nó cũng chứa token riêng. Để trống
+    #: là cấu hình bình thường — chỉ bản nào bật `master_close_route = UI` mới cần.
     clicker_master: SecretSection = field(default_factory=SecretSection)
+    #: **Mọi** mục ``[clicker*]`` đọc được, theo tên. Hai thuộc tính trên là hai phần tử của dict
+    #: này, giữ lại vì chúng là hai tên cố định mà cả tài liệu lẫn script đều gọi thẳng.
+    clickers: dict[str, SecretSection] = field(default_factory=dict)
 
     def muc_clicker(self, ten: str) -> SecretSection:
-        """Mục cấu hình của một clicker theo tên (`clicker`, `clicker_master`).
+        """Mục cấu hình của một clicker theo tên (`clicker`, `clicker_master`, `clicker_cl02`, …).
 
         Tra theo tên thay vì thuộc tính để `clicker/__main__.py --muc` không phải biết trước có
         bao nhiêu mục: thêm terminal thứ ba chỉ là thêm một mục trong `config.toml`.
         """
-        if ten == "clicker":
-            return self.clicker
-        if ten == "clicker_master":
-            return self.clicker_master
-        raise ConfigError(f"Khong co muc cau hinh [{ten}] duoc ho tro")
+        if ten in self.clickers:
+            return self.clickers[ten]
+        if not la_muc_clicker(ten):
+            raise ConfigError(
+                f"Ten muc clicker khong hop le: [{ten}]. Phai la `clicker` hoac `clicker_<ten>` "
+                "(chu thuong, so va dau gach duoi)")
+        # Tên đúng dạng nhưng chưa có trong file. Nói ra **những mục đang có**: gõ sai một ký tự
+        # (`clicker_cl2` thay vì `clicker_cl02`) thì clicker chỉ báo "thieu token", và người ta sẽ
+        # đi tìm token trong khi lỗi nằm ở cái tên.
+        co = ", ".join(sorted(self.clickers)) or "(khong co muc nao)"
+        raise ConfigError(f"config.toml khong co muc [{ten}]. Cac muc dang co: {co}")
 
     @property
     def db_path(self) -> Path:
@@ -173,21 +194,22 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
             "127.0.0.1"
         )
 
-    clicker_raw = raw.get("clicker", {})
-    if not isinstance(clicker_raw, Mapping):
-        raise ConfigError("Mục [clicker] phải là một bảng TOML")
-
-    clicker_master_raw = raw.get("clicker_master", {})
-    if not isinstance(clicker_master_raw, Mapping):
-        raise ConfigError("Mục [clicker_master] phải là một bảng TOML")
+    clickers: dict[str, SecretSection] = {}
+    for ten_muc, muc_raw in raw.items():
+        if not la_muc_clicker(str(ten_muc)):
+            continue
+        if not isinstance(muc_raw, Mapping):
+            raise ConfigError(f"Mục [{ten_muc}] phải là một bảng TOML")
+        clickers[str(ten_muc)] = SecretSection(muc_raw)
 
     return Config(
         bridge=BridgeSection(host=host, port=port, web_port=web_port, db_path=db_path),
         security=SecretSection(security_raw),
         source_path=source_path,
         project_root=project_root,
-        clicker=SecretSection(clicker_raw),
-        clicker_master=SecretSection(clicker_master_raw),
+        clicker=clickers.get("clicker", SecretSection()),
+        clicker_master=clickers.get("clicker_master", SecretSection()),
+        clickers=clickers,
     )
 
 
@@ -248,6 +270,21 @@ KHOA_FILE_SUA_DUOC: dict[str, tuple[str, bool]] = {
     "clicker.token": ("str", True),
     "clicker_master.token": ("str", True),
 }
+
+
+def kieu_khoa_file(khoa: str) -> tuple[str, bool] | None:
+    """`(kiểu, có phải bí mật)` của một khoá `config.toml` sửa được, hoặc `None` nếu không.
+
+    Token của **mọi** mục clicker đều sửa được, không chỉ hai mục có tên cố định: thêm Client thứ
+    hai đi đường giao diện nghĩa là thêm một mục `[clicker_cl02]` với token riêng, và bắt người
+    vận hành mở file trên VPS chỉ để dán một token là đi ngược đúng điều D-32 vừa làm.
+    """
+    if khoa in KHOA_FILE_SUA_DUOC:
+        return KHOA_FILE_SUA_DUOC[khoa]
+    muc, _, ten = khoa.rpartition(".")
+    if ten == "token" and la_muc_clicker(muc):
+        return ("str", True)
+    return None
 
 
 def _dat_gia_tri_toml(dong: str, khoa: str, gia_tri: Any) -> str:
@@ -358,9 +395,10 @@ def sua_config_toml(duong_dan: Path, doi: Mapping[str, Any],
     if not doi:
         raise ConfigError("Không có khoá nào để sửa")
     for khoa, gia_tri in doi.items():
-        if khoa not in KHOA_FILE_SUA_DUOC:
+        kieu_bi_mat = kieu_khoa_file(khoa)
+        if kieu_bi_mat is None:
             raise ConfigError(f"Khoá {khoa} không sửa được ở đây")
-        kieu, _ = KHOA_FILE_SUA_DUOC[khoa]
+        kieu, _ = kieu_bi_mat
         if kieu == "int" and (isinstance(gia_tri, bool) or not isinstance(gia_tri, int)):
             raise ConfigError(f"{khoa} phải là số nguyên, nhận được {gia_tri!r}")
         if kieu == "str" and not isinstance(gia_tri, str):

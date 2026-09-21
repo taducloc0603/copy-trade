@@ -16,6 +16,8 @@ from bridge.config import (
     BridgeSection,
     ConfigError,
     SecretSection,
+    kieu_khoa_file,
+    la_muc_clicker,
     load_config,
     parse_config,
     sua_config_toml,
@@ -157,6 +159,47 @@ def test_muc_clicker_khong_phai_bang_thi_loi(tmp_path: Path) -> None:
         _parse({"clicker": "khong-phai-bang"}, tmp_path)
 
 
+# -- nhiều hơn hai clicker (B-19) ---------------------------------------------------------------
+#
+# Mỗi Client đi đường giao diện cần một clicker riêng. Trước bản này chỉ đúng hai tên mục được
+# chấp nhận, nên Client thứ hai **không có chỗ nào** để khai token clicker của nó.
+
+def test_muc_clicker_bat_ky_deu_doc_duoc(tmp_path: Path) -> None:
+    cfg = _parse({"clicker": {"token": "a"}, "clicker_master": {"token": "b"},
+                  "clicker_cl02": {"token": "bi-mat-cl02", "account_login": 777}}, tmp_path)
+    assert sorted(cfg.clickers) == ["clicker", "clicker_cl02", "clicker_master"]
+    assert cfg.muc_clicker("clicker_cl02")["token"] == "bi-mat-cl02"
+    # Hai tên cố định vẫn là chính chúng: bản cài đang chạy không được đổi hành vi.
+    assert cfg.muc_clicker("clicker") is cfg.clicker
+    assert cfg.muc_clicker("clicker_master") is cfg.clicker_master
+    assert "bi-mat-cl02" not in repr(cfg.muc_clicker("clicker_cl02"))
+
+
+def test_go_sai_ten_muc_thi_loi_noi_ro_cac_muc_dang_co(tmp_path: Path) -> None:
+    """`clicker_cl2` thay vì `clicker_cl02` chỉ hiện ra thành "thieu token" nếu không nói gì thêm."""
+    cfg = _parse({"clicker": {"token": "a"}, "clicker_cl02": {"token": "c"}}, tmp_path)
+    with pytest.raises(ConfigError, match="clicker_cl02"):
+        cfg.muc_clicker("clicker_cl2")
+    with pytest.raises(ConfigError, match="khong hop le"):
+        cfg.muc_clicker("Clicker-Master")
+
+
+@pytest.mark.parametrize("ten,hop_le", [
+    ("clicker", True), ("clicker_master", True), ("clicker_cl02", True),
+    ("Clicker", False), ("clicker-cl02", False), ("clicker_", False), ("security", False),
+])
+def test_mau_ten_muc_clicker(ten: str, hop_le: bool) -> None:
+    assert la_muc_clicker(ten) is hop_le
+
+
+def test_token_cua_moi_muc_clicker_deu_sua_duoc_con_lai_thi_khong() -> None:
+    assert kieu_khoa_file("clicker_cl02.token") == ("str", True)
+    assert kieu_khoa_file("clicker.token") == ("str", True)
+    # Số tài khoản và tiêu đề cửa sổ đã chuyển vào database (D-32), không sửa qua file nữa.
+    assert kieu_khoa_file("clicker_cl02.account_login") is None
+    assert kieu_khoa_file("security.token") is None
+
+
 # -- ghi lại config.toml ------------------------------------------------------------------------
 #
 # Một `config.toml` hỏng là một Bridge không khởi động được, và lúc đó không còn dashboard nào để
@@ -218,6 +261,20 @@ def test_khoa_ngoai_danh_sach_bi_tu_choi(tmp_path: Path) -> None:
     with pytest.raises(ConfigError):
         sua_config_toml(duong_dan, {"bridge.port": "8787"}, project_root=tmp_path)
     assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
+
+
+def test_them_token_cho_clicker_moi_tao_muc_moi_va_van_parse_duoc(tmp_path: Path) -> None:
+    """Thêm Client thứ hai đi đường giao diện = thêm một mục `[clicker_cl02]` từ dashboard."""
+    duong_dan = _config(tmp_path)
+    sua_config_toml(duong_dan, {"clicker_cl02.token": "tok-cl02"}, project_root=tmp_path)
+    moi = duong_dan.read_text(encoding="utf-8")
+    assert "[clicker_cl02]" in moi
+    assert 'token = "tok-cl02"' in moi
+    # Mục cũ không bị đụng tới, và file vẫn là thứ Bridge khởi động được.
+    assert 'token = "tok-cu"' in moi
+    cfg = parse_config(tomllib.loads(moi), source_path=duong_dan, project_root=tmp_path)
+    assert cfg.muc_clicker("clicker_cl02")["token"] == "tok-cl02"
+    assert cfg.clicker["token"] == "tok-cu"
 
 
 def test_gia_tri_co_dau_nhay_bi_tu_choi_thay_vi_ghi_ra_toml_sai(tmp_path: Path) -> None:

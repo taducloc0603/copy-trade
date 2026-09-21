@@ -915,3 +915,58 @@ def test_khong_con_duong_nao_tu_dashboard_gui_lenh_xuong_mt5(seeded_web: Databas
     duong = {getattr(r, "path", "") for r in tao_app(Dashboard(seeded_web)).routes}
     assert "/api/emergency" not in duong
     assert "/api/findings/accept_all_safe" not in duong
+
+
+# -- nhiều Client, nhiều clicker ----------------------------------------------------------------
+
+async def test_them_token_clicker_moi_tu_dashboard(seeded_web: Database, tmp_path: Path) -> None:
+    """Client thứ hai đi đường giao diện cần một mục `[clicker_cl02]` — khai được ngay trên trang.
+
+    Bắt người vận hành mở `config.toml` trên VPS chỉ để dán một token là đi ngược đúng điều D-32
+    vừa làm.
+    """
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/file_config", json={"doi": {"clicker_cl02.token": "TOK-CL02"}})
+        assert r.status_code == 200, r.text
+        doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
+        assert doc["clicker_cl02"]["token"] == "TOK-CL02"
+
+        # Mục vừa thêm phải hiện ra ở lần tải sau — nhưng chỉ dưới dạng "đã đặt".
+        dashboard.config = parse_config(doc, source_path=duong_dan, project_root=tmp_path)
+        r = await c.get("/api/config")
+        khoa = {d["khoa"]: d for d in r.json()["file_config"]}
+        assert khoa["clicker_cl02.token"]["bi_mat"] is True
+        assert khoa["clicker_cl02.token"]["gia_tri"] == UI["cfg_file_masked"]
+        assert "TOK-CL02" not in r.text
+
+
+async def test_ten_muc_clicker_sai_thi_khong_ghi_vao_file(seeded_web: Database,
+                                                          tmp_path: Path) -> None:
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        for khoa in ("clicker-cl02.token", "clicker_CL02.token", "clicker_cl02.account_login"):
+            r = await c.post("/api/file_config", json={"doi": {khoa: "x"}})
+            assert r.status_code == 400, khoa
+    assert duong_dan.read_text(encoding="utf-8") == MAU_FILE_CONFIG
+
+
+async def test_xem_truoc_he_so_theo_tung_client(client: httpx.AsyncClient,
+                                               seeded_web: Database) -> None:
+    """Hai Client khác hệ số thì hai bảng xem trước phải khác nhau.
+
+    Bản cũ lấy `clients[0]` cho mọi khối, nên khối CL-02 hiển thị con số của CL-01 — một bảng
+    xem trước nói sai còn tệ hơn không có bảng nào, vì nó trông như đã được kiểm.
+    """
+    seeded_web.upsert_agent("AG-CLIENT-2", role="CLIENT", token_hash="x",
+                            magic_number=770002, account_login=222)
+    seeded_web.upsert_client_account("CL-02", agent_id="AG-CLIENT-2", volume_multiplier=2.0)
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT, volume_multiplier=0.5)
+
+    r = await client.get("/api/config")
+    preview = r.json()["preview"]
+
+    assert set(preview) == {CLIENT_ID, "CL-02"}
+    assert preview[CLIENT_ID] != preview["CL-02"]

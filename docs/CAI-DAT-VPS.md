@@ -214,7 +214,7 @@ cd C:\CopyBridge
 ```
 
 `-CapNhat` làm theo thứ tự: sao lưu database → ghi commit cũ → dừng dịch vụ → `git pull` → cài lại
-gói → chạy migration và bộ test → **nạp lại cả hai clicker** → bật lại dịch vụ. Cuối cùng in lệnh lùi
+gói → chạy migration và bộ test → **nạp lại mọi clicker đang chạy** → bật lại dịch vụ. Cuối cùng in lệnh lùi
 bản.
 
 > **Luôn có `-CapNhat` trên máy đã cài.** Thiếu nó, script từ chối chạy khi dịch vụ đang Running
@@ -250,7 +250,7 @@ Bản này có **migration 008** và đổi chỗ hai giá trị của clicker. 
    Thiếu `ClickerMaster` thì `.\scripts\tao-dich-vu.ps1 -ChiTacVuClicker` (máy đang chạy — không
    đụng tới dịch vụ).
 
-Xong bốn việc: `liet-ke` phải cho cả hai clicker **ONLINE**, và canary của chúng xanh trên dashboard.
+Xong bốn việc: `liet-ke` phải cho **mọi** clicker **ONLINE**, và canary của chúng xanh trên dashboard.
 
 **Nếu script in cảnh báo đỏ `ea/ thay doi`:** biên dịch lại EA, chép `.ex5` mới vào
 `MQL5\Experts` của từng terminal (như A3), rồi **gỡ EA khỏi chart và gắn lại** với token cũ (đổi
@@ -386,12 +386,38 @@ vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao 
 | Một agent `CLIENT` riêng + token riêng, EA gắn lên đúng terminal đó | Dashboard → Cấu hình → Agent → *Thêm agent* (**chỉ dùng được khi dashboard có mật khẩu**); token hiện một lần, dán vào EA |
 | Dòng cấu hình `CL-02` | Dashboard → Cấu hình → khối **Thêm Client** |
 | Ánh xạ symbol cho `CL-02` | Dashboard → Cấu hình → Ánh xạ symbol |
-| **Một clicker riêng**, nếu muốn `CL-02` mở/đóng qua giao diện | **Chưa hỗ trợ** — xem dưới |
+| **Một clicker riêng**, nếu muốn `CL-02` mở/đóng qua giao diện | Bốn bước ngay dưới đây |
 
-> **Giới hạn hiện tại: hệ thống chạy được đúng hai clicker** (`clicker` cho Client, `clicker_master`
-> cho Master). Nên `CL-02` hôm nay phải đi **đường EA** cho cả mở lẫn đóng: nó hoạt động bình
-> thường, chỉ khác là deal mang `DEAL_REASON = EXPERT` chứ không phải `CLIENT`. Muốn `CL-02` cũng
-> đi qua giao diện thì cần mở rộng phần cấu hình clicker — chưa làm (B-19).
+`CL-02` chọn được **đường EA hay đường giao diện** y như `CL-01`. Đường EA không cần gì thêm ngoài
+bảng trên, chỉ khác là deal mang `DEAL_REASON = EXPERT` chứ không phải `CLIENT`. Muốn đường giao
+diện thì thêm cho `CL-02` một clicker riêng — **mỗi terminal một clicker, không dùng chung**:
+
+1. **Agent clicker.** Dashboard → Cấu hình → Agent → *Thêm agent*, role `CLICKER`, ví dụ
+   `AG-CLICKER-CL02`. Token hiện **một lần** — copy ngay.
+2. **Token vào `config.toml`.** Dashboard → Cấu hình → khối `config.toml` → *Thêm token cho một
+   clicker mới*: tên `cl02` (tức mục `[clicker_cl02]`), dán token. Đừng truyền token qua dòng lệnh —
+   dòng lệnh của một tiến trình thì mọi tài khoản trên máy đọc được.
+3. **Số tài khoản + tiêu đề cửa sổ.** Dashboard → Cấu hình → Agent → dòng `AG-CLICKER-CL02`: khai
+   số tài khoản demo thứ hai và một mẩu tiêu đề cửa sổ của terminal đó. Đây là hàng rào chống lái
+   nhầm terminal, và nó được đối chiếu lại ở **mỗi** cú bấm.
+4. **Tác vụ Windows.** Trên VPS, PowerShell **Administrator**:
+
+   ```powershell
+   cd C:\CopyBridge
+   .\scripts\tao-dich-vu.ps1 -ChiTacVuClicker -TacVuClicker clicker_cl02
+   Start-ScheduledTask -TaskPath "\CopyBridge\" -TaskName ClickerCl02
+   ```
+
+   `-ChiTacVuClicker` chỉ thêm tác vụ: dịch vụ Bridge **không** bị gỡ và cài lại, nên việc copy
+   lệnh không gián đoạn. Nhật ký riêng: `logs\clicker_cl02.log`.
+
+Rồi ở khối `CL-02` đặt *Đường mở* / *Đường đóng* = **Giao diện**, và kiểm `liet-ke` thấy
+`AG-CLICKER-CL02` **ONLINE**. Terminal thứ ba cũng cần Toolbox ở tab **Trade** như hai cái kia.
+
+> **Ba clicker trên một VPS là bình thường** (`clicker`, `clicker_master`, `clicker_cl02`): mỗi cái
+> một tiến trình, một khoá chống chạy trùng, một nhật ký, và mỗi cái chỉ chạm đúng terminal có số
+> tài khoản đã khai. Cái **không** bình thường là hai clicker cùng một terminal — dashboard từ chối
+> khai hai Client dùng chung một clicker.
 
 **Tắt một Client** (khối *Cấu hình copy* → *Trạng thái Client* → `ĐÃ TẮT` → Lưu): ngừng copy lệnh
 **mới** cho Client đó. Cặp đang mở **giữ nguyên và vẫn đóng theo Master**. Đây là cách dừng một
@@ -406,6 +432,8 @@ Bằng dòng lệnh, cùng một bộ ràng buộc:
 ```powershell
 $py = ".\.venv\Scripts\python.exe"
 & $py -m bridge.admin them-client CL-02 --agent AG-CLIENT-2 --open-route EA --close-route EA
+# Hoac di duong giao dien ngay tu dau -- clicker_agent_id CHI dat duoc luc tao client:
+& $py -m bridge.admin them-client CL-02 --agent AG-CLIENT-2 --clicker-agent AG-CLICKER-CL02 --open-route UI
 & $py -m bridge.admin cau-hinh-client CL-01 --hoat-dong tat    # tat, giu lich su
 & $py -m bridge.admin xoa-client CL-02                          # chi khi chua co cap nao
 ```

@@ -448,6 +448,11 @@ class EventProcessor:
         if result.skipped:
             return None, result.skip_reason or "bo qua"
 
+        # Cổng này đứng TRƯỚC việc chia đường: nó đúng cho cả hai đường, và đặt nó ở đây nghĩa
+        # là thêm một đường mở thứ ba về sau cũng không lọt.
+        if (ly_do := self._algo_trading_tat(client)) is not None:
+            return None, ly_do
+
         via_ui = client["open_route"] == "UI"
         if via_ui:
             skip = self._ui_route_blocked(client)
@@ -688,8 +693,11 @@ class EventProcessor:
     def _ui_route_blocked(self, client: sqlite3.Row) -> str | None:
         """Lý do KHÔNG được gửi `OPEN_UI` lúc này, hoặc ``None`` nếu đi được.
 
-        Ba cổng, cả ba đều **chỉ biết bỏ qua**. Rơi về đường EA khi clicker hỏng là lặng lẽ
+        Hai cổng, cả hai đều **chỉ biết bỏ qua**. Rơi về đường EA khi clicker hỏng là lặng lẽ
         đặt một lệnh `EXPERT` — đúng thứ phase này tồn tại để làm cho bất khả thi (D-25).
+
+        Cổng thứ ba (Algo Trading) từng nằm ở đây, nay là `_algo_trading_tat` và chạy cho **cả
+        hai** đường mở.
         """
         client_id = client["client_id"]
         clicker_id = client["clicker_agent_id"]
@@ -722,22 +730,31 @@ class EventProcessor:
                      client_id, inflight["command_id"], extra={"agent_id": clicker_id})
             return UI_BAN
 
-        # Cổng 3 — **đừng mở cái mà không đóng được** (B-09). Đường mở đi qua giao diện nên
-        # không cần Algo Trading. Đường đóng nay cũng đi qua giao diện, nhưng cổng này **vẫn
-        # cần**: khi clicker hỏng, đường đóng rơi về `OrderSend` của EA
-        # (`close_degraded_fallback = EA`), và đúng lúc đó Algo Trading là thứ duy nhất còn giữ
-        # cho vị thế đóng được. Tắt nó đi thì cú rơi về ấy cũng thất bại nốt.
-        #
-        # Nói cách khác: trước đây đây là đường đóng duy nhất, giờ nó là **lưới cuối**. Bỏ cổng
-        # này đi nghĩa là mỗi lệnh mở là một vị thế không có đường đóng tự động nào — đúng cách
-        # tích luỹ rủi ro một chiều mà không ai thấy cho tới lúc cần đóng.
-        #
-        # `None` (agent không báo, hoặc EA bản cũ) **không** chặn: "không biết" khác "biết là
-        # tắt", và chặn vì không biết sẽ làm hệ thống tự dừng khi nâng cấp lệch phiên bản.
+        return None
+
+    def _algo_trading_tat(self, client: sqlite3.Row) -> str | None:
+        """**Đừng mở cái mà không đóng được** (B-09). Lý do chặn, hoặc ``None``.
+
+        Áp cho **cả hai** đường mở, không chỉ đường giao diện:
+
+        * Đường EA gọi `OrderSend` cho cả mở lẫn đóng, nên Algo Trading tắt là lệnh mở thất bại
+          ngay — chặn ở đây thì người vận hành đọc được một alert nói đúng nguyên nhân, thay vì
+          một `OPEN_FAILED` với retcode của terminal và có thể kéo theo cả
+          `RETRY_CLOSE_MASTER`.
+        * Đường giao diện mở được mà không cần Algo Trading, nhưng khi clicker hỏng thì đường
+          đóng rơi về `OrderSend` của EA (`close_degraded_fallback = EA`) — đúng lúc đó Algo
+          Trading là **lưới cuối** giữ cho vị thế còn đóng được.
+
+        Trước bản này phép kiểm nằm trong `_ui_route_blocked`, nên Client đi đường EA không hề
+        được kiểm — và đó chính là đường mà một Client thứ hai hay dùng lúc đầu.
+
+        `None` (agent không báo, hoặc EA bản cũ) **không** chặn: "không biết" khác "biết là tắt",
+        và chặn vì không biết sẽ làm hệ thống tự dừng khi nâng cấp lệch phiên bản.
+        """
         agent = self.db.get_agent(client["agent_id"])
         if agent is not None and agent["trade_allowed"] == 0:
             self._alert("ERROR", "CLIENT_TRADE_NOT_ALLOWED",
-                        f"Client {client_id}: Algo Trading dang TAT tren terminal cua "
+                        f"Client {client['client_id']}: Algo Trading dang TAT tren terminal cua "
                         f"{client['agent_id']}, nen lenh DONG se that bai. KHONG mo lenh moi.",
                         agent_id=client["agent_id"])
             return "Algo Trading tat phia Client"

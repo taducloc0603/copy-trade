@@ -108,6 +108,14 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
   margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--vien);
 }
 .chan-khoi .ghi-chu { color: var(--mo); font-size: 12px; }
+/* Vung phu ben trong mot khoi: no co nut Luu RIENG va lam mot viec khac han (them mot khoa moi
+   vao file, khong phai sua khoa dang co), nen phai nhin ra la mot vung khac -- neu khong thi hai
+   nut Luu trong cung mot khoi la mot cai bay. */
+.vung-phu {
+  margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--vien);
+}
+.vung-phu > .nhan { display: block; font-weight: 600; margin-bottom: 4px; }
+
 /* Hang co nut luu RIENG cua chinh no (khoa he thong, terminal cua clicker): lam nhat nen de
    khong bi nham voi nut luu ca khoi. */
 .hang-cau-hinh button { background: transparent; border-color: var(--vien); }

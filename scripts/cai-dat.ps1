@@ -519,8 +519,14 @@ function cho_clicker_moi([int[]] $pidCu) {
         }
         Start-Sleep -Seconds 3
     }
+    # Liet ke MOI tac vu Clicker*: tu D-35 co the co ba cai (clicker, clicker_master, clicker_cl02),
+    # va mot goi y chi noi ten "Clicker" se de nguoi van hanh bo lai hai cai kia dang chay code cu.
+    $ten = @(Get-ScheduledTask -TaskPath '\CopyBridge\' -ErrorAction SilentlyContinue |
+             Where-Object { $_.TaskName -like 'Clicker*' } | ForEach-Object { $_.TaskName })
+    if ($ten.Count -eq 0) { $ten = @('Clicker') }
     canh ("clicker chua bat lai sau 45 giay. Bat tay: " +
-          "Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName Clicker")
+          (($ten | ForEach-Object {
+              "Start-ScheduledTask -TaskPath '\CopyBridge\' -TaskName $_" }) -join '; '))
 }
 
 function sau_khi_cap_nhat([string] $commitCu) {
