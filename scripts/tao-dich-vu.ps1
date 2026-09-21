@@ -27,7 +27,7 @@
 .EXAMPLE
     .\tao-dich-vu.ps1 -GoBo
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     [string] $TenDichVu = "CopyBridge",

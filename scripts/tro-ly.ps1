@@ -32,7 +32,7 @@
     Khong hoi mot cau nao. Chi dung o mot cho: mat khau tai khoan Windows cho dich vu.
     Day la duong ma cai-dat.ps1 goi.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     [string] $TenDichVu = "CopyBridge",
@@ -625,8 +625,15 @@ function buoc_dich_vu() {
     # Tac vu chi mang -Muc: so tai khoan va tieu de cua so nam trong DB. Doi terminal ve sau khong
     # phai dang ky lai tac vu. Nhung VIEC CO dang ky tac vu ClickerMaster hay khong thi van phai
     # noi ro o day, neu khong khong ai dang ky no ca.
-    $doiSoMaster = @()
-    if ($script:BatDongMaster) { $doiSoMaster = @('-TacVuClicker', 'clicker_master') }
+    # PHAI la HASHTABLE. Splat mot MANG thi PowerShell truyen cac phan tu theo VI TRI, khong
+    # phai theo ten: `@('-TacVuClicker', 'clicker_master')` lam "-TacVuClicker" roi vao $NguoiDung
+    # va "clicker_master" roi vao $AccountLogin (kieu int) -- gay ca buoc dang ky dich vu.
+    #
+    # Ban truoc con te hon vi no IM LANG: `@('-TacVuClickerMaster')` chi co mot phan tu, no bind
+    # gon vao $NguoiDung nhu mot chuoi binh thuong, va tac vu ClickerMaster khong bao gio duoc
+    # dang ky -- khong mot dong loi nao. Do la ly do tao-dich-vu.ps1 nay dat PositionalBinding=$false.
+    $doiSoMaster = @{}
+    if ($script:BatDongMaster) { $doiSoMaster = @{ TacVuClicker = @('clicker_master') } }
     & $tao -ThuMuc $ThuMuc -TenDichVu $TenDichVu @doiSoMaster
     if ($LASTEXITCODE -ne 0) { canh "tao-dich-vu.ps1 tra ve $LASTEXITCODE" }
     else { ok "da dang ky" }

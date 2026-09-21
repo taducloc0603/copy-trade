@@ -8,7 +8,7 @@
     LAI ban vua tao de kiem chung -- mot ban sao luu chua tung khoi phuc thu thi khong phai ban
     sao luu, va cho de biet no hong la o day.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param([string] $ThuMuc = "C:\CopyBridge")
 
 Set-StrictMode -Version Latest

@@ -16,7 +16,7 @@
     .\kiem-tra.ps1 -ChiTinhHinh
     Chi chay `tinh-hinh`. Dung cho Scheduled Task '\CopyBridge\TinhHinh'.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     [string] $TenDichVu = "CopyBridge",

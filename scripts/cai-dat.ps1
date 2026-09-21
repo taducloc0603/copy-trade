@@ -21,7 +21,7 @@
     .\cai-dat.ps1 -CapNhat
     Sao luu, dung dich vu, keo ban moi, cai lai, bat dich vu.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     [string] $Repo   = "https://github.com/taducloc0603/copy-trade.git",

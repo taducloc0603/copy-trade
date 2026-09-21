@@ -12,7 +12,7 @@
     cua mot tien trinh la thu moi tai khoan tren cung may doc duoc bang Get-CimInstance
     Win32_Process, va clicker chay 24/7.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string] $ThuMuc = "C:\CopyBridge",
     # CHI de tuong thich ban cai cu. Truyen vao day la GHI DE gia tri khai tren dashboard, va
