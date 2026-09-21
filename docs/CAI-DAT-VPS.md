@@ -469,7 +469,8 @@ Script làm, theo đúng thứ tự này:
 |---|---|
 | Cảnh báo nếu `tinh-hinh` còn mục cần chú ý | Vị thế **thật** trên sàn không biến mất khi xoá database. Đóng tay trong MT5 trước |
 | Gỡ dịch vụ `CopyBridge` và **mọi** tác vụ trong `\CopyBridge\` | Gọi lại `tao-dich-vu.ps1 -GoBo`; xoá luôn thư mục tác vụ mà `Unregister-ScheduledTask` để lại |
-| Giết tiến trình `-m bridge` / `-m clicker` còn sót | Clicker còn sống vẫn **bấm vào cửa sổ MT5**, và còn giữ mutex `Global\CopyBridgeClicker-<mục>` — bản cài mới sẽ thoát **mã 3** mà không ai hiểu vì sao |
+| Giết **wrapper** `chay-clicker.ps1` trước, rồi mới tới `-m bridge` / `-m clicker` | Ngược thứ tự thì vòng tự bật lại của wrapper mở ngay một clicker mới. Wrapper cũng là thứ giữ `logs\clicker-wrapper.log` **và** giữ cả thư mục cài (nó `Set-Location` vào đó), nên bỏ sót nó là bước xoá thư mục thất bại |
+| Clicker còn sống thì vẫn **bấm vào cửa sổ MT5** và còn giữ mutex `Global\CopyBridgeClicker-<mục>` | Bản cài mới sẽ thoát **mã 3** ("đã có clicker khác") mà không ai hiểu vì sao |
 | Xoá `CopyBridge*.ex5` và `MQL5\Files\copybridge\` của từng terminal | Thư mục đó giữ `<login>_state.json`, `_outbox.ndjson`, `_commands.ndjson`. Bỏ sót là bản cài mới đọc lại outbox của hệ thống cũ |
 | Xoá `config.toml`, mọi `config.toml.bak-*`, `config.toml.tam` **trước** thư mục | Chúng là **bản rõ** của mật khẩu dashboard và token clicker. Xoá trước thì nếu bước cuối thất bại, bí mật vẫn đã đi rồi |
 | Xoá `Desktop\cai-dat.ps1` và bộ cài trong `%TEMP%` | Bản `cai-dat.ps1` cũ trên Desktop đúng là cái bẫy mục A1 phải cảnh báo |
@@ -485,8 +486,8 @@ Mỗi dòng là một câu lệnh, không phải một lời hứa:
 ```powershell
 Get-Service CopyBridge -ErrorAction SilentlyContinue                       # khong ra gi
 Get-ScheduledTask -TaskPath '\CopyBridge\' -ErrorAction SilentlyContinue   # khong ra gi
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -match '-m (bridge|clicker)' }              # khong ra gi
+Get-CimInstance Win32_Process | Where-Object {
+  $_.ProcessId -ne $PID -and $_.CommandLine -like '*CopyBridge*' }         # khong ra gi
 Test-Path C:\CopyBridge                                                    # False
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"     # khong ra gi
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0  # khong ra gi

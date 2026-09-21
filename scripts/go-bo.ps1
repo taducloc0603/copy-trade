@@ -71,6 +71,26 @@ function tien_trinh_cua_tool() {
              Where-Object { $_.CommandLine -match '-m (bridge|clicker)(\s|$)' })
 }
 
+function tien_trinh_wrapper() {
+    # WRAPPER: powershell.exe chay chay-clicker.ps1 / chay-bao-tri.ps1 / kiem-tra.ps1 trong $ThuMuc.
+    #
+    # Bo sot chung la sai o hai muc, va da xay ra that tren VPS 2026-09-21:
+    #
+    #   1. chay-clicker.ps1 co VONG TU BAT LAI. Giet python.exe ma bo wrapper thi wrapper bat len
+    #      mot clicker moi -- dung cai no ton tai de lam.
+    #   2. Wrapper la thu GIU logs\clicker-wrapper.log (no Add-Content vao do moi vong) va giu ca
+    #      $ThuMuc lam thu muc lam viec (`Set-Location $ThuMuc` o dau file). Do la ly do xoa thu
+    #      muc that bai voi "being used by another process".
+    #
+    # Nen wrapper phai bi giet TRUOC python.exe, khong phai sau.
+    #
+    # Loc theo $ThuMuc de khong dung toi wrapper cua mot ban cai khac tren cung may. Tru $PID va
+    # tru chinh go-bo.ps1: dong lenh cua chinh script nay cung chua duong dan $ThuMuc.
+    return @(Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+             Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like "*$ThuMuc*" -and
+                            $_.CommandLine -notlike "*go-bo*" })
+}
+
 function tac_vu_cua_tool() {
     return @(Get-ScheduledTask -TaskPath $DuongDanTacVu -ErrorAction SilentlyContinue)
 }
@@ -138,6 +158,10 @@ function in_xem_truoc() {
     $tv = @(tac_vu_cua_tool)
     if ($tv.Count -gt 0) { foreach ($t in $tv) { se "tac vu ${DuongDanTacVu}$($t.TaskName)" } }
     else { Write-Host "  (khong co tac vu nao trong $DuongDanTacVu)" -ForegroundColor DarkGray }
+
+    $wr = @(tien_trinh_wrapper)
+    if ($wr.Count -gt 0) { se ("wrapper PowerShell PID " + (($wr | ForEach-Object { $_.ProcessId }) -join ', ')) }
+    else { Write-Host "  (khong co wrapper PowerShell nao cua $ThuMuc)" -ForegroundColor DarkGray }
 
     $tt = @(tien_trinh_cua_tool)
     if ($tt.Count -gt 0) { se ("tien trinh PID " + (($tt | ForEach-Object { $_.ProcessId }) -join ', ')) }
@@ -225,17 +249,31 @@ function go_dich_vu_va_tac_vu() {
 
 function giet_tien_trinh_con_sot() {
     tieu_de "Tien trinh con sot"
+
+    # THU TU: wrapper TRUOC, python SAU. Nguoc lai thi vong tu bat lai cua chay-clicker.ps1 se bat
+    # len mot clicker moi ngay sau khi ta giet cai cu.
+    $wr = @(tien_trinh_wrapper)
+    foreach ($p in $wr) {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+        ok "da giet wrapper PID $($p.ProcessId)"
+    }
+    if ($wr.Count -eq 0) { ok "khong co wrapper PowerShell nao cua $ThuMuc" }
+    else { Start-Sleep -Seconds 1 }
+
     $tt = @(tien_trinh_cua_tool)
-    if ($tt.Count -eq 0) { ok "khong con tien trinh Bridge/clicker nao"; return }
     foreach ($p in $tt) {
         Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
         ok "da giet PID $($p.ProcessId)"
     }
+    if ($tt.Count -eq 0) { ok "khong con tien trinh Bridge/clicker nao" }
+
+    if ($wr.Count -eq 0 -and $tt.Count -eq 0) { return }
     Start-Sleep -Seconds 2
-    $con = @(tien_trinh_cua_tool)
+    $con = @(tien_trinh_wrapper) + @(tien_trinh_cua_tool)
     if ($con.Count -gt 0) {
         canh ("KHONG giet duoc PID " + (($con | ForEach-Object { $_.ProcessId }) -join ', ') +
-              " -- chung con giu mutex Global\CopyBridgeClicker-* va ban cai moi se thoat ma 3")
+              " -- chung con giu mutex Global\CopyBridgeClicker-*, con giu logs\ va con giu ca " +
+              "thu muc cai, nen buoc xoa thu muc se that bai")
     } else {
         ok "mutex Global\CopyBridgeClicker-* da duoc tha"
     }
@@ -320,11 +358,14 @@ function xoa_thu_muc_cai() {
             canh ("VAN CON BI MAT tren dia: " + (($biMat | ForEach-Object { $_.Name }) -join ', ') +
                   " -- do la ban ro cua mat khau dashboard va token clicker. Xoa chung truoc.")
         }
-        $giu = @(Get-Process -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Path -like "$ThuMuc\*" })
+        # Dung dong lenh, KHONG dung duong dan file thuc thi: ke giu file hay gap nhat la
+        # chay-clicker.ps1, ma no chay bang powershell.exe nam trong System32 -- loc theo
+        # `$_.Path -like "$ThuMuc\*"` se khong bao gio thay no. Van chi in TEN va PID.
+        $giu = @(tien_trinh_wrapper) + @(tien_trinh_cua_tool)
         if ($giu.Count -gt 0) {
             canh ("Tien trinh dang giu file: " +
-                  (($giu | ForEach-Object { "$($_.Name) (PID $($_.Id))" }) -join ', '))
+                  (($giu | ForEach-Object { "$($_.Name) (PID $($_.ProcessId))" }) -join ', ') +
+                  ". Giet chung roi xoa lai.")
         } else {
             Write-Host "    Khong thay tien trinh nao chay tu thu muc do. Thu dong MT5 va" -ForegroundColor Yellow
             Write-Host "    moi cua so dang mo file trong do, roi chay:" -ForegroundColor Yellow
@@ -339,8 +380,8 @@ function in_bang_kiem() {
     @(
         'Get-Service CopyBridge -ErrorAction SilentlyContinue                       # khong ra gi',
         "Get-ScheduledTask -TaskPath '$DuongDanTacVu' -ErrorAction SilentlyContinue # khong ra gi",
-        'Get-CimInstance Win32_Process -Filter "Name=''python.exe''" |',
-        "  Where-Object { `$_.CommandLine -match '-m (bridge|clicker)' }            # khong ra gi",
+        'Get-CimInstance Win32_Process | Where-Object {',
+        "  `$_.ProcessId -ne `$PID -and `$_.CommandLine -like '*CopyBridge*' }       # khong ra gi",
         "Test-Path '$ThuMuc'                                                        # False",
         'Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"    # khong ra gi',
         'Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0 # khong ra gi'
