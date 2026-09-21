@@ -16,7 +16,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from bridge.logging_setup import get_logger
 from clicker.ui import win32
+
+log = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -66,11 +69,30 @@ def account_login_from_title(title: str) -> int | None:
     return int(head) if head.isdigit() else None
 
 
-def probe(title_contains: str) -> ProbeResult:
-    """Kiểm tra nhẹ, chạy mỗi chu kỳ heartbeat: cửa sổ còn đó và tiêu đề vẫn đúng login."""
+def probe(title_contains: str, account_login: int = 0) -> ProbeResult:
+    """Kiểm tra nhẹ: cửa sổ còn đó, và **đúng tài khoản**.
+
+    `account_login` là số tài khoản Bridge giao cho clicker (D-32). Truyền vào thì đây là hàng rào
+    thật chứ không chỉ là phép tìm cửa sổ: số đọc từ **tiêu đề cửa sổ đang tồn tại** phải khớp số
+    trong sổ. Trước D-32 hàng rào này nằm ở Bridge (`ACCOUNT_MISMATCH`), nhưng nó so DB với một
+    dòng cấu hình — đúng vĩnh viễn, kể cả khi terminal đã đăng nhập sang tài khoản khác.
+
+    Gọi ở **cả hai** chỗ: canary mỗi nhịp heartbeat, và ngay trước mỗi lần mở/đóng trong
+    `ui/driver.py`. Hai chỗ vì chúng chặn hai thứ khác nhau: canary chặn việc Bridge gửi lệnh tới,
+    còn phép kiểm trong driver chặn đúng cú bấm — và giữa hai nhịp heartbeat vẫn đủ chỗ cho một
+    terminal đổi tài khoản.
+    """
     result = find_terminal(title_contains)
     if not result.healthy or result.hwnd is None:
         return result
     if not win32.is_window(result.hwnd):
         return ProbeResult(False, "Handle cua so khong con hop le", hwnd=result.hwnd)
+    if account_login:
+        tren_cua_so = account_login_from_title(result.title or "")
+        if tren_cua_so is not None and tren_cua_so != account_login:
+            log.critical("Cua so %r la tai khoan %s, khong phai %s trong so. Khong lai terminal nay.",
+                         result.title, tren_cua_so, account_login)
+            return ProbeResult(
+                False, f"Tieu de cua so la tai khoan {tren_cua_so}, khac {account_login}",
+                hwnd=result.hwnd, title=result.title)
     return ProbeResult(True, "Cua so terminal con song", hwnd=result.hwnd, title=result.title)

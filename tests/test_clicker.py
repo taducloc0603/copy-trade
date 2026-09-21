@@ -32,7 +32,7 @@ from clicker.__main__ import (
 from clicker.journal import CommandJournal
 from clicker.link import ClickerLink, LinkConfig, ThieuCauHinh
 from clicker.ui import probe as ui_probe
-from clicker.ui.driver import DryRunDriver, OpenDriver, OpenOutcome, OpenRequest
+from clicker.ui.driver import CloseRequest, DryRunDriver, OpenDriver, OpenOutcome, OpenRequest
 from tests.test_server import _wait_until
 
 CLICKER_AGENT = "AG-CLICKER"
@@ -501,6 +501,14 @@ def test_gia_tri_cuc_bo_thang_gia_tri_bridge_giao(tmp_path: Path) -> None:
     assert (link.config.account_login, link.config.terminal_title) == (111, "cuc-bo")
 
 
+def _gia_lap_cua_so(monkeypatch: pytest.MonkeyPatch, tieu_de: str) -> None:
+    """Giả lập một cửa sổ terminal có tiêu đề cho trước, không cần Win32 thật."""
+    monkeypatch.setattr(
+        "clicker.ui.probe.find_terminal",
+        lambda _t: ui_probe.ProbeResult(True, "thay", hwnd=1, title=tieu_de))
+    monkeypatch.setattr("clicker.ui.win32.is_window", lambda _h: True)
+
+
 def test_cua_so_cua_tai_khoan_khac_thi_canary_do(tmp_path: Path,
                                                  monkeypatch: pytest.MonkeyPatch) -> None:
     """Hàng rào thay cho `ACCOUNT_MISMATCH`: đối chiếu với **cửa sổ thật**, mỗi nhịp heartbeat."""
@@ -508,9 +516,7 @@ def test_cua_so_cua_tai_khoan_khac_thi_canary_do(tmp_path: Path,
     link.dry_run = False
     link.config.account_login = 538217
     link.config.terminal_title = "5382"
-    monkeypatch.setattr(
-        "clicker.ui.probe.probe",
-        lambda _t: ui_probe.ProbeResult(True, "ok", hwnd=1, title="538216 - Connext-Demo"))
+    _gia_lap_cua_so(monkeypatch, "538216 - Connext-Demo")
     kq = link.health()
     assert not kq.healthy
     assert "538216" in kq.detail
@@ -522,10 +528,25 @@ def test_cua_so_dung_tai_khoan_thi_canary_xanh(tmp_path: Path,
     link.dry_run = False
     link.config.account_login = 538217
     link.config.terminal_title = "5382"
-    monkeypatch.setattr(
-        "clicker.ui.probe.probe",
-        lambda _t: ui_probe.ProbeResult(True, "ok", hwnd=1, title="538217 - Connext-Demo"))
+    _gia_lap_cua_so(monkeypatch, "538217 - Connext-Demo")
     assert link.health().healthy
+
+
+def test_driver_cung_kiem_so_tai_khoan_chu_khong_chi_canary(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Canary chặn việc Bridge GỬI lệnh; phép kiểm trong driver chặn đúng cú BẤM.
+
+    Cần cả hai: giữa hai nhịp heartbeat vẫn đủ chỗ cho một terminal đăng nhập sang tài khoản
+    khác, và cú bấm thì không lấy lại được.
+    """
+    from clicker.ui.driver import Mt5UiDriver
+
+    driver = Mt5UiDriver(terminal_title="5382", account_login=538217)
+    _gia_lap_cua_so(monkeypatch, "538216 - Connext-Demo")
+    kq = driver.close(CloseRequest(position_id=1))
+    assert kq.status == "rejected"
+    assert not kq.clicked
+    assert "538216" in kq.reason
 
 
 async def test_bat_tay_that_nhan_duoc_cau_hinh_tu_bridge(bridge, db: Database,

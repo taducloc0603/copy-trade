@@ -417,7 +417,7 @@ def _gia_lap_tim(monkeypatch: pytest.MonkeyPatch, tickets: list[int | None],
     hop_theo_dong = hop_theo_dong or {}
 
     monkeypatch.setattr(driver_mod.probe, "probe",
-                        lambda _t: type("P", (), {"healthy": True, "hwnd": 1, "detail": "",
+                        lambda _t, _login=0: type("P", (), {"healthy": True, "hwnd": 1, "detail": "",
                                                   "__bool__": lambda s: True})())
     monkeypatch.setattr(driver_mod.win32, "get_process_id", lambda _h: 4242)
     monkeypatch.setattr(driver_mod.tradetab, "tim_danh_sach", lambda _h: 777)

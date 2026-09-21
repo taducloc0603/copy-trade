@@ -131,7 +131,8 @@ def bo_sung_tham_so(args: argparse.Namespace) -> None:
 
 def build_link(args: argparse.Namespace) -> ClickerLink:
     driver = (DryRunDriver() if args.dry_run
-              else Mt5UiDriver(terminal_title=args.terminal_title))
+              else Mt5UiDriver(terminal_title=args.terminal_title,
+                               account_login=args.account_login))
     return ClickerLink(
         config=LinkConfig(
             host=args.host, port=args.port, token=args.token,

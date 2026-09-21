@@ -266,8 +266,13 @@ class Mt5UiDriver:
 
     def __init__(self, terminal_title: str,
                  on_before_click: Callable[[], None] | None = None,
-                 settle_sec: float = 0.05, close_timeout_sec: float = 5.0) -> None:
+                 settle_sec: float = 0.05, close_timeout_sec: float = 5.0,
+                 account_login: int = 0) -> None:
         self.terminal_title = terminal_title
+        #: Số tài khoản Bridge giao (D-32). Mỗi lần mở/đóng đều đối chiếu nó với số đọc từ tiêu đề
+        #: cửa sổ **đang tồn tại**, chứ không tin một lần kiểm lúc bắt tay: giữa hai nhịp heartbeat
+        #: vẫn đủ chỗ cho một terminal đăng nhập sang tài khoản khác, và cú bấm thì không lấy lại được.
+        self.account_login = account_login
         #: Gọi ngay TRƯỚC cú bấm. `link.py` dùng nó để ghi "đã bấm" xuống đĩa trước khi bấm —
         #: nếu mất điện đúng lúc này, lần khởi động lại phải giả định là đã bấm.
         self.on_before_click = on_before_click
@@ -288,7 +293,7 @@ class Mt5UiDriver:
         # Mốc thời gian từng bước — để đo trên VPS bằng log chứ không đoán (bài học B-15). Vào lệnh
         # liên tục cách nhau ~3 giây, mà đường mở trước đây không có dòng log thời gian nào.
         self._moc = {"bat_dau": time.monotonic()}
-        health = probe.probe(self.terminal_title)
+        health = probe.probe(self.terminal_title, self.account_login)
         if not health or health.hwnd is None:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         self._moc["probe"] = time.monotonic()
@@ -369,7 +374,7 @@ class Mt5UiDriver:
 
     def close(self, request: CloseRequest) -> Outcome:
         """Tìm đúng vị thế trong danh sách rồi đóng nó. Xem phần đầu file về vì sao là phép tìm."""
-        health = probe.probe(self.terminal_title)
+        health = probe.probe(self.terminal_title, self.account_login)
         if not health or health.hwnd is None:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         pid = win32.get_process_id(health.hwnd)
@@ -686,7 +691,7 @@ class Mt5UiDriver:
 
     def dry_probe(self) -> Outcome:
         """Probe khô: mở hộp thoại, đọc lại, đóng. Chứng minh toàn tuyến sống mà không đặt lệnh."""
-        health = probe.probe(self.terminal_title)
+        health = probe.probe(self.terminal_title, self.account_login)
         if not health or health.hwnd is None:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         try:

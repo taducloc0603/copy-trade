@@ -99,33 +99,7 @@ class ClickerLink:
         """Canary. Kết quả đi vào `heartbeat.broker_connected`, hiểu là "điều khiển được giao diện"."""
         if self.dry_run:
             return ui_probe.ProbeResult(False, "DRY_RUN: khong dieu khien giao dien")
-        kq = ui_probe.probe(self.config.terminal_title)
-        if not kq.healthy:
-            return kq
-        return self._kiem_dung_tai_khoan(kq)
-
-    def _kiem_dung_tai_khoan(self, kq: ui_probe.ProbeResult) -> ui_probe.ProbeResult:
-        """Cửa sổ tìm được phải là cửa sổ của **đúng tài khoản** Bridge giao.
-
-        Trước đây hàng rào này nằm ở Bridge: clicker gửi `account_login` đọc từ `config.toml` và
-        Bridge đối chiếu với DB. Khi con số đến **từ** Bridge thì phép so đó tự khớp với chính
-        nó, nên hàng rào phải chuyển sang đây và đối chiếu với **cửa sổ thật**. Mạnh hơn bản cũ:
-        nó bắt cả trường hợp terminal đăng nhập sang tài khoản khác giữa phiên, thứ mà một dòng
-        cấu hình đúng vĩnh viễn không bao giờ thấy.
-
-        Chạy mỗi nhịp heartbeat, nên lệch là canary đỏ trong vòng một giây và Bridge ngừng gửi
-        lệnh (D-25) thay vì bấm lên nhầm tài khoản.
-        """
-        if not self.config.account_login:
-            return kq
-        tren_cua_so = ui_probe.account_login_from_title(kq.title or "")
-        if tren_cua_so is None or tren_cua_so == self.config.account_login:
-            return kq
-        log.critical("Cua so %r la tai khoan %s, khong phai %s ma Bridge giao. Khong lai terminal nay.",
-                     kq.title, tren_cua_so, self.config.account_login)
-        return ui_probe.ProbeResult(
-            False, f"Tieu de cua so la tai khoan {tren_cua_so}, khac {self.config.account_login}",
-            hwnd=kq.hwnd, title=kq.title)
+        return ui_probe.probe(self.config.terminal_title, self.config.account_login)
 
     # -- vòng đời ----------------------------------------------------------------------------
 
@@ -220,6 +194,10 @@ class ClickerLink:
             self.config.terminal_title = str(cau_hinh["terminal_title"])
             self.driver.terminal_title = self.config.terminal_title
             log.info("Nhan tieu de cua so terminal %r tu Bridge", self.config.terminal_title)
+        # Driver kiểm số tài khoản ở **mỗi** lần bấm, nên nó phải biết con số này chứ không chỉ
+        # canary biết.
+        if getattr(self.driver, "account_login", None) is not None:
+            self.driver.account_login = self.config.account_login
 
     async def send_heartbeat(self) -> None:
         health = self.health()
