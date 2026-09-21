@@ -694,3 +694,15 @@ async def test_doi_mat_khau_dashboard_tren_ui_thi_ghi_vao_file(seeded_web: Datab
     # Tien trinh dang chay KHONG nap lai: cau hinh khoi dong nua nap nua khong la trang thai
     # khong ai luong duoc. Mat khau cu van dung cho toi khi khoi dong lai dich vu.
     assert dashboard.password == MAT_KHAU
+
+
+async def test_css_va_js_khong_duoc_trinh_duyet_giu_cache(client: httpx.AsyncClient) -> None:
+    """Sau khi cập nhật, tab đang mở phải nhận được CSS/JS mới.
+
+    Triệu chứng của việc thiếu dòng này: "sửa xong mà dashboard không đổi gì" — và người ta sẽ đi
+    tìm nguyên nhân ở mọi chỗ trừ cache trình duyệt. Gặp thật khi làm trang Cấu hình.
+    """
+    for duong in ("/static/app.css", "/static/app.js"):
+        r = await client.get(duong)
+        assert r.status_code == 200, duong
+        assert "no-cache" in r.headers.get("cache-control", ""), duong

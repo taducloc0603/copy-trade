@@ -204,7 +204,10 @@ UI = {
     "cfg_save": "Lưu",
     "cfg_saved": "Đã lưu",
     "cfg_open_pairs_keep": "{n} cặp đang chạy giữ nguyên tỷ lệ cũ",
+    "cfg_client_title": "Cấu hình copy —",
     "cfg_system_title": "Khoá hệ thống",
+    "cfg_system_hint": "Mỗi khoá lưu riêng. Đổi là có hiệu lực ngay, không cần khởi động lại.",
+    "cfg_file_restart_short": "Có hiệu lực sau khi khởi động lại dịch vụ.",
     "cfg_file_title": "config.toml — cấu hình khởi động",
     "cfg_file_masked": "(đã đặt)",
     "cfg_file_restart": ("Sửa ở đây được kiểm lại rồi mới ghi, và bản cũ được sao lưu. "
@@ -240,6 +243,7 @@ UI = {
     "map_master_symbol": "Symbol phía Master",
     "map_client_symbol": "Symbol phía Client",
     "map_add": "Thêm ánh xạ",
+    "map_add_hint": "Kiểm với sàn Client rồi mới lưu.",
     "map_disable": "Tắt",
     "map_enabled": "Đang bật",
     "map_disabled": "Đã tắt",

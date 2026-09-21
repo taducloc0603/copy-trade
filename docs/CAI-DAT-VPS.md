@@ -237,6 +237,10 @@ khung thời gian không nạp lại `.ex5`). Biên dịch không cần mở Met
 & "C:\Program Files\MetaTrader 5\MetaEditor64.exe" /compile:"C:\CopyBridge\ea\CopyBridgeClient.mq5" /log:"C:\CopyBridge\logs\compile.log"
 ```
 
+**Dashboard trông như bản cũ sau khi cập nhật:** tải lại trang một lần bằng `Ctrl+F5`. Từ bản
+2026-09-21 Bridge bảo trình duyệt hỏi lại mỗi lần nên chuyện này chỉ xảy ra đúng một lần, cho tab
+đã mở từ **trước** lần cập nhật đó.
+
 **Chạy lại clicker bằng tay** (khi nghi clicker chưa nạp code mới):
 
 ```powershell

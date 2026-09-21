@@ -123,8 +123,26 @@ class Dashboard:
 
 def tao_app(dashboard: Dashboard) -> FastAPI:
     app = FastAPI(title=UI["app_title"], docs_url=None, redoc_url=None)
+
+    class TinhKhongGiuCache(StaticFiles):
+        """Trình duyệt phải **hỏi lại** mỗi lần, thay vì tự giữ bản cũ.
+
+        Sau một lần `cai-dat.ps1 -CapNhat`, CSS/JS trên đĩa đã mới còn tab đang mở vẫn chạy bản
+        cũ — và triệu chứng là "sửa xong mà dashboard không đổi gì", thứ người ta sẽ đi tìm
+        nguyên nhân ở mọi chỗ trừ cache. `no-cache` không có nghĩa là tải lại toàn bộ: ETag vẫn
+        cho câu trả lời 304 rẻ tiền, chỉ là trình duyệt không được tự quyết bỏ qua lần hỏi.
+        """
+
+        def is_not_modified(self, response_headers: Any, request_headers: Any) -> bool:
+            return super().is_not_modified(response_headers, request_headers)
+
+        def file_response(self, *args: Any, **kwargs: Any) -> Any:
+            res = super().file_response(*args, **kwargs)
+            res.headers["cache-control"] = "no-cache"
+            return res
+
     # Phục vụ CSS/JS từ đĩa. Không CDN: đúng lúc mất mạng là lúc cần nhìn thấy trạng thái nhất.
-    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.mount("/static", TinhKhongGiuCache(directory=STATIC), name="static")
 
     def _chan(sid: str | None) -> JSONResponse | None:
         if dashboard.hop_le(sid):

@@ -311,7 +311,7 @@ async function ghiCauHinh(duong, than, sauKhiXong) {
 
 function hienToken(el, token) {
   const box = document.createElement("div");
-  box.className = "sai-lech-nhom token-moi";
+  box.className = "khoi-cau-hinh token-moi";
   const pre = document.createElement("pre");
   pre.textContent = token;
   const dong = nut(UI.btn_close);
@@ -320,10 +320,26 @@ function hienToken(el, token) {
   el.prepend(box);
 }
 
-function khoiAgent(el) {
+// Moi khoi la mot vung LUU RIENG. Dung chung ham nay de khong khoi nao quen vien hay tieu de --
+// nhin nham ranh gioi la sua o khoi nay roi bam nut cua khoi kia.
+function khoi(nhanTieuDe) {
   const box = document.createElement("div");
-  box.className = "sai-lech-nhom";
-  box.appendChild(tieuDe(UI.agent_title));
+  box.className = "khoi-cau-hinh";
+  box.appendChild(tieuDe(nhanTieuDe));
+  return box;
+}
+
+// Chan khoi: nut luu cua CA KHOI, tach khoi noi dung bang mot duong ke.
+function chanKhoi(nutLuu, ghiChu) {
+  const chan = document.createElement("div");
+  chan.className = "chan-khoi";
+  chan.appendChild(nutLuu);
+  if (ghiChu) chan.appendChild(nhan(ghiChu, "ghi-chu"));
+  return chan;
+}
+
+function khoiAgent(el) {
+  const box = khoi(UI.agent_title);
   const bang = document.createElement("table");
   const dau = bang.createTHead().insertRow();
   for (const h of ["agent_id", UI.agent_role, UI.agent_login, UI.agent_terminal,
@@ -368,9 +384,7 @@ function khoiAgent(el) {
 
 function khoiClient(el) {
   for (const c of CAU_HINH.clients) {
-    const box = document.createElement("div");
-    box.className = "sai-lech-nhom";
-    box.appendChild(tieuDe(c.client_id));
+    const box = khoi(UI.cfg_client_title + " " + c.client_id);
     // "Master dong thi Client dong" hien dang CHU, khong phai nut gat: FR-13 noi day la chuc
     // nang bat buoc, va thu khong duoc phep tat thi khong nen trong giong thu tat duoc.
     box.appendChild(nhan(UI.cfg_master_close_always, "canh-bao-nho"));
@@ -389,8 +403,7 @@ function khoiClient(el) {
 
     box.append(hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
                hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong),
-               hang(UI.cfg_can_close_master, dongMaster),
-               nhan(UI.cfg_effect_next_open, "canh-bao-nho"));
+               hang(UI.cfg_can_close_master, dongMaster));
 
     const xemTruoc = document.createElement("pre");
     xemTruoc.textContent = (CAU_HINH.preview || []).join("\n");
@@ -416,15 +429,13 @@ function khoiClient(el) {
         }
       });
     };
-    box.appendChild(luu);
+    box.appendChild(chanKhoi(luu, UI.cfg_effect_next_open));
     el.appendChild(box);
   }
 }
 
 function khoiMaster(el) {
-  const box = document.createElement("div");
-  box.className = "sai-lech-nhom";
-  box.appendChild(tieuDe(UI.cfg_master_close_title));
+  const box = khoi(UI.cfg_master_close_title);
   const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
     .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
   const chonClicker = oChon(CAU_HINH.master.master_clicker_agent_id, [{ gia_tri: "", nhan: "—" }]
@@ -440,14 +451,12 @@ function khoiMaster(el) {
       close_route: duong.value,
     });
   };
-  box.appendChild(luu);
+  box.appendChild(chanKhoi(luu));
   el.appendChild(box);
 }
 
 function khoiAnhXa(el) {
-  const box = document.createElement("div");
-  box.className = "sai-lech-nhom";
-  box.appendChild(tieuDe(UI.map_title));
+  const box = khoi(UI.map_title);
   for (const x of CAU_HINH.symbol_maps) {
     const d = document.createElement("div");
     d.className = "dong-sai-lech";
@@ -480,14 +489,15 @@ function khoiAnhXa(el) {
     master_symbol: sMaster.value,
     client_symbol: sClient.value,
   });
-  box.appendChild(them);
+  box.appendChild(chanKhoi(them, UI.map_add_hint));
   el.appendChild(box);
 }
 
 function khoiHeThong(el) {
-  const box = document.createElement("div");
-  box.className = "sai-lech-nhom";
-  box.appendChild(tieuDe(UI.cfg_system_title));
+  const box = khoi(UI.cfg_system_title);
+  // Moi khoa mot nut luu rieng: chung khong lien quan gi toi nhau, va mot nut luu chung se ghi
+  // ca nhung khoa nguoi ta chi vo tinh cham vao.
+  box.appendChild(nhan(UI.cfg_system_hint, "ghi-chu"));
   for (const k of CAU_HINH.he_thong) {
     const o = k.chon
       ? oChon(k.gia_tri, k.chon.map((v) => ({ gia_tri: v, nhan: v })))
@@ -505,9 +515,7 @@ function khoiHeThong(el) {
 
 function khoiFileConfig(el) {
   if (!CAU_HINH.file_config.length) return;
-  const box = document.createElement("div");
-  box.className = "sai-lech-nhom";
-  box.appendChild(tieuDe(UI.cfg_file_title));
+  const box = khoi(UI.cfg_file_title);
   box.appendChild(nhan(UI.cfg_file_restart, "canh-bao-nho"));
 
   const o = {};
@@ -557,7 +565,7 @@ function khoiFileConfig(el) {
     alert(UI.cfg_file_saved);
     await taiCauHinh();
   };
-  box.appendChild(luu);
+  box.appendChild(chanKhoi(luu, UI.cfg_file_restart_short));
   el.appendChild(box);
 }
 

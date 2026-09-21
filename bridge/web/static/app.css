@@ -86,3 +86,29 @@ body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px;
 .hang-cau-hinh .nhan { min-width: 16rem; }
 .hang-cau-hinh input, .hang-cau-hinh select { padding: .25rem .4rem; min-width: 12rem; }
 .token-moi pre { user-select: all; word-break: break-all; white-space: pre-wrap; }
+
+/* ---------------------------------------------------------------------------------------------
+   Trang Cau hinh: MOI KHOI LUU RIENG, nen moi khoi phai nhin ra la mot vung rieng.
+   Truoc day tat ca dung chung `.sai-lech-nhom` nen ca trang trong nhu mot khoi dai, va mot nut
+   "Luu" o giua trang khong noi duoc no luu cai gi -- nguoi dung sua o khoi nay roi bam nut cua
+   khoi kia. Vien + tieu de gach chan + chan khoi co duong ke la ba thu lam ranh gioi do hien ra.
+   --------------------------------------------------------------------------------------------- */
+.khoi-cau-hinh {
+  background: var(--the); border: 1px solid var(--vien); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 20px;
+}
+.khoi-cau-hinh > h3 {
+  margin: 0 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--vien);
+  font-size: 13px; color: var(--chu); font-weight: 600; text-transform: uppercase;
+  letter-spacing: .04em;
+}
+/* Chan khoi: nut luu cua CA KHOI nam o day, tach hang bang mot duong ke. */
+.chan-khoi {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--vien);
+}
+.chan-khoi .ghi-chu { color: var(--mo); font-size: 12px; }
+/* Hang co nut luu RIENG cua chinh no (khoa he thong, terminal cua clicker): lam nhat nen de
+   khong bi nham voi nut luu ca khoi. */
+.hang-cau-hinh button { background: transparent; border-color: var(--vien); }
+.khoi-cau-hinh .dong-sai-lech { background: var(--nen); }
