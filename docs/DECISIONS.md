@@ -682,3 +682,36 @@ Master `UI` mà chưa khai clicker, chưa đặt mật khẩu dashboard, và `ru
 
 Khối đó **không biến mất khi rỗng** — "không còn việc nào" là thông tin người vận hành cần, và một
 khối thỉnh thoảng mới xuất hiện thì không ai học được chỗ để tìm nó.
+
+
+### D-37 — Hướng dẫn nằm **trong sản phẩm**, và tự biết bước nào đã xong
+
+Cài đặt chỉ còn một lệnh (D-36) và trình duyệt tự mở, nhưng nó mở vào trang chủ: người dùng phải tự
+tìm ra khối "Cần làm" nằm giữa tab Cấu hình. Khối đó nói *cái gì còn thiếu* — nó không nói **thứ tự
+làm**, không chứa bước nào nằm ngoài tầm Bridge (gắn EA lên chart, bật Algo Trading, mở Toolbox), và
+không phân biệt **cài lần đầu** với **sau khi cập nhật**, hai việc có danh sách khác hẳn nhau.
+
+Nên có tab **Hướng dẫn** (`views.trang_huong_dan`), và script cài mở thẳng `/#huong-dan`. Bốn điều
+đáng ghi lại:
+
+* **Không có bộ luật thứ hai.** Mỗi bước tự kiểm được chỉ khai mã của `viec_can_lam`; trạng thái
+  suy ra từ đó. Hai bộ luật cho cùng một câu hỏi thì sớm muộn lệch nhau, và lúc ấy không ai biết
+  bên nào đúng.
+* **Phép kiểm rỗng là cái bẫy.** Chưa có clicker nào thì "mọi clicker đã khai xong" là đúng về
+  logic và sai về sự thật, nên các bước đó khai kèm `CHUA_CO_AGENT`. Một bước báo *Đã xong* khi
+  chưa ai làm gì sẽ làm mất lòng tin vào cả danh sách.
+* **Bước nào Bridge không thấy được thì nói thẳng là tự tích**, không giả vờ kiểm. Ví dụ đắt nhất:
+  **"đã biên dịch lại và gắn lại EA"**. `hello` của EA **không mang phiên bản EA** — chỉ
+  `terminal_build`, là của *terminal* — nên Bridge không phân biệt được một EA vừa gắn lại với một
+  EA cũ vừa nối lại sau khi dịch vụ khởi động, mà mỗi lần `-CapNhat` đều khởi động lại dịch vụ.
+  Xem B-20.
+* **Ô tự tích nằm trong database và bị xoá theo mốc cập nhật.** Trong `localStorage` thì nó mất khi
+  đổi trình duyệt; không xoá thì ô tích của lần cập nhật trước làm danh sách trông như đã xong — và
+  một danh sách luôn xanh thì không ai đọc nữa. `cai-dat.ps1 -CapNhat` ghi biên nhận
+  (`ghi-moc-cap-nhat`) gồm thời điểm, `ea/` có đổi không, và commit cũ; đó là **thứ duy nhất** cho
+  dashboard biết vừa có một lần cập nhật, vì Bridge không lưu phiên bản code nào.
+
+Hai bẫy giao diện, cả hai chỉ lộ ra khi chạy thật chứ không khi đọc code: đổi `#hash` trên một tab
+**đang mở** thì trình duyệt **không** tải lại trang (nên phải nghe `hashchange`, nếu không thì mở
+`/#huong-dan` lúc dashboard đã mở sẵn chẳng làm gì cả); và tab mới **phải** được thêm vào bảng nhãn
+trong `veNutDieuKhien`, nếu không nó hiện chữ `undefined` và bị vẽ lại như vậy mỗi giây.

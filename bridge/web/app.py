@@ -36,6 +36,7 @@ from bridge.ops import (
     dat_lai_lich_su,
     dat_lai_toan_bo,
     dat_terminal_clicker,
+    dat_tich_huong_dan,
     khai_anh_xa,
     sua_client,
     sua_khoa_he_thong,
@@ -220,6 +221,13 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ui": UI, "co_mat_khau": dashboard.can_dang_nhap(),
                 **views.trang_cau_hinh(dashboard.db, dashboard.config)}
 
+    @app.get("/api/huong_dan")
+    async def api_huong_dan(sid: str | None = Cookie(None)) -> Any:
+        """Hai danh sách việc từng bước, kèm trạng thái đã kiểm được của từng bước."""
+        if (loi := _chan(sid)) is not None:
+            return loi
+        return {"ui": UI, **views.trang_huong_dan(dashboard.db, dashboard.config)}
+
     @app.get("/api/preview")
     async def api_preview(multiplier: float, sid: str | None = Cookie(None)) -> Any:
         return _chan(sid) or {"lines": views.xem_truoc_he_so(multiplier)}
@@ -237,6 +245,25 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         dashboard.db.set_config("run_mode", mode)
         log.info("Dashboard doi run_mode sang %s", mode)
         return {"ok": True, "mode": mode}
+
+    @app.post("/api/huong_dan/tich")
+    async def api_tich_huong_dan(request: Request, sid: str | None = Cookie(None)) -> Any:
+        """Bật/tắt một ô tự tích của trang Hướng dẫn.
+
+        Đi qua `_chan_ghi` như mọi nút Lưu: ô tích là một lần **ghi vào database**, và một dashboard
+        không mật khẩu thì cho qua mọi request — không có lý do gì để ô này là ngoại lệ.
+        """
+        if (loi := _chan(sid)) is not None:
+            return loi
+        if (loi := _chan_ghi()) is not None:
+            return loi
+        body = await request.json()
+        try:
+            da = dat_tich_huong_dan(dashboard.db, str(body.get("ma") or ""),
+                                    bool(body.get("tich")))
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        return {"ok": True, "da_tich": sorted(da)}
 
     @app.post("/api/dat_lai")
     async def api_dat_lai(request: Request, sid: str | None = Cookie(None)) -> Any:

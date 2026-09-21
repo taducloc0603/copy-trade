@@ -938,3 +938,66 @@ def dat_lai_toan_bo(db: Database, db_path: Path | None = None) -> dict[str, Any]
     _gieo_lai_system_config(db)
     log.warning("DAT LAI toan bo: %s (ban sao luu %s)", da_xoa, ban_sao.name)
     return {"da_xoa": da_xoa, "ban_sao": ban_sao.name}
+
+
+# =============================================================================================
+# Trang Hướng dẫn: ô tự tích, và biên nhận của lần cập nhật
+# =============================================================================================
+#
+# Vài bước trong hướng dẫn Bridge **không thể** tự kiểm — gắn EA lên chart, bấm `Ctrl+F5`, mở
+# Toolbox ở tab Trade. Chúng cần một ô người dùng tự tích, và ô đó phải:
+#
+# * **sống sót khi đóng trình duyệt** → nằm trong `system_config`, không phải `localStorage`;
+# * **bị xoá khi có lần cập nhật mới** → nếu không, ô tích của tháng trước làm danh sách trông như
+#   đã xong, và một danh sách luôn xanh thì không ai đọc nữa.
+
+#: Khoá `system_config` giữ danh sách mã bước đã tích, phân cách bằng dấu phẩy.
+KHOA_TICH = "huong_dan_da_tich"
+#: Biên nhận lần cập nhật gần nhất, do `cai-dat.ps1 -CapNhat` ghi.
+KHOA_MOC_CAP_NHAT = "moc_cap_nhat"
+KHOA_EA_DOI = "cap_nhat_ea_doi"
+KHOA_TU_COMMIT = "cap_nhat_tu_commit"
+
+
+def doc_tich_huong_dan(db: Database) -> set[str]:
+    """Các mã bước đã được tích."""
+    tho = db.get_config(KHOA_TICH, "") or ""
+    return {m.strip() for m in tho.split(",") if m.strip()}
+
+
+def dat_tich_huong_dan(db: Database, ma: str, tich: bool) -> set[str]:
+    """Bật/tắt một ô tích. Trả về tập mã sau khi đổi.
+
+    Từ chối mã lạ: một ô tích không ứng với bước nào là một dòng rác trong `system_config` mà không
+    ai biết để dọn.
+    """
+    # Import tại chỗ: `views` đã import `ops`, nên import ngược ở đầu file là một vòng.
+    from bridge.web.views import MA_BUOC
+
+    if ma not in MA_BUOC:
+        raise LoiCauHinh("MA_BUOC_LA", ma_buoc=ma)
+    da = doc_tich_huong_dan(db)
+    if tich:
+        da.add(ma)
+    else:
+        da.discard(ma)
+    db.set_config(KHOA_TICH, ",".join(sorted(da)))
+    return da
+
+
+def ghi_moc_cap_nhat(db: Database, ea_doi: bool, tu_commit: str = "") -> dict[str, Any]:
+    """Ghi biên nhận của một lần cập nhật, và **xoá sạch** ô tích cũ.
+
+    `cai-dat.ps1 -CapNhat` gọi hàm này qua `bridge.admin ghi-moc-cap-nhat`. Nó là thứ duy nhất cho
+    dashboard biết "vừa có một lần cập nhật": Bridge không ghi lại phiên bản code nào, và
+    `agent.last_seen_at` không phân biệt được "EA vừa gắn lại" với "EA nối lại vì dịch vụ khởi
+    động" — mà mỗi lần `-CapNhat` đều khởi động lại dịch vụ.
+    """
+    moc = utc_now_iso()
+    db.set_config(KHOA_MOC_CAP_NHAT, moc)
+    db.set_config(KHOA_EA_DOI, "1" if ea_doi else "0")
+    db.set_config(KHOA_TU_COMMIT, (tu_commit or "").strip()[:40])
+    db.set_config(KHOA_TICH, "")
+    log.warning("Ghi moc cap nhat %s (ea_doi=%s, tu %s), da xoa o tich cua huong dan",
+                moc, ea_doi, tu_commit or "(khong ro)")
+    return {"moc_cap_nhat": moc, "ea_doi": ea_doi}

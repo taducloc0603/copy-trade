@@ -163,4 +163,4 @@ Chạy bằng `pytest -m cham`. Bài **24 giờ liên tục chưa chạy** — x
 
 ## Bộ test tự động
 
-**907 test xanh** (`pytest`) + **3 test tải**, `ruff` sạch, ngày 2026-09-21.
+**927 test xanh** (`pytest`) + **3 test tải**, `ruff` sạch, ngày 2026-09-21.

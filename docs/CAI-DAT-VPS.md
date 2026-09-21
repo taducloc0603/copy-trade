@@ -103,9 +103,12 @@ Chạy lại bao nhiêu lần cũng được — bước nào xong rồi in `BO 
 
 ## A2. Ba việc còn lại — làm trên trình duyệt và trong MT5
 
-Trình duyệt vừa mở ở `http://127.0.0.1:8080` (mật khẩu in ra ở A1). Vào tab **Cấu hình**. Khối
-**Cần làm** ở đầu trang liệt kê **chính xác** cái gì còn thiếu, và mục `CHẶN` nghĩa là hệ thống
-chưa copy được lệnh nào.
+Trình duyệt vừa mở ở `http://127.0.0.1:8080/#huong-dan` (mật khẩu in ra ở A1) — tab **Hướng dẫn**,
+mục **Cài đặt lần đầu**. Đó là danh sách chính thức: **chín bước, theo đúng thứ tự**, mỗi bước tự
+biết đã xong chưa, và bước nào dashboard không thấy được (gắn EA lên chart, mở Toolbox) thì có ô
+để bạn tự tích. Phần dưới đây là cùng nội dung, viết dài hơn để đọc trước khi bắt tay.
+
+Tab **Cấu hình** là nơi thao tác; khối **Cần làm** ở đầu tab đó nói gọn cái gì còn thiếu.
 
 **1. Lấy token và gắn EA.** Khối **Agent** → *Cấp lại token* cho `AG-MASTER` và `AG-CLIENT`; token
 hiện **một lần** ngay trên trang. Rồi trong MT5:
@@ -196,8 +199,13 @@ Sau khi cập nhật:
 .\.venv\Scripts\python.exe -m bridge.admin run-mode RUNNING # Bridge khởi động lại luôn về PAUSED
 ```
 
-Mở dashboard rồi **bấm `Ctrl+F5` một lần**: tab mở từ trước lần cập nhật vẫn chạy CSS/JS cũ, và
-triệu chứng là "cập nhật xong mà dashboard y như cũ". Chỉ cần làm một lần cho mỗi tab đang mở.
+Cập nhật xong, script **tự mở tab Hướng dẫn → mục "Sau khi cập nhật code"**: đó là danh sách
+việc sau update, mỗi bước tự biết đã xong chưa. Ô tự tích được xoá sạch ở mỗi lần cập nhật, nên
+danh sách luôn nói về lần gần nhất, và bước "biên dịch lại EA" **chỉ hiện ra khi `ea/` thật sự
+đổi**.
+
+Việc đầu tiên trong danh sách đó: **bấm `Ctrl+F5` một lần** trên mỗi tab mở từ trước lần cập nhật —
+tab cũ vẫn chạy CSS/JS cũ, và triệu chứng là "cập nhật xong mà dashboard y như cũ".
 
 ### B1b. Riêng bản 2026-09-21 — cấu hình chuyển vào database (D-32)
 

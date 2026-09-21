@@ -24,7 +24,12 @@ from bridge.clock import to_iso, utc_now
 from bridge.config import parse_config
 from bridge.db.repo import Database
 from bridge.labels_vi import UI
-from bridge.ops import dat_terminal_clicker
+from bridge.ops import (
+    dat_terminal_clicker,
+    dat_tich_huong_dan,
+    doc_tich_huong_dan,
+    ghi_moc_cap_nhat,
+)
 from bridge.protocol.auth import verify_token
 from bridge.web import views
 from bridge.web.app import CUM_DAT_LAI, Dashboard, tao_app
@@ -1057,3 +1062,128 @@ async def test_can_lam_di_theo_api_config_va_muc_CHAN_len_truoc(client: httpx.As
     assert can_lam[-1]["ma"] == "CHUA_BAT_COPY"
     # Cau chu phai noi LAM GI O DAU, khong chi noi cai gi sai.
     assert all(v["chu"].strip() for v in can_lam)
+
+
+# -- trang Huong dan ----------------------------------------------------------------------------
+#
+# Trang nay la thu nguoi dung nhin thay dau tien sau khi cai (script mo san /#huong-dan), nen mot
+# buoc bao sai o day dat hon mot dong tai lieu sai.
+
+def _buoc(db: Database, config: Any = None) -> dict[str, dict[str, Any]]:
+    hd = views.trang_huong_dan(db, config)
+    return {b["ma"]: b for n in hd["nhom"] for b in n["buoc"]}
+
+
+def test_huong_dan_buoc_tu_kiem_doi_trang_thai_khi_sua_dung_nguyen_nhan(
+        seeded_web: Database) -> None:
+    """Bước tự kiểm phải đi theo **sự thật trong database**, không theo một ô tích."""
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001)
+    assert _buoc(seeded_web)["LD_KHAI_CLICKER"]["trang_thai"] == "CON_THIEU"
+
+    dat_terminal_clicker(seeded_web, "AG-CLICKER-X", 538217, "538217 - Demo")
+    assert _buoc(seeded_web)["LD_KHAI_CLICKER"]["trang_thai"] == "XONG"
+
+
+def test_huong_dan_khong_bao_XONG_khi_chua_co_agent_nao(db: Database) -> None:
+    """Phép kiểm rỗng là cái bẫy: chưa có clicker nào thì "mọi clicker đã khai" là đúng về logic
+    và sai về sự thật — và một bước báo Đã xong khi chưa ai làm gì thì cả danh sách mất giá trị."""
+    buoc = _buoc(db)
+    assert buoc["LD_GAN_EA"]["trang_thai"] == "CON_THIEU"
+    assert buoc["LD_KHAI_CLICKER"]["trang_thai"] == "CON_THIEU"
+    assert buoc["LD_ALGO"]["trang_thai"] == "CON_THIEU"
+
+
+def test_huong_dan_buoc_thu_cong_co_o_tich_va_buoc_tu_kiem_thi_khong(seeded_web: Database) -> None:
+    """Tích tay một bước Bridge kiểm được là tự bịt mắt mình, nên bước đó không có ô tích."""
+    buoc = _buoc(seeded_web)
+    assert buoc["UP_CTRL_F5"]["tu_kiem"] is False      # bam Ctrl+F5: server khong thay duoc
+    assert buoc["LD_BAT_COPY"]["tu_kiem"] is True      # run_mode thi thay duoc
+
+
+def test_huong_dan_o_tich_song_qua_moi_lan_doc_va_bi_xoa_khi_co_moc_moi(
+        seeded_web: Database) -> None:
+    """Ô tích nằm trong database, và **phải** bị xoá ở lần cập nhật sau.
+
+    Không xoá thì ô tích của lần cập nhật trước làm danh sách trông như đã xong, và một danh sách
+    luôn xanh thì không ai đọc nữa.
+    """
+    dat_tich_huong_dan(seeded_web, "UP_CTRL_F5", True)
+    assert _buoc(seeded_web)["UP_CTRL_F5"]["da_tich"] is True
+
+    ghi_moc_cap_nhat(seeded_web, ea_doi=False, tu_commit="a" * 40)
+    assert _buoc(seeded_web)["UP_CTRL_F5"]["da_tich"] is False
+    assert doc_tich_huong_dan(seeded_web) == set()
+
+
+def test_huong_dan_buoc_gan_lai_EA_chi_hien_khi_ea_doi(seeded_web: Database) -> None:
+    """In "biên dịch lại EA" ở **mọi** lần cập nhật là cách chắc chắn để nó bị bỏ qua đúng lần
+    nó có thật."""
+    ghi_moc_cap_nhat(seeded_web, ea_doi=False)
+    assert "UP_GAN_LAI_EA" not in _buoc(seeded_web)
+
+    ghi_moc_cap_nhat(seeded_web, ea_doi=True)
+    assert _buoc(seeded_web)["UP_GAN_LAI_EA"]["tu_kiem"] is False
+
+
+def test_huong_dan_mo_muc_lan_dau_khi_may_con_trang(db: Database) -> None:
+    assert views.trang_huong_dan(db)["che_do"] == "LAN_DAU"
+
+
+def test_huong_dan_mo_muc_sau_update_khi_vua_cap_nhat(seeded_web: Database) -> None:
+    ghi_moc_cap_nhat(seeded_web, ea_doi=False)
+    hd = views.trang_huong_dan(seeded_web)
+    assert hd["che_do"] == "SAU_UPDATE"
+    assert hd["moc_cap_nhat"]
+
+
+def test_huong_dan_bat_khoa_clicker_con_sot_trong_config_toml(seeded_web: Database,
+                                                              tmp_path: Path) -> None:
+    """`config.toml` còn khai `account_login` thì **file thắng database** — khai trên dashboard
+    không có tác dụng, và không script nào kiểm hộ."""
+    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
+    assert _buoc(seeded_web, dashboard.config)["UP_CONFIG_SOT"]["trang_thai"] == "XONG"
+
+    con_sot = MAU_FILE_CONFIG.replace('[clicker]\ntoken = "TOKEN-CLICKER-BI-MAT"',
+                                      '[clicker]\ntoken = "x"\naccount_login = 538217')
+    cfg = parse_config(tomllib.loads(con_sot), source_path=tmp_path / "config.toml",
+                       project_root=tmp_path)
+    assert _buoc(seeded_web, cfg)["UP_CONFIG_SOT"]["trang_thai"] == "CON_THIEU"
+
+
+async def test_api_huong_dan_doi_dang_nhap(seeded_web: Database) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        assert (await c.get("/api/huong_dan")).status_code == 401
+
+
+async def test_api_tich_doi_dang_nhap_va_doi_mat_khau(seeded_web: Database) -> None:
+    """Ô tích là một lần **ghi vào database**, nên nó đi qua cùng cửa với mọi nút Lưu."""
+    than = {"ma": "UP_CTRL_F5", "tich": True}
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        assert (await c.post("/api/huong_dan/tich", json=than)).status_code == 401
+    async with _http(tao_app(Dashboard(seeded_web))) as c:        # khong co mat khau
+        assert (await c.post("/api/huong_dan/tich", json=than)).status_code == 403
+
+
+async def test_api_tich_ghi_duoc_va_tu_choi_ma_la(client: httpx.AsyncClient,
+                                                  seeded_web: Database) -> None:
+    r = await client.post("/api/huong_dan/tich", json={"ma": "LD_TOOLBOX", "tich": True})
+    assert r.status_code == 200, r.text
+    assert "LD_TOOLBOX" in r.json()["da_tich"]
+
+    r = await client.get("/api/huong_dan")
+    buoc = {b["ma"]: b for n in r.json()["nhom"] for b in n["buoc"]}
+    assert buoc["LD_TOOLBOX"]["da_tich"] is True
+
+    r = await client.post("/api/huong_dan/tich", json={"ma": "KHONG-CO-BUOC-NAY", "tich": True})
+    assert r.status_code == 400
+    assert r.json()["error"] == "MA_BUOC_LA"
+
+
+async def test_api_huong_dan_moi_buoc_co_cau_chu(client: httpx.AsyncClient) -> None:
+    """Một bước không có câu chữ là một dòng trống trên trang — và D-16 nói mọi câu chữ phải
+    đi qua `labels_vi`, nên thiếu nhãn là thiếu ở đó."""
+    r = await client.get("/api/huong_dan")
+    for n in r.json()["nhom"]:
+        assert n["ten"].strip() and n["chu"].strip()
+        for b in n["buoc"]:
+            assert b["chu"].strip(), b["ma"]

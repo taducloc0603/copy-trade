@@ -574,6 +574,7 @@ function sau_khi_cap_nhat([string] $commitCu) {
         $commitCu = ""
     }
 
+    $eaDoi = @()
     if ($commitCu) {
         $eaDoi = @(git -C $ThuMuc diff --name-only "$commitCu..HEAD" -- ea/)
         if ($eaDoi.Count -gt 0) {
@@ -601,6 +602,28 @@ function sau_khi_cap_nhat([string] $commitCu) {
     }
 
     if ($pidCu.Count -gt 0) { cho_clicker_moi $pidCu }
+
+    # Ghi bien nhan cho trang Huong dan, roi mo no. Day la thu DUY NHAT cho dashboard biet vua co
+    # mot lan cap nhat: Bridge khong luu phien ban code nao, va mot agent noi lai thi trong giong
+    # nhau du vi EA vua gan lai hay vi dich vu vua khoi dong.
+    #
+    # `ea/ doi` chi biet duoc o day (git diff giua hai commit), nen phai ghi xuong -- neu khong thi
+    # buoc "bien dich lai va gan lai EA" se hien ra o MOI lan cap nhat, va mot canh bao luon hien
+    # la mot canh bao khong ai doc.
+    $venvPy = Join-Path $ThuMuc ".venv\Scripts\python.exe"
+    if (Test-Path $venvPy) {
+        Push-Location $ThuMuc
+        try {
+            $eaCo = if ($eaDoi.Count -gt 0) { 1 } else { 0 }
+            & $venvPy -m bridge.admin ghi-moc-cap-nhat --ea-doi $eaCo --tu-commit $commitCu |
+                Out-Null
+            if ($LASTEXITCODE -eq 0) { ok "da ghi moc cap nhat cho trang Huong dan" }
+            else { canh "khong ghi duoc moc cap nhat (ma $LASTEXITCODE)" }
+        } finally { Pop-Location }
+    }
+
+    $troLy = Join-Path $ThuMuc "scripts\tro-ly.ps1"
+    if (Test-Path $troLy) { & $troLy -ThuMuc $ThuMuc -TenDichVu $TenDichVu -ChiMoDashboard }
 }
 
 function in_buoc_tiep() {

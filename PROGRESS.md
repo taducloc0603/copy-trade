@@ -3247,3 +3247,48 @@ hien thi khong ai hoc duoc cho de tim no.
 
 Do giao dien bang Playwright: khoi "Can lam (3)" nam dau tab Cau hinh, muc CHAN vien do co the
 "CHẶN", muc LUU_Y vien cam. 915 test xanh, ruff sach.
+
+## Tab Huong dan: hai danh sach viec, tu tich xanh (2026-09-21)
+
+Yeu cau: "them man hinh huong dan cai dat cau hinh tung buoc de nguoi dung tu thao tac, cai xong
+mo luon trang nay; co 2 muc la viec can lam khi update va khi cai dat lan dau".
+
+Khoi "Can lam" (D-36) noi CAI GI con thieu. No khong noi THU TU lam, khong chua buoc nao nam ngoai
+tam Bridge (gan EA, bat Algo Trading, mo Toolbox), va khong phan biet cai lan dau voi sau update.
+Tab Huong dan la cho cho ca ba dieu do: chin buoc cho lan dau, bay buoc cho sau update, moi buoc tu
+biet da xong chua, va script cai mo thang /#huong-dan.
+
+Ba quyet dinh dang ghi lai:
+
+1. KHONG viet bo luat thu hai: moi buoc tu kiem duoc chi khai ma cua `viec_can_lam`. Hai bo luat cho
+   cung mot cau hoi thi som muon lech nhau.
+2. Phep kiem RONG la cai bay: chua co clicker nao thi "moi clicker da khai xong" dung ve logic va
+   sai ve su that. Cac buoc do khai kem CHUA_CO_AGENT. Bat duoc ngay o lan chay thu dau tien tren
+   DB trang -- ba buoc bao XONG trong khi chua ai lam gi.
+3. Buoc nao Bridge khong thay duoc thi NOI THANG la tu tich. Dat nhat: "da bien dich lai va gan lai
+   EA" -- `hello` cua EA khong mang phien ban EA (chi co terminal_build, la cua terminal), nen
+   khong the phan biet EA vua gan lai voi EA cu vua noi lai sau khi dich vu khoi dong. Ghi thanh
+   B-20 thay vi gia vo kiem duoc.
+
+O tu tich nam trong database (song qua viec dong trinh duyet) va bi xoa o moi lan cap nhat --
+`cai-dat.ps1 -CapNhat` goi `bridge.admin ghi-moc-cap-nhat` ghi thoi diem + `ea/` co doi khong +
+commit cu. Do la thu DUY NHAT cho dashboard biet vua co mot lan cap nhat, va cung la thu quyet dinh
+buoc "bien dich lai EA" co hien ra hay khong.
+
+**Ba lo, ca ba lo ra khi CHAY chu khong khi doc code:**
+
+1. Doi #hash tren mot tab DANG MO thi trinh duyet KHONG tai lai trang. Thieu `hashchange` thi mo
+   /#huong-dan luc dashboard da mo san chi doi thanh dia chi roi khong lam gi -- nguoi dung nhin
+   thay Tong quan va khong hieu huong dan o dau. Bat duoc bang Playwright.
+2. Route dat ten `/api/huong-dan` (gach ngang) trong khi moi route khac dung gach duoi, va mot test
+   canh co san bat ngay: regex cua no chi lay [a-z_/] nen doc ra "/api/huong". Doi thanh
+   `/api/huong_dan` theo dung quy uoc thay vi noi long test.
+3. Binh luan trong app.js chua mot URL, va test "khong phu thuoc gi ngoai may" quet ca file -- no
+   khong the phan biet URL trong binh luan voi URL that su duoc goi. Viet lai binh luan.
+
+Va mot lo o script: `cong_theo_khoa` goi `& $VenvPy` khi thieu .venv thi nem CommandNotFoundException
+-- mot loi TERMINATING ma $ErrorActionPreference khong chan -- lam ca lan chay that bai. Day chi la
+buoc mo trinh duyet o cuoi, khong duoc phep lam hong mot lan cap nhat da xong. Bat duoc khi chay
+`tro-ly.ps1 -ChiMoDashboard` tren mot thu muc trong.
+
+927 test xanh (+12), ruff sach.

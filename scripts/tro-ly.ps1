@@ -40,7 +40,10 @@ param(
     [switch] $BoQuaDichVu,
     # Mo dashboard trong trinh duyet o buoc cuoi. Mac dinh CO: cai xong la sang ngay cho lam viec
     # tiep theo, thay vi bat nguoi ta tu go dia chi va tu doan phai khai gi.
-    [switch] $KhongMoDashboard
+    [switch] $KhongMoDashboard,
+    # CHI cho dashboard len roi mo trinh duyet, khong lam gi khac. `cai-dat.ps1 -CapNhat` goi duong
+    # nay de dung lai phan cho-cong-web + mo-trinh-duyet, thay vi chep 15 dong sang file kia.
+    [switch] $ChiMoDashboard
 )
 
 Set-StrictMode -Version Latest
@@ -546,12 +549,20 @@ function buoc_bien_dich() {
 # Hoi chinh Bridge xem no dang nghe cong nao, khong tu parse TOML trong PowerShell -- giong het
 # cach `doc_cau_hinh` cua kiem-tra.ps1 lam.
 function cong_theo_khoa([string] $khoa) {
+    # Hoi chinh Bridge, khong tu parse TOML trong PowerShell.
+    #
+    # KHONG duoc nem: ham nay chi phuc vu buoc mo trinh duyet o cuoi, va mot lan cai dat da xong
+    # khong duoc that bai vi khong doc noi mot so cong. Thieu .venv thi `&` nem
+    # CommandNotFoundException -- mot loi TERMINATING ma $ErrorActionPreference khong chan.
+    if (-not (Test-Path $script:VenvPy)) { return $null }
     Push-Location $ThuMuc
     try {
         $ra = & $script:VenvPy -c "from bridge.config import load_config; print(load_config().bridge.$khoa)" 2>$null
         if ($LASTEXITCODE -ne 0) { return $null }
         $p = 0
         if ([int]::TryParse("$ra".Trim(), [ref] $p)) { return $p }
+        return $null
+    } catch {
         return $null
     } finally { Pop-Location }
 }
@@ -645,7 +656,9 @@ function buoc_ket() {
 
     $congWeb = cong_web
     if ($null -eq $congWeb) { $congWeb = 8080 }
-    $diaChi = "http://127.0.0.1:$congWeb"
+    # Mo thang tab Huong dan, khong phai trang chu: danh sach viec tung buoc nam o do, va no tu
+    # biet buoc nao da xong. Mo trang chu roi de nguoi dung tu tim ra tab la bo lai dung cai kho.
+    $diaChi = "http://127.0.0.1:$congWeb/#huong-dan"
 
     Write-Host ""
     tach
@@ -668,9 +681,10 @@ function buoc_ket() {
       BridgePort = $(cong_bridge).
     - Bat nut Algo Trading, va mo Toolbox (Ctrl+T) o tab Trade.
 
-  Khoi "Can lam" o dau tab Cau hinh liet ke chinh xac cai gi con thieu, va no la
-  thu quyet dinh khi nao duoc bam "Bat dau copy" -- khong phai tri nho cua ban.
-  Con muc CHAN nao thi he thong KHONG copy duoc lenh nao.
+  Trinh duyet vua mo tab HUONG DAN: ba viec tren nam trong danh sach "Cai dat lan
+  dau", theo dung thu tu, va moi buoc tu biet da xong chua. Buoc nao dashboard khong
+  thay duoc (gan EA len chart, mo Toolbox) thi co o de ban tu tich.
+  Con buoc nao chua xong thi he thong KHONG copy duoc lenh nao.
 
   Moi lan dang nhap VPS:  $ThuMuc\scripts\kiem-tra.ps1
 
@@ -688,6 +702,14 @@ function buoc_ket() {
 
     if ($KhongMoDashboard) { bo_qua "-KhongMoDashboard: tu mo $diaChi"; return }
     Write-Host ""
+    mo_dashboard
+}
+
+function mo_dashboard() {
+    $congWeb = cong_web
+    if ($null -eq $congWeb) { $congWeb = 8080 }
+    $diaChi = "http://127.0.0.1:$congWeb/#huong-dan"
+
     if (-not (cho_dashboard $congWeb)) {
         canh "dashboard chua nghe cong $congWeb sau 30 giay. Xem logs\service-err.log, roi mo $diaChi bang tay."
         return
@@ -708,6 +730,13 @@ try {
     Write-Host " MT5 Copy Bridge -- tro ly cai dat (ban $script:PhienBan)" -ForegroundColor Cyan
     Write-Host " Thu muc: $ThuMuc" -ForegroundColor DarkGray
     Write-Host " Khong hoi gi ve nghiep vu -- phan do khai tren dashboard. Chay lai duoc nhieu lan." -ForegroundColor DarkGray
+
+    $script:VenvPy = Join-Path $ThuMuc ".venv\Scripts\python.exe"
+    if ($ChiMoDashboard) {
+        # Khong chay buoc nao ca: he thong da dung xong tu truoc, day chi la cu mo trinh duyet.
+        mo_dashboard
+        exit 0
+    }
 
     $script:TokenMaster = $null
     $script:TokenClient = $null

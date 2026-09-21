@@ -92,8 +92,9 @@ function veNutDieuKhien() {
   dat("nut-pause-new", UI.btn_pause_new);
   dat("nut-stop-sync", UI.btn_stop_sync);
   dat("nut-resume", UI.btn_resume);
-  const ten = { "tong-quan": UI.nav_main, "sai-lech": UI.nav_findings,
-                "cau-hinh": UI.nav_config, "nhat-ky": UI.nav_log };
+  const ten = { "tong-quan": UI.nav_main, "huong-dan": UI.nav_guide,
+                "sai-lech": UI.nav_findings, "cau-hinh": UI.nav_config,
+                "nhat-ky": UI.nav_log };
   document.querySelectorAll(".tab").forEach((t) => { t.textContent = ten[t.dataset.man]; });
 }
 
@@ -728,6 +729,105 @@ function khoiFileConfig(el) {
   el.appendChild(box);
 }
 
+// Doi tab. Tach khoi vong gan onclick de mo duoc tab bang location.hash.
+function moTab(t) {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
+  document.querySelectorAll(".man").forEach((x) => x.classList.add("an"));
+  t.classList.add("active");
+  $(t.dataset.man).classList.remove("an");
+  // Ghi lai vao hash: F5 hay mot duong link se ve dung tab, thay vi ve Tong quan.
+  if (location.hash.slice(1) !== t.dataset.man) location.hash = t.dataset.man;
+  if (t.dataset.man === "huong-dan") taiHuongDan();
+  if (t.dataset.man === "sai-lech") taiSaiLech();
+  if (t.dataset.man === "nhat-ky") taiNhatKy();
+  if (t.dataset.man === "cau-hinh") taiCauHinh();
+}
+
+// -- trang Huong dan --------------------------------------------------------------------------
+
+// Mot buoc. Ba trang thai, va chung KHAC NHAU ve ban chat:
+//   XONG / CON_THIEU : Bridge tu kiem duoc, khong co o tich -- tich tay mot viec chua lam xong
+//                      la tu bit mat minh.
+//   TU_TICH          : Bridge KHONG thay duoc (gan EA len chart, bam Ctrl+F5, mo Toolbox), nen
+//                      day la cho duy nhat co o tich.
+function dongBuoc(b) {
+  const li = document.createElement("li");
+  li.className = b.trang_thai === "CON_THIEU" ? "chan"
+               : b.trang_thai === "XONG" ? "xong" : "luu-y";
+
+  if (b.tu_kiem) {
+    const the = document.createElement("span");
+    the.className = "the-muc";
+    the.textContent = b.trang_thai === "XONG" ? "\u2713" : "\u2715";
+    li.appendChild(the);
+  } else {
+    const o = document.createElement("input");
+    o.type = "checkbox";
+    o.checked = !!b.da_tich;
+    o.className = "o-tich";
+    o.onchange = async () => {
+      const r = await goi("/api/huong_dan/tich", {
+        method: "POST", body: JSON.stringify({ ma: b.ma, tich: o.checked }) });
+      if (!r.ok) { o.checked = !o.checked; alert(r.data.message || r.data.error || ""); return; }
+      taiHuongDan();
+    };
+    if (b.da_tich) li.classList.add("xong");
+    li.appendChild(o);
+  }
+
+  li.appendChild(document.createTextNode(" " + b.chu));
+  if (b.lenh) {
+    const ma = document.createElement("pre");
+    ma.className = "lenh";
+    ma.textContent = b.lenh;
+    // Bam la chon het: nguoi ta dang o RDP, va boi den mot dong lenh dai bang chuot qua RDP la
+    // thu de bo giua.
+    ma.onclick = () => {
+      const r = document.createRange();
+      r.selectNodeContents(ma);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(r);
+    };
+    li.appendChild(ma);
+  }
+  return li;
+}
+
+function nhomHuongDan(n, moSan) {
+  const hop = document.createElement("details");
+  hop.className = "nhom-huong-dan";
+  hop.open = moSan;
+  const dau = document.createElement("summary");
+  const conLai = n.buoc.filter((b) => b.trang_thai === "CON_THIEU"
+                                   || (!b.tu_kiem && !b.da_tich)).length;
+  dau.textContent = n.ten + (conLai ? " (" + conLai + ")" : " \u2713");
+  hop.appendChild(dau);
+  hop.appendChild(nhan(n.chu, "ghi-chu"));
+  if (!n.buoc.length) {
+    hop.appendChild(nhan(UI.hd_het_viec, "ghi-chu"));
+    return hop;
+  }
+  const ds = document.createElement("ol");
+  ds.className = "ds-buoc";
+  for (const b of n.buoc) ds.appendChild(dongBuoc(b));
+  hop.appendChild(ds);
+  return hop;
+}
+
+async function taiHuongDan() {
+  const r = await goi("/api/huong_dan");
+  if (!r.ok) return;
+  UI = r.data.ui || UI;
+  dat("tieu-de-huong-dan", UI.hd_title);
+  const el = $("noi-dung-huong-dan");
+  el.textContent = "";
+  if (r.data.moc_cap_nhat) {
+    el.appendChild(nhan(UI.hd_moc_cap_nhat.replace("{moc}",
+      new Date(r.data.moc_cap_nhat).toLocaleString("vi-VN")), "ghi-chu"));
+  }
+  for (const n of r.data.nhom) el.appendChild(nhomHuongDan(n, n.ma === r.data.che_do));
+}
+
 async function taiCauHinh() {
   const r = await goi("/api/config");
   UI = r.data.ui || UI;
@@ -771,17 +871,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   veTatCa(r.data);
   moWebSocket();
 
-  document.querySelectorAll(".tab").forEach((t) => {
-    t.onclick = () => {
-      document.querySelectorAll(".tab").forEach((x) => x.classList.remove("active"));
-      document.querySelectorAll(".man").forEach((x) => x.classList.add("an"));
-      t.classList.add("active");
-      $(t.dataset.man).classList.remove("an");
-      if (t.dataset.man === "sai-lech") taiSaiLech();
-      if (t.dataset.man === "nhat-ky") taiNhatKy();
-      if (t.dataset.man === "cau-hinh") taiCauHinh();
-    };
-  });
+  document.querySelectorAll(".tab").forEach((t) => { t.onclick = () => moTab(t); });
+
+  // Mo tab theo #hash. Script cai dat mo san dia chi dashboard kem "#huong-dan" sau khi cai
+  // xong, nen day la duong nguoi dung di vao lan dau -- khong co doan nay thi ho roi vao Tong
+  // quan va phai tu tim ra tab Huong dan.
+  const tabTheoHash = () => {
+    const t = document.querySelector('.tab[data-man="' + location.hash.slice(1) + '"]');
+    if (t && !t.classList.contains("active")) moTab(t);
+  };
+  tabTheoHash();
+  // Doi hash tren mot tab DANG MO thi trinh duyet KHONG tai lai trang. Thieu dong nay thi khi
+  // dashboard da mo san ma script cai dat mo lai cung dia chi kem "#huong-dan", trinh duyet chi
+  // doi thanh dia chi roi khong lam gi -- nguoi dung nhin thay Tong quan va khong hieu huong dan
+  // o dau. Bat duoc bang Playwright, khong phai bang doc code.
+  window.addEventListener("hashchange", tabTheoHash);
 
   const doiMode = (mode) => goi("/api/run_mode", {
     method: "POST", body: JSON.stringify({ mode: mode }) });

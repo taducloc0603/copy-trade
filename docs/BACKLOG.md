@@ -255,6 +255,18 @@ nhận **danh sách mục** và đăng ký một Scheduled Task cho mỗi cái, 
 và token của mục mới khai được ngay trên dashboard. Nên `CL-02` chọn được đường giao diện y như
 `CL-01`. Việc còn lại là chạy thật trên demo — đó là B-06.
 
+### B-20 — `hello` không mang phiên bản EA, nên "đã gắn lại EA" không tự kiểm được
+
+EA gửi `terminal_build` (của **terminal**, không phải của EA) và `#property version` thì không bao
+giờ được gửi đi. Hệ quả: sau một lần cập nhật có đổi `ea/`, Bridge **không** phân biệt được một EA
+vừa biên dịch lại và gắn lại với một EA cũ vừa nối lại — mà mỗi lần `-CapNhat` đều khởi động lại
+dịch vụ, nên mọi agent đều nối lại. Đó là lý do bước đó trong tab Hướng dẫn phải là ô tự tích
+(D-37), và là bước duy nhất như vậy trong danh sách sau-update.
+
+Gỡ bỏ: thêm `ea_version` vào `hello` (lấy từ một hằng trong `CopyBridgeCommon.mqh`, tăng tay mỗi
+lần đổi EA), thêm cột `agent.ea_version`, rồi so với phiên bản trong mã nguồn đang chạy. Việc riêng
+vì nó đụng vào EA, cần một migration, và **chính lần gắn lại EA đầu tiên** mới làm nó có tác dụng.
+
 ## Mở rộng — không thuộc MVP
 
 - Nhiều Client **thật** trên giao diện: cấu hình riêng từng Client, so sánh chéo, chính sách

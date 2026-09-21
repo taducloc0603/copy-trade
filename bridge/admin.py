@@ -29,6 +29,7 @@ from bridge.ops import (
     dat_lai_toan_bo,
     dat_terminal_clicker,
     doi_login_agent,
+    ghi_moc_cap_nhat,
     khai_anh_xa,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
@@ -75,6 +76,7 @@ CAU_LOI: dict[str, str] = {
     "DAT_LAI_CON_LENH_BAY": "Con {so_lenh} lenh chua xong. Cho chung xong roi hay dat lai.",
     "CUM_TU_SAI": "Go chua dung cum xac nhan.",
     "KIEU_DAT_LAI_LA": "Kieu dat lai {kieu} khong hop le.",
+    "MA_BUOC_LA": "Khong co buoc huong dan nao ma {ma_buoc}.",
     "HANH_DONG_CHAM_MT5": "{hanh_dong} la hanh dong gui lenh xuong MT5.",
     "KHONG_TIM_THAY_MAC_DINH": "Khong tim thay cau gieo mac dinh trong schema.sql.",
     "HE_SO_KHONG_DUONG": "volume_multiplier phai duong, nhan duoc {gia_tri}",
@@ -569,6 +571,19 @@ def lenh_xoa_client(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_ghi_moc_cap_nhat(db: Database, args: argparse.Namespace) -> int:
+    """Ghi biên nhận của một lần cập nhật code, và xoá ô tự tích cũ của trang Hướng dẫn.
+
+    `cai-dat.ps1 -CapNhat` gọi lệnh này ở cuối. Đây là thứ **duy nhất** cho dashboard biết vừa có
+    một lần cập nhật: Bridge không lưu phiên bản code nào, và một agent nối lại thì trông giống
+    nhau dù vì EA vừa gắn lại hay vì dịch vụ vừa khởi động.
+    """
+    kq = ghi_moc_cap_nhat(db, bool(args.ea_doi), args.tu_commit or "")
+    print(f"Da ghi moc cap nhat {kq['moc_cap_nhat']} (ea_doi={int(kq['ea_doi'])}).")
+    print("O tu tich cua trang Huong dan da duoc xoa -- danh sach sau update noi ve lan nay.")
+    return 0
+
+
 def lenh_dat_lai(db: Database, args: argparse.Namespace, db_path: Path) -> int:
     """Đặt lại hệ thống. Bắt gõ đúng cụm xác nhận, y như trên dashboard.
 
@@ -730,6 +745,13 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument("--xac-nhan", dest="xac_nhan", required=True,
                     help='Cum xac nhan: "DAT LAI DU LIEU" hoac "DAT LAI TAT CA"')
 
+    gm = sub.add_parser("ghi-moc-cap-nhat",
+                        help="Ghi moc cap nhat cho trang Huong dan (cai-dat.ps1 -CapNhat goi)")
+    gm.add_argument("--ea-doi", dest="ea_doi", type=int, choices=(0, 1), default=0,
+                    help="1 khi thu muc ea/ doi o lan cap nhat nay (phai gan lai EA)")
+    gm.add_argument("--tu-commit", dest="tu_commit", default="",
+                    help="Commit truoc khi cap nhat, chi de hien ra cho de doi chieu")
+
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
@@ -781,6 +803,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_xoa_client(db, args)
         if args.lenh == "dat-lai":
             return lenh_dat_lai(db, args, db_path)
+        if args.lenh == "ghi-moc-cap-nhat":
+            return lenh_ghi_moc_cap_nhat(db, args)
         if args.lenh == "run-mode":
             return lenh_run_mode(db, args)
         if args.lenh == "xac-nhan-alert":

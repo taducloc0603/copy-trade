@@ -27,7 +27,7 @@ from bridge.labels_vi import (
     UI,
     label,
 )
-from bridge.ops import KHOA_SUA_DUOC
+from bridge.ops import KHOA_SUA_DUOC, doc_tich_huong_dan
 
 #: Thứ tự nghiêm trọng của trạng thái cặp. Số nhỏ lên trước.
 #:
@@ -425,6 +425,141 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
         them(MUC_LUU_Y, "CHUA_BAT_COPY",
              UI["can_lam_chua_bat_copy"].format(run_mode=label(RUN_MODE, run_mode)))
     return viec
+
+
+# =============================================================================================
+# Trang "Hướng dẫn" — hai danh sách việc, từng bước, tự biết bước nào đã xong
+# =============================================================================================
+#
+# Khối "Cần làm" nói **cái gì còn thiếu**. Nó không nói **thứ tự làm**, không chứa bước nào nằm
+# ngoài tầm Bridge (gắn EA, bật Algo Trading, mở Toolbox), và không phân biệt **cài lần đầu** với
+# **sau khi cập nhật** — hai việc có danh sách khác nhau hẳn. Trang này là chỗ cho cả ba điều đó.
+#
+# Ba quyết định đáng ghi lại:
+#
+# 1. **Không viết bộ luật thứ hai.** Mỗi bước tự kiểm được chỉ khai `ma_kiem` — mã của
+#    `viec_can_lam` — và trạng thái suy ra từ đó. Hai bộ luật cho cùng một câu hỏi thì sớm muộn
+#    lệch nhau, và lúc đó không ai biết bên nào đúng.
+# 2. **Bước nào Bridge KHÔNG thấy được thì nói thẳng là tự tích**, không giả vờ kiểm. Ví dụ đắt
+#    nhất: "đã biên dịch lại và gắn lại EA" — `hello` của EA **không mang phiên bản EA** (chỉ có
+#    `terminal_build`, là của terminal), nên Bridge không thể phân biệt một EA vừa gắn lại với một
+#    EA cũ vừa nối lại sau khi dịch vụ khởi động. Xem B-20.
+# 3. **Ô tự tích nằm trong database**, không phải `localStorage`: nó phải sống sót khi đóng trình
+#    duyệt, và phải **bị xoá** khi có lần cập nhật mới — một danh sách luôn xanh thì không ai đọc.
+
+#: Trạng thái một bước.
+BUOC_XONG = "XONG"
+BUOC_CON_THIEU = "CON_THIEU"
+BUOC_TU_TICH = "TU_TICH"
+
+#: Hai nhóm việc.
+NHOM_LAN_DAU = "LAN_DAU"
+NHOM_SAU_UPDATE = "SAU_UPDATE"
+
+#: Một bước: `(mã, khoá nhãn, mã kiểm của viec_can_lam, khoá câu lệnh)`.
+#:
+#: `ma_kiem` rỗng nghĩa là **tự tích**. `khoa_lenh` rỗng nghĩa là bước không có câu lệnh nào để
+#: copy — phần lớn việc làm trên chính trang này hoặc trong MT5.
+BUOC_LAN_DAU: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
+    ("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), ""),
+    # `CHUA_CO_AGENT` đi kèm hai bước dưới đây vì thiếu nó thì phép kiểm thành **rỗng**: chưa có
+    # clicker nào thì "mọi clicker đã khai xong" là đúng về logic và sai về sự thật — và một bước
+    # báo Đã xong khi chưa ai làm gì là cách nhanh nhất để mất lòng tin vào cả danh sách.
+    ("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
+     ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK"), ""),
+    ("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), ""),
+    ("LD_TOOLBOX", "hd_ld_toolbox", (), ""),
+    ("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), ""),
+    ("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), ""),
+    ("LD_MAT_KHAU", "hd_ld_mat_khau", ("CHUA_DAT_MAT_KHAU",), ""),
+    ("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), ""),
+    ("LD_THU_DEMO", "hd_ld_thu_demo", (), "hd_lenh_kiem_demo"),
+)
+
+BUOC_SAU_UPDATE: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
+    ("UP_CTRL_F5", "hd_up_ctrl_f5", (), ""),
+    ("UP_GAN_LAI_EA", "hd_up_gan_lai_ea", (), "hd_lenh_bien_dich"),
+    ("UP_AGENT_ONLINE", "hd_up_agent_online", ("AGENT_CHUA_ONLINE",), "hd_lenh_liet_ke"),
+    ("UP_CODE_CU", "hd_up_code_cu", (), "hd_lenh_kiem_tra"),
+    ("UP_CONFIG_SOT", "hd_up_config_sot", ("CONFIG_CON_KHOA_CLICKER",), ""),
+    ("UP_BAT_COPY", "hd_up_bat_copy", ("CHUA_BAT_COPY",), ""),
+    ("UP_TINH_HINH", "hd_up_tinh_hinh", (), "hd_lenh_tinh_hinh"),
+)
+
+#: Mọi mã bước, để `ops.dat_tich_huong_dan` từ chối mã lạ.
+MA_BUOC = tuple(b[0] for b in BUOC_LAN_DAU + BUOC_SAU_UPDATE)
+
+
+def _buoc_ea_doi_moi_hien(ma: str, ea_doi: bool) -> bool:
+    """`ea/` không đổi thì bước gắn lại EA **không** hiện ra.
+
+    In một bước "biên dịch lại EA" ở mọi lần cập nhật là cách chắc chắn nhất để người ta bỏ qua nó
+    đúng vào lần nó có thật.
+    """
+    return ma != "UP_GAN_LAI_EA" or ea_doi
+
+
+def _mot_buoc(bo: tuple[str, str, tuple[str, ...], str], ma_thieu: set[str],
+              da_tich: set[str]) -> dict[str, Any]:
+    ma, khoa, ma_kiem, khoa_lenh = bo
+    if ma_kiem:
+        trang_thai = BUOC_CON_THIEU if (set(ma_kiem) & ma_thieu) else BUOC_XONG
+    else:
+        trang_thai = BUOC_TU_TICH
+    return {
+        "ma": ma,
+        "chu": UI[khoa],
+        "lenh": UI[khoa_lenh] if khoa_lenh else "",
+        "trang_thai": trang_thai,
+        "da_tich": ma in da_tich,
+        # `tu_kiem` = Bridge tự biết bước này xong chưa. Giao diện dùng nó để quyết định hiện dấu
+        # tích hay hiện ô cho người dùng tự tích — JS không được tự suy ra điều đó.
+        "tu_kiem": bool(ma_kiem),
+    }
+
+
+def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
+    """Hai nhóm việc kèm trạng thái từng bước, và nhóm nào nên mở sẵn."""
+    thieu = viec_can_lam(db, config)
+    ma_thieu = {v["ma"] for v in thieu}
+    # Khoá clicker còn sót trong `config.toml` **thắng** database (D-32), nên nó là một việc thật
+    # sự còn thiếu — nhưng nó không nằm trong `viec_can_lam` vì chỉ trang Cấu hình đọc file. Lấy
+    # từ cùng một nguồn mà khối config.toml dùng, để hai chỗ không bao giờ nói khác nhau.
+    if any(d.get("chi_doc") for d in _mo_ta_file_config(config)):
+        ma_thieu.add("CONFIG_CON_KHOA_CLICKER")
+
+    da_tich = doc_tich_huong_dan(db)
+    ea_doi = (db.get_config("cap_nhat_ea_doi", "0") or "0") == "1"
+    moc = (db.get_config("moc_cap_nhat", "") or "").strip() or None
+
+    lan_dau = [_mot_buoc(b, ma_thieu, da_tich) for b in BUOC_LAN_DAU]
+    sau_update = [_mot_buoc(b, ma_thieu, da_tich) for b in BUOC_SAU_UPDATE
+                  if _buoc_ea_doi_moi_hien(b[0], ea_doi)]
+
+    def con_viec(buoc: list[dict[str, Any]]) -> bool:
+        return any(b["trang_thai"] == BUOC_CON_THIEU
+                   or (b["trang_thai"] == BUOC_TU_TICH and not b["da_tich"]) for b in buoc)
+
+    # Mở sẵn nhóm nào: vừa cập nhật mà còn việc thì mở nhóm update; máy chưa có agent hoặc chưa có
+    # Client nào thì đang là lần cài đầu. Còn lại thì người mở trang này là người vừa cập nhật.
+    if moc and con_viec(sau_update):
+        che_do = NHOM_SAU_UPDATE
+    elif "CHUA_CO_AGENT" in ma_thieu or "CHUA_CO_CLIENT" in ma_thieu:
+        che_do = NHOM_LAN_DAU
+    else:
+        che_do = NHOM_SAU_UPDATE
+
+    return {
+        "che_do": che_do,
+        "moc_cap_nhat": moc,
+        "ea_doi": ea_doi,
+        "nhom": [
+            {"ma": NHOM_LAN_DAU, "ten": UI["hd_nhom_lan_dau"],
+             "chu": UI["hd_nhom_lan_dau_chu"], "buoc": lan_dau},
+            {"ma": NHOM_SAU_UPDATE, "ten": UI["hd_nhom_sau_update"],
+             "chu": UI["hd_nhom_sau_update_chu"], "buoc": sau_update},
+        ],
+    }
 
 
 def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
