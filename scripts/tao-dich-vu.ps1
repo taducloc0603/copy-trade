@@ -208,6 +208,9 @@ function dang_ky_tac_vu_clicker([string] $Ten = "Clicker", [string] $Muc = "clic
     $wrapper = Join-Path $ThuMuc "scripts\chay-clicker.ps1"
     if (-not (Test-Path $wrapper)) { throw "Khong thay $wrapper." }
 
+    # Tac vu chi mang -Muc. So tai khoan va tieu de cua so nam trong DB (khai tren dashboard) va
+    # clicker nhan chung luc bat tay; truyen o day nua thi doi terminal lai phai dang ky lai tac
+    # vu. Van truyen khi nguoi goi dua vao, de mot ban cai cu giu nguyen hanh vi.
     $doiSo = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$wrapper`" -ThuMuc `"$ThuMuc`" -Muc $Muc"
     if ($Login -gt 0)  { $doiSo += " -AccountLogin $Login" }
     if ($Title)        { $doiSo += " -TerminalTitle `"$Title`"" }
@@ -304,9 +307,7 @@ try {
     if ($ChiTacVuClicker) {
         # Ban cai dang chay: dich vu Bridge giu nguyen, chi them clicker thu hai. Go/cai lai dich vu va
         # giet Bridge de thu tu bat lai o day la lam gian doan copy lenh cho mot viec khong can.
-        if ($AccountLoginMaster -le 0) {
-            throw "-ChiTacVuClicker can -AccountLoginMaster > 0 (so tai khoan terminal Master)."
-        }
+        # So tai khoan khong con bat buoc: khai tren dashboard cung duoc.
         dang_ky_tac_vu_clicker "ClickerMaster" "clicker_master" $AccountLoginMaster $TerminalTitleMaster
         exit 0
     }

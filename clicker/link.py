@@ -45,6 +45,16 @@ DEFAULT_HEARTBEAT_SEC = 1.0
 DEFAULT_RECONNECT_SEC = 3.0
 
 
+class ThieuCauHinh(RuntimeError):
+    """Bridge không giao được số tài khoản hoặc tiêu đề cửa sổ, và cục bộ cũng không có.
+
+    **Thoát hẳn chứ không chạy tiếp ở trạng thái canary đỏ.** Canary đỏ chỉ chặn đường MỞ; đường
+    ĐÓNG thì rơi về `OrderSend` của EA theo `close_degraded_fallback = EA`, nghĩa là deal đóng
+    mang `EXPERT` — đúng thứ đường đóng qua giao diện tồn tại để ngăn. Thà không có clicker và
+    biết rõ, còn hơn có một clicker im lặng làm hỏng kênh đóng.
+    """
+
+
 @dataclass
 class LinkConfig:
     """Cấu hình khởi động của clicker."""
@@ -89,7 +99,33 @@ class ClickerLink:
         """Canary. Kết quả đi vào `heartbeat.broker_connected`, hiểu là "điều khiển được giao diện"."""
         if self.dry_run:
             return ui_probe.ProbeResult(False, "DRY_RUN: khong dieu khien giao dien")
-        return ui_probe.probe(self.config.terminal_title)
+        kq = ui_probe.probe(self.config.terminal_title)
+        if not kq.healthy:
+            return kq
+        return self._kiem_dung_tai_khoan(kq)
+
+    def _kiem_dung_tai_khoan(self, kq: ui_probe.ProbeResult) -> ui_probe.ProbeResult:
+        """Cửa sổ tìm được phải là cửa sổ của **đúng tài khoản** Bridge giao.
+
+        Trước đây hàng rào này nằm ở Bridge: clicker gửi `account_login` đọc từ `config.toml` và
+        Bridge đối chiếu với DB. Khi con số đến **từ** Bridge thì phép so đó tự khớp với chính
+        nó, nên hàng rào phải chuyển sang đây và đối chiếu với **cửa sổ thật**. Mạnh hơn bản cũ:
+        nó bắt cả trường hợp terminal đăng nhập sang tài khoản khác giữa phiên, thứ mà một dòng
+        cấu hình đúng vĩnh viễn không bao giờ thấy.
+
+        Chạy mỗi nhịp heartbeat, nên lệch là canary đỏ trong vòng một giây và Bridge ngừng gửi
+        lệnh (D-25) thay vì bấm lên nhầm tài khoản.
+        """
+        if not self.config.account_login:
+            return kq
+        tren_cua_so = ui_probe.account_login_from_title(kq.title or "")
+        if tren_cua_so is None or tren_cua_so == self.config.account_login:
+            return kq
+        log.critical("Cua so %r la tai khoan %s, khong phai %s ma Bridge giao. Khong lai terminal nay.",
+                     kq.title, tren_cua_so, self.config.account_login)
+        return ui_probe.ProbeResult(
+            False, f"Tieu de cua so la tai khoan {tren_cua_so}, khac {self.config.account_login}",
+            hwnd=kq.hwnd, title=kq.title)
 
     # -- vòng đời ----------------------------------------------------------------------------
 
@@ -99,6 +135,8 @@ class ClickerLink:
             try:
                 await self.run_once()
             except asyncio.CancelledError:
+                raise
+            except ThieuCauHinh:
                 raise
             except Exception as exc:
                 log.warning("Mat ket noi toi Bridge: %s", exc)
@@ -114,6 +152,11 @@ class ClickerLink:
             if reply.get("kind") != "hello_ack":
                 raise RuntimeError(f"Bridge tu choi bat tay: {reply}")
             log.info("Da bat tay voi Bridge, agent_id = %s", self.agent_id)
+            self.ap_dung_cau_hinh(reply.get("config") or {})
+            if not self.dry_run and not self.config.terminal_title:
+                raise ThieuCauHinh(
+                    "Chua khai tieu de cua so terminal cho agent nay. Khai tren dashboard "
+                    "(tab Cau hinh > Agent) hoac dat clicker.terminal_title trong config.toml.")
             heartbeat = asyncio.create_task(self._heartbeat_loop())
             try:
                 await self._read_loop()
@@ -161,6 +204,22 @@ class ClickerLink:
         if reply.get("kind") == "hello_ack":
             self.agent_id = reply.get("agent_id")
         return reply
+
+    def ap_dung_cau_hinh(self, cau_hinh: dict[str, Any]) -> None:
+        """Lấy số tài khoản và tiêu đề cửa sổ từ `hello_ack` khi tham số cục bộ để trống.
+
+        Thứ tự ưu tiên giữ nguyên: dòng lệnh > `config.toml` > Bridge. Nghĩa là một bản cài cũ có
+        sẵn mục `[clicker]` chạy y như trước, còn bản cài mới thì hai giá trị này khai trên
+        dashboard và clicker nhận chúng ở **mỗi lần bắt tay** — đổi trên dashboard, Bridge cắt kết
+        nối, ba giây sau clicker lái đúng cửa sổ mới.
+        """
+        if not self.config.account_login and cau_hinh.get("account_login"):
+            self.config.account_login = int(cau_hinh["account_login"])
+            log.info("Nhan so tai khoan %s tu Bridge", self.config.account_login)
+        if not self.config.terminal_title and cau_hinh.get("terminal_title"):
+            self.config.terminal_title = str(cau_hinh["terminal_title"])
+            self.driver.terminal_title = self.config.terminal_title
+            log.info("Nhan tieu de cua so terminal %r tu Bridge", self.config.terminal_title)
 
     async def send_heartbeat(self) -> None:
         health = self.health()

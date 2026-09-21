@@ -562,3 +562,43 @@ def test_moi_duong_api_app_js_goi_deu_co_route_that(project_root, seeded_web: Da
             mau.add(duong.split("{")[0])
     for d in sorted(duong_js):
         assert any(m.startswith(d) or d.startswith(m) for m in mau), f"app.js goi {d} khong co route"
+
+
+async def test_khai_terminal_cho_clicker_va_cat_ket_noi_de_nap_lai(seeded_web) -> None:
+    """Khai trên dashboard rồi clicker nhận ở lần bắt tay kế tiếp — không phải chạy lại tác vụ."""
+    seeded_web.upsert_agent("AG-CLICKER", role="CLICKER", token_hash="h", magic_number=770001,
+                            account_login=538217)
+    da_dong: list[tuple[str, str]] = []
+
+    class ServerGia:
+        def dong_ket_noi(self, agent_id: str, ly_do: str) -> bool:
+            da_dong.append((agent_id, ly_do))
+            return True
+
+    async with _http(tao_app(Dashboard(seeded_web, server=ServerGia()))) as c:
+        r = await c.post("/api/agent/AG-CLICKER/terminal",
+                         json={"login": 538217, "terminal_title": "538217 - Connext"})
+        assert r.status_code == 200
+        assert r.json()["nap_lai"] is True
+    assert seeded_web.get_agent("AG-CLICKER")["terminal_title"] == "538217 - Connext"
+    assert da_dong and da_dong[0][0] == "AG-CLICKER"
+
+
+async def test_tieu_de_khong_chua_so_tai_khoan_bi_tu_choi(client: httpx.AsyncClient,
+                                                          seeded_web: Database) -> None:
+    """Mẩu tiêu đề không chứa số tài khoản khớp cả hai terminal — đó là cách lái nhầm cửa sổ."""
+    seeded_web.upsert_agent("AG-CLICKER", role="CLICKER", token_hash="h", magic_number=770001,
+                            account_login=538217)
+    r = await client.post("/api/agent/AG-CLICKER/terminal",
+                          json={"terminal_title": "MetaTrader 5"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "TIEU_DE_KHONG_CO_SO_TK"
+    assert seeded_web.get_agent("AG-CLICKER")["terminal_title"] is None
+
+
+async def test_khai_terminal_cho_agent_khong_phai_clicker_bi_tu_choi(
+        client: httpx.AsyncClient) -> None:
+    r = await client.post(f"/api/agent/{MASTER_AGENT}/terminal",
+                          json={"terminal_title": "1"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "SAI_ROLE"

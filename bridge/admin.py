@@ -25,6 +25,7 @@ from bridge.ops import (
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
+    dat_terminal_clicker,
     doi_login_agent,
     khai_anh_xa,
     kiem_chung_ban_sao_luu,
@@ -149,14 +150,20 @@ def lenh_sua_agent(db: Database, args: argparse.Namespace) -> int:
     Sai số tài khoản thì Bridge từ chối bắt tay với `ACCOUNT_MISMATCH` mãi mãi, và trước lệnh này
     cách duy nhất để sửa là `UPDATE` tay vào database.
     """
+    if args.login is None and args.terminal_title is None:
+        print("Khong co gi de sua. Dat --login va/hoac --terminal-title.", file=sys.stderr)
+        return 1
     try:
-        co = doi_login_agent(db, args.agent_id, args.login)
+        if args.terminal_title is not None:
+            dat_terminal_clicker(db, args.agent_id, args.login, args.terminal_title)
+            print(f"Da dat terminal_title cua {args.agent_id} = {args.terminal_title!r}")
+        if args.login is not None:
+            if not doi_login_agent(db, args.agent_id, args.login):
+                return _in_loi(LoiCauHinh("KHONG_CO_AGENT", agent_id=args.agent_id))
+            print(f"Da dat account_login cua {args.agent_id} = {args.login}.")
     except LoiCauHinh as exc:
         return _in_loi(exc)
-    if not co:
-        return _in_loi(LoiCauHinh("KHONG_CO_AGENT", agent_id=args.agent_id))
-    print(f"Da dat account_login cua {args.agent_id} = {args.login}. Token giu nguyen; "
-          "tien trinh dang bi tu choi se tu noi lai o lan thu ke tiep.")
+    print("Token giu nguyen; tien trinh dang bi tu choi se tu noi lai o lan thu ke tiep.")
     return 0
 
 
@@ -602,9 +609,11 @@ def build_parser() -> argparse.ArgumentParser:
     thu.add_argument("agent_id")
 
     sa = sub.add_parser("sua-agent",
-                        help="Sua so tai khoan MT5 cua agent da co (token giu nguyen)")
+                        help="Sua so tai khoan MT5 / tieu de cua so cua agent (token giu nguyen)")
     sa.add_argument("agent_id")
-    sa.add_argument("--login", type=int, required=True, help="So tai khoan MT5 dung")
+    sa.add_argument("--login", type=int, default=None, help="So tai khoan MT5 dung")
+    sa.add_argument("--terminal-title", dest="terminal_title",
+                    help="Mau tieu de cua so terminal ma clicker phai lai (phai chua so tai khoan)")
 
     sub.add_parser("sao-luu", help="Sao luu DB ngay bay gio va kiem chung")
     sub.add_parser("bao-tri", help="Retention + sao luu + don ban cu")

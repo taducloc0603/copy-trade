@@ -62,6 +62,9 @@ LOI_CAU_HINH = {
     "SAN_KHONG_CO_SYMBOL": ("Sàn Client chưa báo có symbol {client_symbol}. Kiểm tra EA Client "
                             "đang chạy và symbol đã kéo vào Market Watch."),
     "KHONG_CO_ANH_XA": "Không có ánh xạ cho {master_symbol}",
+    "TIEU_DE_KHONG_CO_SO_TK": ("Tiêu đề {tieu_de} không chứa số tài khoản {login}. "
+                               "Cửa sổ MT5 mở đầu bằng số tài khoản, và đó là thứ clicker "
+                               "đối chiếu trước khi bấm."),
     "KHOA_NGOAI_DANH_SACH": "Khoá {khoa} không sửa được trên dashboard.",
     "GIA_TRI_LA": "Giá trị không hợp lệ cho {khoa}.",
     "NGOAI_MIEN": "{khoa} phải trong khoảng {tu}…{den}, nhận được {gia_tri}.",
@@ -209,6 +212,8 @@ UI = {
     "agent_role": "Vai trò",
     "agent_login": "Số tài khoản",
     "agent_terminal": "Tiêu đề cửa sổ terminal",
+    "agent_terminal_hint": ("Clicker nhận hai giá trị này lúc kết nối. Lưu xong, clicker "
+                            "nối lại sau vài giây — không phải khởi động lại tác vụ."),
     "agent_status": "Trạng thái",
     "agent_new": "Thêm agent",
     "agent_magic": "Magic number",

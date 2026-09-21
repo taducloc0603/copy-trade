@@ -326,7 +326,8 @@ function khoiAgent(el) {
   box.appendChild(tieuDe(UI.agent_title));
   const bang = document.createElement("table");
   const dau = bang.createTHead().insertRow();
-  for (const h of ["agent_id", UI.agent_role, UI.agent_login, UI.agent_status, ""]) {
+  for (const h of ["agent_id", UI.agent_role, UI.agent_login, UI.agent_terminal,
+                   UI.agent_status, ""]) {
     const th = document.createElement("th");
     th.textContent = h;
     dau.appendChild(th);
@@ -334,9 +335,25 @@ function khoiAgent(el) {
   const than = bang.createTBody();
   for (const a of CAU_HINH.agents) {
     const tr = than.insertRow();
-    for (const v of [a.agent_id, a.role_label, a.account_login || "—", a.status_label]) {
-      tr.insertCell().textContent = v;
+    tr.insertCell().textContent = a.agent_id;
+    tr.insertCell().textContent = a.role_label;
+    // Clicker khai so tai khoan + tieu de cua so ngay o day: hai gia tri nay truoc kia nam trong
+    // config.toml tren VPS. Agent khac chi hien so, vi so cua chung den tu chinh terminal MT5.
+    if (a.role === "CLICKER") {
+      const login = oSo(a.account_login, "1");
+      const tieuDe = oChu(a.terminal_title);
+      const luu = nut(UI.cfg_save);
+      luu.onclick = () => ghiCauHinh("/api/agent/" + encodeURIComponent(a.agent_id) + "/terminal",
+                                     { login: parseInt(login.value, 10) || null,
+                                       terminal_title: tieuDe.value });
+      tr.insertCell().appendChild(login);
+      const o = tr.insertCell();
+      o.append(tieuDe, luu, nhan(UI.agent_terminal_hint, "canh-bao-nho"));
+    } else {
+      tr.insertCell().textContent = a.account_login || "—";
+      tr.insertCell().textContent = "";
     }
+    tr.insertCell().textContent = a.status_label;
     const b = nut(UI.btn_new_token);
     b.onclick = async () => {
       if (!(await hoiXacNhan(UI.confirm_new_token, null))) return;

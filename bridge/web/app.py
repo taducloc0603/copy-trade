@@ -31,6 +31,7 @@ from bridge.ops import (
     LoiCauHinh,
     cap_token,
     dat_duong_dong_master,
+    dat_terminal_clicker,
     khai_anh_xa,
     sua_client,
     sua_khoa_he_thong,
@@ -394,6 +395,27 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return _tra_loi(exc)
         log.info("Dashboard tao agent %s", body.get("agent_id"))
         return {"ok": True, "token": token}
+
+    @app.post("/api/agent/{agent_id}/terminal")
+    async def api_terminal_clicker(agent_id: str, request: Request,
+                                   sid: str | None = Cookie(None)) -> Any:
+        """Khai terminal của một clicker. Clicker đang chạy nhận giá trị mới trong vài giây."""
+        if (loi := _chan(sid)) is not None:
+            return loi
+        body = await request.json()
+        try:
+            doi = dat_terminal_clicker(
+                dashboard.db, agent_id,
+                int(body["login"]) if body.get("login") else None,
+                body.get("terminal_title"))
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        # Clicker đọc cấu hình ở **mỗi lần bắt tay**, nên cắt kết nối là cách rẻ nhất để giá trị
+        # mới có hiệu lực. Không cần thêm loại message, và vẫn đúng khi clicker đang offline.
+        nap_lai = False
+        if doi and dashboard.server is not None:
+            nap_lai = dashboard.server.dong_ket_noi(agent_id, "doi terminal tu dashboard")
+        return {"ok": True, "doi": doi, "nap_lai": nap_lai}
 
     @app.post("/api/agent/{agent_id}/token")
     async def api_cap_token(agent_id: str, sid: str | None = Cookie(None)) -> Any:

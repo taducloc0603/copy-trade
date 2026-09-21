@@ -299,8 +299,12 @@ class BridgeServer:
                         agent_id, peer, hello.role, agent["role"])
             await _send_error(writer, ERR_ROLE_MISMATCH, "Role khong khop")
             return None
-        if agent["account_login"] is not None and agent["account_login"] != hello.account_login:
-            # Một token chỉ dùng cho đúng một tài khoản MT5.
+        # `account_login = 0` nghĩa là "chưa biết, xin Bridge giao" — clicker nối bằng token rồi
+        # nhận số tài khoản và tiêu đề cửa sổ trong `hello_ack`. Với EA thì con số này đến từ
+        # `AccountInfoInteger(ACCOUNT_LOGIN)` nên luôn thật, và phép đối chiếu dưới đây giữ nguyên:
+        # một token chỉ dùng cho đúng một tài khoản MT5.
+        if (agent["account_login"] is not None and hello.account_login
+                and agent["account_login"] != hello.account_login):
             log.warning("Tu choi agent %s tai %s: account_login %s khong khop %s trong DB",
                         agent_id, peer, hello.account_login, agent["account_login"])
             await _send_error(writer, ERR_ACCOUNT_MISMATCH, "account_login khong khop")
@@ -348,14 +352,18 @@ class BridgeServer:
         self.connections[agent_id] = connection
 
         last_seq = int(agent["last_seq"] or 0)
+        # Số tài khoản chỉ ghi đè khi agent **biết** nó. Clicker gửi 0 vì nó đang xin con số từ
+        # Bridge; ghi 0 đè lên giá trị khai trên dashboard là tự xoá mất cấu hình vừa đặt, rồi
+        # lần bắt tay sau không còn gì để giao.
         self.db.upsert_agent(
             agent_id, role=agent["role"], token_hash=agent["token_hash"],
-            magic_number=hello.magic, account_login=hello.account_login,
+            magic_number=hello.magic,
+            account_login=hello.account_login or agent["account_login"],
             broker_server=hello.broker_server, terminal_build=hello.terminal_build,
             status="ONLINE", last_seen_at=utc_now_iso(),
         )
         await connection.send(HelloAckMessage(
-            agent_id=agent_id, last_seq=last_seq, config=self._agent_config(),
+            agent_id=agent_id, last_seq=last_seq, config=self._agent_config(agent),
             ts=utc_now_iso(),
         ))
         log.info("Agent %s (%s) da ket noi tu %s, last_seq = %d",
@@ -375,13 +383,38 @@ class BridgeServer:
                 return row
         return None
 
-    def _agent_config(self) -> dict[str, Any]:
-        return {
+    def _agent_config(self, agent: Any = None) -> dict[str, Any]:
+        """Cấu hình đẩy xuống agent trong `hello_ack`.
+
+        Clicker nhận thêm **số tài khoản và tiêu đề cửa sổ terminal** của chính nó. Đây là cách
+        hai giá trị ấy rời khỏi `config.toml`: người vận hành khai chúng trên dashboard, clicker
+        đọc lại ở lần bắt tay kế tiếp. EA không dùng hai khoá này và bỏ qua khoá lạ.
+        """
+        cau_hinh: dict[str, Any] = {
             "heartbeat_interval_ms": self.db.get_config_int(
                 "heartbeat_interval_ms", DEFAULT_HEARTBEAT_INTERVAL_MS
             ),
             "heartbeat_timeout_ms": self._heartbeat_timeout_ms(),
         }
+        if agent is not None and agent["role"] == "CLICKER":
+            cau_hinh["account_login"] = agent["account_login"] or 0
+            cau_hinh["terminal_title"] = agent["terminal_title"] or ""
+        return cau_hinh
+
+    def dong_ket_noi(self, agent_id: str, ly_do: str) -> bool:
+        """Đóng kết nối của một agent để nó nối lại và **đọc lại cấu hình**.
+
+        Dùng khi dashboard đổi số tài khoản hoặc tiêu đề cửa sổ của một clicker: clicker đọc cấu
+        hình ở mỗi lần bắt tay, nên cắt kết nối là cách rẻ nhất để giá trị mới có hiệu lực trong
+        vài giây mà không cần thêm một loại message hay bắt người ta khởi động lại tác vụ.
+        """
+        connection = self.connections.get(agent_id)
+        if connection is None:
+            return False
+        log.info("Dong ket noi cua %s de nap lai cau hinh: %s", agent_id, ly_do,
+                 extra={"agent_id": agent_id})
+        connection.close()
+        return True
 
     def _heartbeat_timeout_ms(self) -> int:
         if self.config.heartbeat_timeout_ms is not None:

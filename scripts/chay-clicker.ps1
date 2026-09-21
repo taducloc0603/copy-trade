@@ -59,8 +59,18 @@ while ($true) {
     # cham hon chu khong an toan hon -- dung han, dung dung y clicker/__main__.py.
     if ($ma -eq 3) { ghi "thoat 3 (da co clicker khac lai terminal nay). Dung han."; break }
 
-    # 2 = thieu tham so (token, so tai khoan, terminal-title). Chay lai cung the, chi rac log.
-    if ($ma -eq 2) { ghi "thoat 2 (thieu tham so). Sua config.toml roi chay lai tac vu."; break }
+    # 2 = thieu token. Chay lai cung the, chi rac log.
+    if ($ma -eq 2) { ghi "thoat 2 (thieu token). Sua config.toml roi chay lai tac vu."; break }
+
+    # 4 = chua ai khai tieu de cua so terminal cho agent nay. KHAC ma 2: viec nay sua tren
+    # dashboard (tab Cau hinh > Agent) chu khong phai tren VPS, nen thu lai la dung -- khai xong
+    # la lan bat ke tiep clicker len, khong phai dang nhap VPS chay lai tac vu. Cho lau hon de
+    # khong rac log trong luc cho nguoi ta khai.
+    if ($ma -eq 4) {
+        ghi "thoat 4 (chua khai terminal tren dashboard). Thu lai sau 60 giay."
+        Start-Sleep -Seconds 60
+        continue
+    }
 
     ghi "clicker thoat ma $ma, bat lai sau $ChoGiuaHaiLan giay"
     Start-Sleep -Seconds $ChoGiuaHaiLan

@@ -347,6 +347,7 @@ def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:
         "status": row["status"],
         "status_label": label(AGENT_STATUS, row["status"]),
         "account_login": row["account_login"],
+        "terminal_title": row["terminal_title"],
         "magic_number": row["magic_number"],
         "enabled": row["enabled"],
     }

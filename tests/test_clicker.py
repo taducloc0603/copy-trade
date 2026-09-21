@@ -30,7 +30,8 @@ from clicker.__main__ import (
     main,
 )
 from clicker.journal import CommandJournal
-from clicker.link import ClickerLink, LinkConfig
+from clicker.link import ClickerLink, LinkConfig, ThieuCauHinh
+from clicker.ui import probe as ui_probe
 from clicker.ui.driver import DryRunDriver, OpenDriver, OpenOutcome, OpenRequest
 from tests.test_server import _wait_until
 
@@ -263,17 +264,27 @@ async def test_clicker_that_bat_tay_va_tra_ack_qua_socket(
 
 # -- điểm khởi động ---------------------------------------------------------------------------
 
-def test_khong_co_dry_run_thi_tu_choi_khoi_dong(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Driver chưa được đo thì không được phép chạy trên tài khoản thật.
+async def test_che_do_that_ma_khong_ai_khai_tieu_de_thi_dung_han(tmp_path: Path) -> None:
+    """Không ai khai tiêu đề cửa sổ — kể cả Bridge — thì clicker **thoát**, không chạy tiếp.
 
-    `doc_muc_clicker` phải bị chặn: thiếu nó thì `terminal_title` được điền từ
-    `config.toml` **thật của máy**, chốt chặn không kích hoạt, và `main()` chạy hẳn vòng
-    lặp clicker vô hạn — test không bao giờ trả về. Xanh trên máy chưa khai mục
-    `[clicker]`, treo trên đúng cái máy đã cài xong.
+    Chạy tiếp ở trạng thái canary đỏ nghe có vẻ an toàn hơn, nhưng không: canary đỏ chỉ chặn
+    đường MỞ, còn đường ĐÓNG rơi về `OrderSend` của EA theo `close_degraded_fallback = EA`, tức
+    deal đóng mang `EXPERT` — đúng thứ đường đóng qua giao diện tồn tại để ngăn.
     """
-    monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {})
-    code = main(["--token", CLICKER_TOKEN, "--account-login", str(CLICKER_LOGIN)])
-    assert code == 2
+    link = _link(tmp_path)
+    link.dry_run = False
+    link.config.terminal_title = ""
+
+    async def _noi() -> None:
+        return None
+
+    async def _bat_tay() -> dict:
+        return {"kind": "hello_ack", "agent_id": CLICKER_AGENT, "last_seq": 0, "config": {}}
+
+    link.connect = _noi          # type: ignore[method-assign]
+    link.handshake = _bat_tay    # type: ignore[method-assign]
+    with pytest.raises(ThieuCauHinh):
+        await link.run()
 
 
 def test_tham_so_bat_buoc(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -383,9 +394,17 @@ def test_thieu_token_o_ca_ba_duong_thi_thoat_khac_khong(monkeypatch: pytest.Monk
     assert main(["--account-login", "1", "--terminal-title", "T"]) == 2
 
 
-def test_thieu_so_tai_khoan_thi_thoat_khac_khong(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_thieu_so_tai_khoan_thi_xin_tu_bridge_chu_khong_chan_khoi_dong(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Số tài khoản có thể khai trên dashboard, nên thiếu nó ở máy **không** còn là lỗi khởi động.
+
+    Nó đi vào `hello` bằng 0, nghĩa là "chưa biết, xin Bridge giao".
+    """
     monkeypatch.setattr("clicker.__main__.doc_muc_clicker", lambda *_a: {"token": "co-token"})
-    assert main(["--terminal-title", "T"]) == 2
+    args = build_parser().parse_args(["--terminal-title", "T"])
+    bo_sung_tham_so(args)
+    assert args.account_login == 0
+    assert args.token == "co-token"
 
 
 def test_config_thieu_thi_khong_nem(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -455,3 +474,81 @@ async def test_payload_dong_mang_magic_bi_tu_choi(tmp_path: Path) -> None:
 
     assert ack["status"] == "rejected"
     assert "magic" in ack["retmsg"]
+
+
+# -- cấu hình đến từ Bridge --------------------------------------------------------------------
+
+def test_nhan_so_tai_khoan_va_tieu_de_tu_bridge_va_tro_lai_driver(tmp_path: Path) -> None:
+    link = _link(tmp_path)
+    link.config.account_login = 0
+    link.config.terminal_title = ""
+    link.ap_dung_cau_hinh({"account_login": 538217, "terminal_title": "538217 - Connext"})
+    assert link.config.account_login == 538217
+    assert link.config.terminal_title == "538217 - Connext"
+    assert link.driver.terminal_title == "538217 - Connext"
+
+
+def test_gia_tri_cuc_bo_thang_gia_tri_bridge_giao(tmp_path: Path) -> None:
+    """Thứ tự ưu tiên: dòng lệnh > config.toml > Bridge.
+
+    Nhờ vậy một bản cài cũ đang khai `[clicker]` trong `config.toml` nâng cấp lên không đổi hành
+    vi — nó vẫn lái đúng cái terminal nó đang lái.
+    """
+    link = _link(tmp_path)
+    link.config.account_login = 111
+    link.config.terminal_title = "cuc-bo"
+    link.ap_dung_cau_hinh({"account_login": 222, "terminal_title": "tu-bridge"})
+    assert (link.config.account_login, link.config.terminal_title) == (111, "cuc-bo")
+
+
+def test_cua_so_cua_tai_khoan_khac_thi_canary_do(tmp_path: Path,
+                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hàng rào thay cho `ACCOUNT_MISMATCH`: đối chiếu với **cửa sổ thật**, mỗi nhịp heartbeat."""
+    link = _link(tmp_path)
+    link.dry_run = False
+    link.config.account_login = 538217
+    link.config.terminal_title = "5382"
+    monkeypatch.setattr(
+        "clicker.ui.probe.probe",
+        lambda _t: ui_probe.ProbeResult(True, "ok", hwnd=1, title="538216 - Connext-Demo"))
+    kq = link.health()
+    assert not kq.healthy
+    assert "538216" in kq.detail
+
+
+def test_cua_so_dung_tai_khoan_thi_canary_xanh(tmp_path: Path,
+                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    link = _link(tmp_path)
+    link.dry_run = False
+    link.config.account_login = 538217
+    link.config.terminal_title = "5382"
+    monkeypatch.setattr(
+        "clicker.ui.probe.probe",
+        lambda _t: ui_probe.ProbeResult(True, "ok", hwnd=1, title="538217 - Connext-Demo"))
+    assert link.health().healthy
+
+
+async def test_bat_tay_that_nhan_duoc_cau_hinh_tu_bridge(bridge, db: Database,
+                                                         tmp_path: Path) -> None:
+    """Đầu-cuối qua socket: khai trên DB (thứ dashboard ghi) → clicker nhận lúc bắt tay."""
+    import asyncio
+
+    server, _ = bridge
+    db.upsert_agent(CLICKER_AGENT, role="CLICKER", token_hash=hash_token(CLICKER_TOKEN),
+                    magic_number=770001, account_login=CLICKER_LOGIN,
+                    terminal_title="538217 - Connext")
+    link = _link(tmp_path)
+    link.config.host, link.config.port = "127.0.0.1", server.port
+    link.config.account_login = 0
+    link.config.terminal_title = ""
+
+    task = asyncio.create_task(link.run())
+    try:
+        await _wait_until(lambda: link.config.terminal_title == "538217 - Connext", timeout=3.0)
+        assert link.config.account_login == CLICKER_LOGIN
+        # Số 0 trong `hello` không được ghi đè số tài khoản đã khai trên dashboard.
+        assert db.get_agent(CLICKER_AGENT)["account_login"] == CLICKER_LOGIN
+    finally:
+        link.stop()
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

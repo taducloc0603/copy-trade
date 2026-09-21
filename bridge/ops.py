@@ -663,6 +663,39 @@ def tat_anh_xa(db: Database, client_id: str, master_symbol: str) -> None:
     log.warning("Da TAT anh xa %s cua %s", master_symbol, client_id)
 
 
+def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
+                         terminal_title: str | None = None) -> dict[str, Any]:
+    """Khai terminal mà một clicker phải lái: số tài khoản và mẩu tiêu đề cửa sổ.
+
+    Hai giá trị này từng nằm ở `config.toml`, nên đổi terminal là phải sửa file trên VPS rồi chạy
+    lại tác vụ. Ở đây chúng nằm trong DB, clicker nhận lại ở lần bắt tay kế tiếp.
+
+    Mẩu tiêu đề phải chứa **số tài khoản**: cửa sổ MT5 mở đầu tiêu đề bằng số tài khoản, và chính
+    nó là thứ clicker đối chiếu trước khi bấm. Một mẩu tiêu đề không chứa số tài khoản (ví dụ
+    "MetaTrader 5") khớp cả hai terminal, và khi đó clicker từ chối lái — hoặc tệ hơn, lái nhầm.
+    """
+    agent = _agent_phai_co(db, agent_id, "CLICKER")
+    doi: dict[str, Any] = {}
+    if login is not None:
+        if login <= 0:
+            raise LoiCauHinh("LOGIN_KHONG_DUONG", login=login)
+        doi["account_login"] = login
+    if terminal_title is not None:
+        tieu_de = terminal_title.strip()
+        so = doi.get("account_login") or agent["account_login"]
+        if tieu_de and so and str(so) not in tieu_de:
+            raise LoiCauHinh("TIEU_DE_KHONG_CO_SO_TK", tieu_de=tieu_de, login=so)
+        doi["terminal_title"] = tieu_de
+    if not doi:
+        return {}
+    dat = ", ".join(f"{k} = ?" for k in doi)
+    with db.transaction() as conn:
+        conn.execute(f"UPDATE agent SET {dat}, updated_at = ? WHERE agent_id = ?",
+                     (*doi.values(), utc_now_iso(), agent_id))
+    log.warning("Khai terminal cho clicker %s: %s", agent_id, doi, extra={"agent_id": agent_id})
+    return doi
+
+
 def sua_khoa_he_thong(db: Database, khoa: str, gia_tri: Any) -> str:
     """Sửa một khoá `system_config` trong danh sách trắng. Trả về giá trị đã ghi."""
     if khoa not in KHOA_SUA_DUOC:

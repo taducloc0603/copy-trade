@@ -186,21 +186,18 @@ def main(argv: list[str] | None = None) -> int:
                      "config.toml. Cap token bang: python -m bridge.admin cap-token <AGENT_ID>",
                      ENV_TOKEN)
         return 2
-    if not args.account_login:
-        log.critical("Thieu so tai khoan. Dat --account-login hoac clicker.account_login trong "
-                     "config.toml.")
-        return 2
+    # Số tài khoản và tiêu đề cửa sổ **được phép** thiếu ở đây: clicker nhận chúng từ Bridge
+    # trong `hello_ack` (khai trên dashboard). Thiếu cả ba nguồn thì `run()` thoát với mã 4 sau
+    # khi bắt tay — xem `cho_cau_hinh_tu_bridge`. Không đoán terminal, và không rơi về `--dry-run`:
+    # lái nhầm terminal là mất tiền ở một tài khoản mà sổ sách không hề biết tới.
 
-    if not args.dry_run and not args.terminal_title:
-        # Không đoán terminal. Lái nhầm terminal là mất tiền ở một tài khoản mà sổ sách không
-        # hề biết tới, và đó là loại lỗi không tự lộ ra.
-        log.critical("Che do that bat buoc phai co --terminal-title. Khong tu doan terminal, "
-                     "va khong tu rot ve --dry-run.")
-        return 2
-
-    lock = SingleInstance(str(args.account_login))
+    # Khoá theo TÊN MỤC chứ không theo số tài khoản: cái cần chống là hai tiến trình cùng một mục
+    # (cùng token, cùng terminal), và tên mục có ngay lúc khởi động — số tài khoản thì có thể
+    # chưa. Lấy khoá muộn, sau bắt tay, là để một khoảng trống đúng lúc hai bản vừa cùng khởi
+    # động.
+    lock = SingleInstance(args.muc)
     if not lock.acquire():
-        log.critical("Da co mot clicker khac dang lai terminal %s. Thoat.", args.account_login)
+        log.critical("Da co mot clicker khac dang chay o muc %s. Thoat.", args.muc)
         return 3
 
     link = build_link(args)
