@@ -32,7 +32,7 @@ from bridge.ops import (
 )
 from bridge.protocol.auth import verify_token
 from bridge.web import views
-from bridge.web.app import CUM_DAT_LAI, Dashboard, tao_app
+from bridge.web.app import CUM_DAT_LAI, MAN_HINH, Dashboard, tao_app
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT
 
 MAT_KHAU = "mat-khau-thu-nghiem"
@@ -1187,3 +1187,52 @@ async def test_api_huong_dan_moi_buoc_co_cau_chu(client: httpx.AsyncClient) -> N
         assert n["ten"].strip() and n["chu"].strip()
         for b in n["buoc"]:
             assert b["chu"].strip(), b["ma"]
+
+
+# -- giu tab dich khi phai dang nhap ------------------------------------------------------------
+#
+# Lo bat duoc o lan cai that dau tien tren VPS (2026-09-21): script cai mo `/#huong-dan`, may vua
+# cai thi chua co phien nen `/` chuyen huong sang `/login`, va sau khi dang nhap thi POST /login
+# tra ve `/` -- khong con hash. Nguoi dung roi vao tab Tong quan, dung thu D-37 sinh ra de tranh.
+# Fragment KHONG BAO GIO di len server, nen trang dang nhap phai mang no qua bang mot truong form.
+
+async def test_dang_nhap_giu_lai_tab_dich(seeded_web: Database) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        r = await c.post("/login", data={"password": MAT_KHAU, "dich": "huong-dan"},
+                         follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/#huong-dan"
+
+
+async def test_dang_nhap_khong_co_tab_dich_thi_ve_trang_chu(seeded_web: Database) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        r = await c.post("/login", data={"password": MAT_KHAU}, follow_redirects=False)
+    assert r.headers["location"] == "/"
+
+
+@pytest.mark.parametrize("dich", ["../evil", "https://vidu.com", "huong dan", "", "tong_quan"])
+async def test_dang_nhap_tu_choi_tab_dich_la(seeded_web: Database, dich: str) -> None:
+    """`dich` đi thẳng vào header `Location`, nên nhận bừa là mở một đường cho chuỗi lạ vào đó."""
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        r = await c.post("/login", data={"password": MAT_KHAU, "dich": dich},
+                         follow_redirects=False)
+    assert r.headers["location"] == "/"
+
+
+async def test_trang_dang_nhap_co_duong_mang_hash_qua(seeded_web: Database) -> None:
+    """Không có đoạn script này thì trường `dich` luôn rỗng và cả đường trên thành vô dụng."""
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        html = (await c.get("/login")).text
+    assert 'name="dich"' in html
+    assert "location.hash" in html
+
+
+def test_moi_tab_trong_index_html_deu_nam_trong_danh_sach_trang(project_root) -> None:
+    """Danh sách trắng và thanh tab phải khớp nhau.
+
+    Lệch một chiều thì một tab không tới được bằng đường dẫn; lệch chiều kia thì danh sách trắng
+    cho qua một tab không tồn tại.
+    """
+    html = (project_root / "bridge" / "web" / "static" / "index.html").read_text(encoding="utf-8")
+    trong_html = set(re.findall(r'data-man="([a-z-]+)"', html))
+    assert trong_html == set(MAN_HINH)

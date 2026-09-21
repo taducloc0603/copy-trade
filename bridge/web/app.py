@@ -186,11 +186,14 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return _trang_dang_nhap(bool(loi))
 
     @app.post("/login")
-    async def dang_nhap(password: str = Form("")) -> RedirectResponse:
+    async def dang_nhap(password: str = Form(""), dich: str = Form("")) -> RedirectResponse:
         token = dashboard.kiem_tra(password)
         if token is None:
             return RedirectResponse("/login?loi=1", status_code=303)
-        res = RedirectResponse("/", status_code=303)
+        # `dich` = tab người dùng muốn tới, do trang đăng nhập đọc từ `location.hash` và gửi kèm.
+        # Fragment không bao giờ đi lên server, nên nếu không mang nó qua đường này thì mọi đường
+        # dẫn có `#tab` đều mất tab sau khi đăng nhập — và script cài mở đúng một đường như vậy.
+        res = RedirectResponse(f"/#{dich}" if dich in MAN_HINH else "/", status_code=303)
         res.set_cookie("sid", token, httponly=True, samesite="lax")
         return res
 
@@ -605,12 +608,28 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     return app
 
 
+#: Tab hợp lệ — cũng là `id` của các `<section class="man">` trong `index.html`.
+#:
+#: Dùng để **lọc** giá trị `dich` người dùng gửi lên: nó đi thẳng vào header `Location`, nên nhận
+#: bừa là mở một đường cho chuỗi lạ vào đó. Danh sách trắng ngắn và đủ, không cần regex.
+MAN_HINH = frozenset({"tong-quan", "huong-dan", "sai-lech", "cau-hinh", "nhat-ky"})
+
+
 def _trang_dang_nhap(loi: bool) -> str:
     thong_bao = f'<p class="loi">{UI["login_wrong"]}</p>' if loi else ""
+    # Đoạn script nhỏ này là cách duy nhất để giữ lại tab đích: trình duyệt **không** gửi fragment
+    # lên server, kể cả khi nó vừa theo một lần chuyển hướng từ `/#huong-dan` sang `/login#huong-dan`.
+    # Nên đọc `location.hash` ngay lúc bấm Đăng nhập và gửi nó như một trường form bình thường.
     return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{UI["login_title"]}</title><link rel="stylesheet" href="/static/app.css"></head>
-<body class="dangnhap"><form method="post" action="/login">
+<body class="dangnhap"><form method="post" action="/login" id="f">
 <h1>{UI["app_title"]}</h1>{thong_bao}
 <label>{UI["login_password"]}<input type="password" name="password" autofocus></label>
-<button type="submit">{UI["login_submit"]}</button></form></body></html>"""
+<input type="hidden" name="dich" id="dich">
+<button type="submit">{UI["login_submit"]}</button></form>
+<script>
+document.getElementById("f").addEventListener("submit", function () {{
+  document.getElementById("dich").value = location.hash.slice(1);
+}});
+</script></body></html>"""
