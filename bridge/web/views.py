@@ -431,15 +431,6 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
         if not clicker_master or db.get_agent(clicker_master) is None:
             them(MUC_CHAN, "MASTER_THIEU_CLICKER", UI["can_lam_master_thieu_clicker"])
 
-    # -- mật khẩu dashboard: không có thì mọi nút Lưu bị chặn -----------------------------------
-    if config is not None:
-        mat_khau = str((getattr(config, "security", None) or {}).get("dashboard_password") or "")
-        if not mat_khau.strip():
-            # CHẶN, không phải lưu ý: mật khẩu trống thì **mọi** endpoint ghi trả 403 — kể cả
-            # `/api/file_config`, tức không đặt nổi mật khẩu từ chính trang này. Phải sửa
-            # `config.toml` trên VPS rồi khởi động lại dịch vụ.
-            them(MUC_CHAN, "CHUA_DAT_MAT_KHAU", UI["can_lam_chua_dat_mat_khau"])
-
     # -- cuối cùng: bật copy -------------------------------------------------------------------
     run_mode = db.get_config("run_mode", "PAUSED") or "PAUSED"
     if run_mode != "RUNNING":
@@ -492,7 +483,6 @@ BUOC_LAN_DAU: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
     ("LD_TOOLBOX", "hd_ld_toolbox", (), ""),
     ("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), ""),
     ("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), ""),
-    ("LD_MAT_KHAU", "hd_ld_mat_khau", ("CHUA_DAT_MAT_KHAU",), ""),
     ("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), ""),
     ("LD_THU_DEMO", "hd_ld_thu_demo", (), "hd_lenh_kiem_demo"),
 )

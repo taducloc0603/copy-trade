@@ -52,7 +52,7 @@ Bridge là server, hai cái kia là client. MQL5 không listen được (D-03).
 | Nằm ở | Gồm những gì | Sửa bằng |
 |---|---|---|
 | **Database** | agent (số tài khoản, magic, tiêu đề cửa sổ terminal của clicker), `client_account` (chiều copy, hệ số, đường mở/đóng, đóng ngược Master, bật/tắt), `symbol_map`, `system_config` | Dashboard tab **Cấu hình**, hoặc `bridge.admin`. Có hiệu lực ngay |
-| **`config.toml`** | `host`, `port`, `web_port`, `db_path`, `dashboard_password`, Telegram, **token** của hai clicker | Dashboard tab **Cấu hình** (kiểm lại rồi mới ghi, sao lưu bản cũ) hoặc mở file. Có hiệu lực **sau khi khởi động lại dịch vụ** |
+| **`config.toml`** | `host`, `port`, `web_port`, `db_path`, Telegram, **token** của hai clicker | Dashboard tab **Cấu hình** (kiểm lại rồi mới ghi, sao lưu bản cũ) hoặc mở file. Có hiệu lực **sau khi khởi động lại dịch vụ** |
 
 **Thứ tự ưu tiên của clicker: tham số dòng lệnh > `config.toml` > giá trị Bridge giao.** Nghĩa
 là một `account_login` hay `terminal_title` còn sót trong `config.toml` sẽ **âm thầm đè** giá trị
@@ -60,12 +60,12 @@ khai trên dashboard — sửa trên trang mà không thấy gì đổi thì ki�
 hiện hai khoá đó kèm cảnh báo khi file còn khai chúng.
 
 Mỗi lần lưu từ dashboard để lại một bản `config.toml.bak-<ngày-giờ>` cạnh file gốc, **giữ 5 bản
-gần nhất**; bản bạn tự chép tay với tên khác thì không bị đụng tới. Chúng là bản rõ của mật khẩu và
-token, nên đừng chép chúng đi đâu.
+gần nhất**; bản bạn tự chép tay với tên khác thì không bị đụng tới. Chúng là bản rõ của token
+clicker, nên đừng chép chúng đi đâu.
 
-**Mọi nút Lưu trên trang Cấu hình đòi dashboard có mật khẩu.** Không mật khẩu thì trang vẫn xem
-được nhưng không sửa được gì (D-32). Và `bridge.db_path` **không** nằm trong số khoá sửa được —
-đổi nó là Bridge mở một database rỗng ở lần khởi động sau.
+**Dashboard không có đăng nhập** (D-39): mở được trang là sửa được mọi thứ trên đó. Đổi lại, cổng
+web chỉ nghe `127.0.0.1` và Bridge **từ chối khởi động** nếu bạn đổi `host` đi. Và `bridge.db_path`
+**không** nằm trong số khoá sửa được — đổi nó là Bridge mở một database rỗng ở lần khởi động sau.
 
 `config.toml` nằm trong `.gitignore`. Các khoá:
 
@@ -76,8 +76,7 @@ port = 8787             # agent
 web_port = 8080         # dashboard
 db_path = "data/bridge.db"
 
-[security]
-dashboard_password = "..."
+[security]                # KHONG con dashboard_password: dashboard khong co dang nhap (D-39).
 telegram_token   = ""    # de trong thi kenh canh bao im lang, khong loi
 telegram_chat_id = ""
 
@@ -94,12 +93,14 @@ token = "..."
 > khoản trên cùng máy đọc được bằng `Get-CimInstance Win32_Process`, mà clicker chạy 24/7.
 > Thứ tự ưu tiên: `--token` > biến môi trường `COPYBRIDGE_CLICKER_TOKEN` > mục này.
 
-> **Bridge sẽ TỪ CHỐI khởi động** nếu `host` không phải loopback mà `dashboard_password` để
-> trống. Không có mật khẩu thì dashboard không bắt đăng nhập, và khi đó bất kỳ ai chạm được tới
-> cổng 8080 đều đổi được `run_mode` — kiểm toán 2026-09-06 đã gọi `/api/emergency` không kèm
-> cookie và nó đóng sạch 3 cặp. Endpoint đó nay đã gỡ (D-33), nhưng lý do bắt buộc mật khẩu thì
-> không đổi: mọi nút Lưu trên trang Cấu hình cũng đòi mật khẩu. Muốn agent từ máy khác nối vào thì đặt `host = "0.0.0.0"`
-> **và** đặt mật khẩu.
+> **Bridge sẽ TỪ CHỐI khởi động nếu `host` không phải loopback.** Dashboard không còn đăng nhập
+> (D-39), nên mở cổng 8080 ra mạng là mở một bảng điều khiển không khoá: ai chạm tới cũng đổi được
+> chiều copy, hệ số volume và cấp lại được token agent. Kiểm toán 2026-09-06 đã gọi
+> `/api/emergency` không kèm cookie và nó đóng sạch 3 cặp; endpoint đó nay đã gỡ (D-33) nhưng bài
+> học thì không.
+>
+> Muốn xem dashboard từ máy khác: **Tailscale hoặc SSH tunnel**, đừng đổi `host`. Còn muốn agent EA
+> từ máy khác nối vào thì đó là `bridge.port` (8787) — một chuyện khác, và nó có token riêng.
 
 Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA (mục 4).
 
@@ -358,10 +359,14 @@ hay không.
 ## 6. Kiến trúc nhiều máy — chưa hỗ trợ
 
 Master, Client và Bridge trên các máy khác nhau **chưa từng chạy thử** và script không hỗ trợ. Nếu
-cần về sau, tối thiểu phải: đặt `host = "0.0.0.0"` **kèm** `dashboard_password` (Bridge từ chối khởi
-động nếu thiếu), chỉ mở 8787/8080 qua mạng riêng (Tailscale ACL + firewall Windows chặn mọi interface
-khác), kiểm từ một máy thứ ba rằng hai cổng không lộ ra Internet, và khai địa chỉ Bridge trong
+cần về sau, tối thiểu phải: **dựng lại một lớp xác thực cho dashboard** — nó đã bị gỡ (D-39) và
+`parse_config` hiện từ chối khởi động với bất kỳ `host` nào không phải loopback, đúng để chặn kiểu
+mở cổng này; chỉ mở 8787 qua mạng riêng (Tailscale ACL + firewall Windows chặn mọi interface khác);
+kiểm từ một máy thứ ba rằng cổng không lộ ra Internet; và khai địa chỉ Bridge trong
 *Allow WebRequest* của từng terminal. Tailscale xác thực **máy**, không thay được token của agent.
+
+Cổng 8080 (dashboard) thì **không** nằm trong danh sách mở: nó xem qua Tailscale/SSH tunnel, không
+qua việc đổi `host`.
 
 ---
 

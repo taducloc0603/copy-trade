@@ -72,8 +72,6 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien);
         border-radius: 8px; padding: 8px; width: 100%; margin: 10px 0; font-size: 14px; }
 .loi { color: var(--do); }
-body.dangnhap { display: grid; place-items: center; height: 100vh; }
-body.dangnhap form { background: var(--the); padding: 28px; border-radius: 12px; width: 300px; }
 
 @media (max-width: 640px) {
   main { padding: 10px; }

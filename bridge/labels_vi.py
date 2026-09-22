@@ -91,8 +91,6 @@ LOI_CAU_HINH = {
     "KHOA_NGOAI_DANH_SACH": "Khoá {khoa} không sửa được trên dashboard.",
     "GIA_TRI_LA": "Giá trị không hợp lệ cho {khoa}.",
     "NGOAI_MIEN": "{khoa} phải trong khoảng {tu}…{den}, nhận được {gia_tri}.",
-    "CHUA_DAT_MAT_KHAU": ("Dashboard chưa đặt mật khẩu nên không cấp token ở đây. Đặt "
-                          "dashboard_password trong config.toml, hoặc dùng bridge.admin."),
 }
 
 #: Nhóm nhãn **ánh xạ từ enum trong DB**. Key phải là enum tiếng Anh viết hoa, đúng như giá trị
@@ -301,8 +299,6 @@ UI = {
                                      "chỉ đặt được lúc tạo)."),
     "can_lam_master_thieu_clicker": ("Đường đóng Master đặt UI nhưng chưa khai clicker của "
                                      "Master. Khối Đường đóng phía Master bên dưới."),
-    "can_lam_chua_dat_mat_khau": ("Chưa đặt mật khẩu dashboard, nên mọi nút Lưu đều bị từ chối. "
-                                  "Khối config.toml bên dưới → security.dashboard_password."),
     "can_lam_chua_bat_copy": ("Đang ở chế độ {run_mode}. Xong các mục trên thì bấm Bắt đầu copy "
                               "ở thanh trên cùng."),
 
@@ -314,7 +310,7 @@ UI = {
     "nav_guide": "Hướng dẫn",
     "hd_title": "Làm theo thứ tự này",
     "hd_nhom_lan_dau": "Cài đặt lần đầu",
-    "hd_nhom_lan_dau_chu": ("Chín việc, theo đúng thứ tự này. Việc nào dashboard tự kiểm được thì "
+    "hd_nhom_lan_dau_chu": ("Tám việc, theo đúng thứ tự này. Việc nào dashboard tự kiểm được thì "
                             "nó tự chuyển sang Đã xong; việc nằm trong MT5 thì bạn tự tích."),
     "hd_nhom_sau_update": "Sau khi cập nhật code",
     "hd_nhom_sau_update_chu": ("Làm sau mỗi lần chạy cai-dat.ps1 -CapNhat. Ô tự tích được xoá "
@@ -346,8 +342,6 @@ UI = {
     "hd_ld_cau_hinh_copy": ("Xem lại cấu hình copy của từng Client: chiều copy, hệ số volume, và "
                             "Cho phép Client đóng ngược Master. Đây là lựa chọn, không phải thứ "
                             "thiếu — nên tự tích khi đã xem."),
-    "hd_ld_mat_khau": ("Đặt mật khẩu dashboard (khối config.toml → security.dashboard_password). "
-                       "Không có mật khẩu thì mọi nút Lưu đều bị từ chối."),
     "hd_ld_bat_copy": ("Bấm Bắt đầu copy ở thanh trên cùng. Bridge luôn khởi động ở chế độ dừng, "
                        "kể cả khi máy tự bật lại lúc 3 giờ sáng — đó là chủ đích."),
     "hd_ld_thu_demo": ("Thử một lệnh demo volume nhỏ nhất: Master mở → Client vào lệnh trong ~1 "
@@ -461,10 +455,6 @@ UI = {
     "btn_ack": "Đã xử lý",
     "no_alerts": "Không có cảnh báo nào",
 
-    "login_title": "Đăng nhập",
-    "login_password": "Mật khẩu",
-    "login_submit": "Vào",
-    "login_wrong": "Mật khẩu không đúng",
 }
 
 ALL_GROUPS["UI"] = UI

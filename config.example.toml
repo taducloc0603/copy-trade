@@ -7,16 +7,19 @@
 # `.\scripts\khoi-dong-lai.ps1`.
 
 [bridge]
-# Chi nghe loopback. Doi thanh "0.0.0.0" de agent may khac noi toi duoc — khi do
-# BAT BUOC phai dat dashboard_password, neu khong Bridge tu choi khoi dong.
+# CHI nghe loopback duoc. Dashboard khong con dang nhap (bo tu 2026-09-22), nen mo cong web ra
+# ngoai la mo mot bang dieu khien khong khoa cho ca mang -- Bridge tu choi khoi dong neu ban doi
+# gia tri nay. Muon xem tu may khac thi dung Tailscale hoac mot SSH tunnel.
 host = "127.0.0.1"
 port = 8787
 web_port = 8080
 db_path = "data/bridge.db"
 
 [security]
+# Khong con `dashboard_password`: dashboard khong con dang nhap. Ai cham duoc toi cong web la sua
+# duoc, nen cong do chi nghe loopback (xem bridge.host ben tren).
+#
 # Token thật đặt trong config.toml, file này nằm trong .gitignore
-dashboard_password = ""
 
 # Kenh canh bao ngoai (plan 10.4). Thieu hai muc nay thi kenh im lang, khong loi.
 # Chi alert muc ERROR va CRITICAL moi duoc gui ra; INFO/WARNING o lai trong dashboard.

@@ -105,7 +105,7 @@ và sửa được trên dashboard.
 | TEST-32f | Thêm ánh xạ symbol sai một ký tự, rồi đúng | Sai thì bị từ chối và **không** lưu; đúng thì lưu kèm mốc "đã kiểm" |
 | TEST-32g | Cấp lại token cho một agent trên dashboard | Token hiện một lần; `grep -ri token logs\` vẫn rỗng |
 | TEST-32h | Sửa `config.toml` trên dashboard: đổi `telegram_chat_id`, rồi thử đặt `web_port` trùng `port` | Lần đầu lưu được, chú thích trong file còn nguyên, có file `config.toml.bak-*`; lần sau bị từ chối và file **không đổi** |
-| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `.\scripts\khoi-dong-lai.ps1` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được. Ô bí mật để trống thì giá trị cũ **giữ nguyên**, không bị xoá |
+| TEST-32i | Đổi `security.telegram_token` trên trang rồi `.\scripts\khoi-dong-lai.ps1` | Ô bí mật để trống thì giá trị cũ **giữ nguyên**, không bị xoá. Giá trị mới chỉ có hiệu lực sau khi khởi động lại |
 | TEST-32j | Tắt Client (`ĐÃ TẮT`) khi đang có cặp mở, rồi đóng lệnh đó ở Master | Cặp đang mở **vẫn đóng theo Master**; lệnh Master mới **không** được copy; bật lại thì copy chạy tiếp |
 | TEST-32k | Xoá Client đang có cặp lệnh | Bị từ chối kèm câu bảo TẮT; Client vẫn còn. Xoá một Client mới tạo (chưa có cặp) thì được, kèm ánh xạ của nó |
 | TEST-32l | Xoá một ánh xạ symbol rồi mở lệnh symbol đó ở Master | Không copy nữa, đúng như khi tắt; cặp đang mở của symbol đó **vẫn đóng được** |
@@ -115,7 +115,8 @@ và sửa được trên dashboard.
 | TEST-32r | Gõ sai cụm xác nhận ở cả hai nút | Không xoá gì, DB không đổi |
 | TEST-32s | Một sai lệch `MASTER_CLOSED_OFFLINE` (hành động `CLOSE_CLIENT`) trên dashboard | Không có nút **Chấp nhận**, chỉ có dòng chữ bảo đóng tay trong MT5; gọi thẳng API cũng bị từ chối và **không lệnh nào** được gửi |
 | TEST-32n | Đổi tiêu đề cửa sổ của clicker sang terminal của tài khoản khác, rồi ra lệnh đóng | Clicker **không bấm gì**, log `Tieu de cua so la tai khoan ... khac ...`; lệnh đóng rơi về EA kèm alert, không có lệnh nào bấm nhầm terminal |
-| TEST-32o | Mở dashboard khi `dashboard_password` để trống | Xem được, nhưng mọi nút Lưu trả lỗi "chưa đặt mật khẩu" |
+| TEST-32o | Mở dashboard trên một bản cài mới, không làm gì trước | Vào thẳng, không hỏi đăng nhập, và **mọi** nút Lưu dùng được ngay — kể cả Cấp lại token (D-39) |
+| TEST-32p | Đổi `bridge.host` thành `0.0.0.0` rồi khởi động lại | Bridge **từ chối khởi động** và nói rõ phải đổi về `127.0.0.1`: không còn đăng nhập thì không được mở cổng web ra mạng (D-39) |
 
 ## TEST-33 — 1 Master × 2 Client trên cùng VPS, cờ đóng ngược **lệch nhau**
 

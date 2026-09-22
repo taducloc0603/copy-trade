@@ -33,10 +33,8 @@ from bridge.ops import (
 )
 from bridge.protocol.auth import verify_token
 from bridge.web import views
-from bridge.web.app import CUM_DAT_LAI, MAN_HINH, Dashboard, tao_app
+from bridge.web.app import CUM_DAT_LAI, Dashboard, tao_app
 from tests.conftest import CLIENT_AGENT, CLIENT_ID, MASTER_AGENT
-
-MAT_KHAU = "mat-khau-thu-nghiem"
 
 
 def _cap(db: Database, master_pos: int, status: str = "OPEN",
@@ -91,8 +89,7 @@ async def client(seeded_web: Database) -> AsyncIterator[httpx.AsyncClient]:
     `hop_le` cho qua mọi request, và khi đó một cổng 8080 chạm được là sửa được chiều copy, hệ
     số volume và cả `config.toml`.
     """
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
+    async with _http(tao_app(Dashboard(seeded_web))) as c:
         yield c
 
 
@@ -274,28 +271,6 @@ def test_khong_co_chuoi_tieng_viet_nao_trong_html_va_js(project_root) -> None:
         assert not lot, f"{ten} chua ky tu ngoai ASCII: {sorted(lot)}"
 
 
-# -- xác thực ---------------------------------------------------------------------------------
-
-async def test_khong_dang_nhap_thi_api_tra_401(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        assert (await c.get("/api/snapshot")).status_code == 401
-        assert (await c.get("/")).status_code == 303
-
-
-async def test_dang_nhap_dung_mat_khau_thi_vao_duoc(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        r = await c.post("/login", data={"password": MAT_KHAU})
-        assert r.status_code == 303
-        c.cookies.update(r.cookies)
-        assert (await c.get("/api/snapshot")).status_code == 200
-
-
-async def test_dang_nhap_sai_mat_khau_thi_khong_vao_duoc(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        await c.post("/login", data={"password": "sai"})
-        assert (await c.get("/api/snapshot")).status_code == 401
-
-
 # -- ánh xạ symbol ----------------------------------------------------------------------------
 
 async def test_kiem_tra_symbol_khong_ton_tai_tren_san_thi_bao_loi(client: httpx.AsyncClient,
@@ -419,8 +394,7 @@ async def test_sua_client_sai_rang_buoc_thi_tra_ma_loi_va_cau_tieng_viet(
 
 async def test_bat_duong_dong_master_qua_dashboard(clicker_web: Database) -> None:
     """Clicker của Client không dùng lại được cho Master — hai terminal khác nhau."""
-    async with _http(tao_app(Dashboard(clicker_web, password=MAT_KHAU))) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
+    async with _http(tao_app(Dashboard(clicker_web))) as c:
         r = await c.post("/api/master_close_route",
                          json={"clicker_agent": "AG-CLICKER", "close_route": "UI"})
         assert r.status_code == 400
@@ -479,35 +453,8 @@ async def test_khoa_he_thong_ngoai_danh_sach_trang_bi_tu_choi(client: httpx.Asyn
     assert seeded_web.get_config_int("ui_open_queue_max_age_ms", 0) == 20000
 
 
-@pytest.mark.parametrize("duong, than", [
-    ("/api/agent", {"agent_id": "AG-X", "role": "CLIENT", "magic": 770001, "login": 9}),
-    ("/api/agent/AG-MASTER/token", {}),
-    ("/api/client/CL-01", {"volume_multiplier": 2.0}),
-    ("/api/client/CL-01/delete", {}),
-    ("/api/symbol_map", {"client_id": "CL-01", "master_symbol": "X", "client_symbol": "Y"}),
-    ("/api/symbol_map/delete", {"client_id": "CL-01", "master_symbol": "X"}),
-    ("/api/system_config", {"khoa": "ui_open_queue_max_len", "gia_tri": 5}),
-    ("/api/file_config", {"doi": {"bridge.port": 9999}}),
-    ("/api/agent/AG-CLICKER/terminal", {"login": 9}),
-])
-async def test_dashboard_khong_mat_khau_thi_khong_sua_duoc_gi(
-        seeded_web: Database, duong: str, than: dict) -> None:
-    """Không mật khẩu thì `hop_le` cho qua **mọi** request.
-
-    Xem thì cứ xem — nhưng sửa chiều copy, hệ số volume, `config.toml` hay cấp một token mới thì
-    phải đăng nhập, vì mỗi thứ trong số đó đổi được cách hệ thống cư xử với tiền.
-    """
+async def test_cap_token_tra_token_mot_lan(seeded_web: Database) -> None:
     async with _http(tao_app(Dashboard(seeded_web))) as c:
-        r = await c.post(duong, json=than)
-    assert r.status_code == 403, duong
-    assert r.json()["error"] == "CHUA_DAT_MAT_KHAU"
-    assert seeded_web.get_agent("AG-X") is None
-    assert seeded_web.get_client_account(CLIENT_ID) is not None
-
-
-async def test_cap_token_khi_da_dat_mat_khau_thi_tra_token_mot_lan(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/agent", json={"agent_id": "AG-X", "role": "CLIENT",
                                              "magic": 770001, "login": 9})
         assert r.status_code == 200
@@ -521,38 +468,17 @@ async def test_cap_token_khi_da_dat_mat_khau_thi_tra_token_mot_lan(seeded_web: D
         assert verify_token(r.json()["token"], seeded_web.get_agent(MASTER_AGENT)["token_hash"])
 
 
-@pytest.mark.parametrize("duong, than", [
-    ("/api/client/CL-01", {"copy_mode": "SAME"}),
-    ("/api/client", {"client_id": "CL-9", "agent_id": "AG-CLIENT"}),
-    ("/api/master_close_route", {"close_route": "EA"}),
-    ("/api/symbol_map", {"client_id": "CL-01", "master_symbol": "X", "client_symbol": "Y"}),
-    ("/api/symbol_map/disable", {"client_id": "CL-01", "master_symbol": "X"}),
-    ("/api/system_config", {"khoa": "ui_open_queue_max_len", "gia_tri": 5}),
-    ("/api/agent", {"agent_id": "AG-X", "role": "CLIENT", "magic": 1}),
-    ("/api/agent/AG-MASTER/token", {}),
-    ("/api/agent/AG-CLICKER/terminal", {"login": 9}),
-    ("/api/client/CL-01/delete", {}),
-    ("/api/symbol_map/delete", {"client_id": "CL-01", "master_symbol": "X"}),
-    ("/api/file_config", {"doi": {"bridge.port": 9999}}),
-])
-async def test_moi_endpoint_ghi_deu_doi_dang_nhap(seeded_web: Database, duong: str,
-                                                  than: dict) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        r = await c.post(duong, json=than)
-        assert r.status_code == 401, duong
-
-
 async def test_trang_cau_hinh_hien_config_toml_nhung_che_bi_mat(seeded_web: Database) -> None:
-    """Biết `dashboard_password` đang trống là thông tin vận hành; biết nó là gì thì không."""
+    """Biết `telegram_token` đang trống là thông tin vận hành; biết nó là gì thì không."""
     config = parse_config({
         "bridge": {"host": "127.0.0.1", "port": 8787, "web_port": 8080},
-        "security": {"dashboard_password": "sieu-bi-mat"},
+        "security": {"telegram_token": "sieu-bi-mat"},
         "clicker": {"token": "tok", "account_login": 538217, "terminal_title": "538217"},
     }, source_path=Path("config.toml"), project_root=Path("."))
     async with _http(tao_app(Dashboard(seeded_web, config=config))) as c:
         r = await c.get("/api/config")
     khoa = {d["khoa"]: d["gia_tri"] for d in r.json()["file_config"]}
-    assert khoa["security.dashboard_password"] == UI["cfg_file_masked"]
+    assert khoa["security.telegram_token"] == UI["cfg_file_masked"]
     assert khoa["clicker.token"] == UI["cfg_file_masked"]
     assert "sieu-bi-mat" not in r.text
     assert "tok" not in [d["gia_tri"] for d in r.json()["file_config"]]
@@ -609,9 +535,8 @@ async def test_khai_terminal_cho_clicker_va_cat_ket_noi_de_nap_lai(seeded_web) -
             da_dong.append((agent_id, ly_do))
             return True
 
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU,
+    async with _http(tao_app(Dashboard(seeded_web,
                                        server=ServerGia()))) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/agent/AG-CLICKER/terminal",
                          json={"login": 538217, "terminal_title": "538217 - Connext"})
         assert r.status_code == 200
@@ -650,7 +575,7 @@ web_port = 8080
 db_path = "data/bridge.db"
 
 [security]
-dashboard_password = "mat-khau-thu-nghiem"
+telegram_token = "TELEGRAM-BI-MAT"
 
 [clicker]
 token = "TOKEN-CLICKER-BI-MAT"
@@ -662,14 +587,13 @@ def _dashboard_co_file(db: Database, tmp_path: Path) -> tuple[Dashboard, Path]:
     duong_dan.write_text(MAU_FILE_CONFIG, encoding="utf-8")
     config = parse_config(tomllib.loads(MAU_FILE_CONFIG), source_path=duong_dan,
                           project_root=tmp_path)
-    return Dashboard(db, password=MAT_KHAU, config=config), duong_dan
+    return Dashboard(db, config=config), duong_dan
 
 
 async def test_sua_config_toml_tu_dashboard_va_giu_chu_thich(seeded_web: Database,
                                                              tmp_path: Path) -> None:
     dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/file_config", json={"doi": {"bridge.web_port": 8090}})
     assert r.status_code == 200
     assert r.json()["can_khoi_dong_lai"] is True
@@ -685,7 +609,6 @@ async def test_config_toml_sai_thi_tu_choi_va_khong_cham_vao_file(seeded_web: Da
     """Kiểm bằng đúng `parse_config` của đường khởi động, không phải một bản rút gọn."""
     dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/file_config", json={"doi": {"bridge.web_port": 8787}})
     assert r.status_code == 400
     assert r.json()["error"] == "CONFIG_KHONG_HOP_LE"
@@ -696,7 +619,6 @@ async def test_khoa_ngoai_danh_sach_khong_ghi_vao_config_toml(seeded_web: Databa
                                                               tmp_path: Path) -> None:
     dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/file_config", json={"doi": {"bridge.khoa_la": "x"}})
     assert r.status_code == 400
     assert duong_dan.read_text(encoding="utf-8") == MAU_FILE_CONFIG
@@ -706,31 +628,15 @@ async def test_bi_mat_khong_bao_gio_di_ra_khoi_bridge(seeded_web: Database,
                                                       tmp_path: Path) -> None:
     dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.get("/api/config")
-    assert "mat-khau-thu-nghiem" not in r.text
+    assert "TELEGRAM-BI-MAT" not in r.text
     # `in` trên danh sách chỉ bắt trùng khớp hẳn, nên nó bỏ sót một token dài hơn chuỗi tìm.
     assert not any("TOKEN-CLICKER" in d["gia_tri"] for d in r.json()["file_config"])
     assert "TOKEN-CLICKER-BI-MAT" not in r.text
     khoa = {d["khoa"]: d for d in r.json()["file_config"]}
-    assert khoa["security.dashboard_password"]["bi_mat"] is True
-    assert khoa["security.dashboard_password"]["gia_tri"] == UI["cfg_file_masked"]
+    assert khoa["security.telegram_token"]["bi_mat"] is True
+    assert khoa["security.telegram_token"]["gia_tri"] == UI["cfg_file_masked"]
     assert khoa["bridge.port"]["gia_tri"] == "8787"
-
-
-async def test_doi_mat_khau_dashboard_tren_ui_thi_ghi_vao_file(seeded_web: Database,
-                                                               tmp_path: Path) -> None:
-    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
-    async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
-        r = await c.post("/api/file_config",
-                         json={"doi": {"security.dashboard_password": "mat-khau-moi"}})
-    assert r.status_code == 200
-    doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
-    assert doc["security"]["dashboard_password"] == "mat-khau-moi"
-    # Tien trinh dang chay KHONG nap lai: cau hinh khoi dong nua nap nua khong la trang thai
-    # khong ai luong duoc. Mat khau cu van dung cho toi khi khoi dong lai dich vu.
-    assert dashboard.password == MAT_KHAU
 
 
 async def test_css_va_js_khong_duoc_trinh_duyet_giu_cache(client: httpx.AsyncClient) -> None:
@@ -841,7 +747,6 @@ async def test_dat_lai_tu_dashboard_can_dung_cum_xac_nhan(client: httpx.AsyncCli
                                       direction="BUY", initial_volume=1.0, current_volume=0.0,
                                       status="CLOSED")
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/dat_lai", json={"kieu": "lich_su", "phrase": "dat lai du lieu"})
         assert r.status_code == 400
         assert r.json()["error"] == "CUM_TU_SAI"
@@ -859,196 +764,11 @@ async def test_dat_lai_toan_bo_tu_dashboard_giu_agent(client: httpx.AsyncClient,
                                                       tmp_path: Path) -> None:
     dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/dat_lai",
                          json={"kieu": "toan_bo", "phrase": CUM_DAT_LAI["toan_bo"]})
         assert r.status_code == 200, r.text
     assert seeded_web.get_client_account(CLIENT_ID) is None
     assert seeded_web.get_agent(MASTER_AGENT) is not None
-
-
-async def test_dat_lai_doi_dang_nhap_va_doi_mat_khau_dashboard(seeded_web: Database,
-                                                               tmp_path: Path) -> None:
-    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
-    async with _http(tao_app(dashboard)) as c:          # chưa đăng nhập
-        r = await c.post("/api/dat_lai",
-                         json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
-        assert r.status_code == 401
-    async with _http(tao_app(Dashboard(seeded_web))) as c:   # không có mật khẩu
-        r = await c.post("/api/dat_lai",
-                         json={"kieu": "lich_su", "phrase": CUM_DAT_LAI["lich_su"]})
-        assert r.status_code == 403
-
-
-# -- dashboard không chạm vào MT5 (D-34) --------------------------------------------------------
-
-async def test_chap_nhan_sai_lech_can_dong_lenh_thi_bi_tu_choi(client: httpx.AsyncClient,
-                                                               seeded_web: Database) -> None:
-    """Dashboard chỉ sửa sổ sách. Đóng một vị thế thật là việc làm trong MT5 (D-34).
-
-    `MASTER_CLOSED_OFFLINE` mang hành động `CLOSE_CLIENT` và được xếp mức **an toàn**, nên trước
-    D-34 nó nằm sau đúng một cú bấm — và cú bấm đó gửi lệnh đóng thật.
-    """
-    pair_id = _cap(seeded_web, 900010)
-    fid = seeded_web.create_finding("REC-MT5", "SAFE", "MASTER_CLOSED_OFFLINE",
-                                    suggested_action="CLOSE_CLIENT", pair_id=pair_id)
-
-    r = await client.post(f"/api/findings/{fid}/accept")
-
-    assert r.status_code == 400
-    assert r.json()["error"] == "HANH_DONG_CHAM_MT5"
-    assert not seeded_web.query_all("SELECT 1 FROM command"), "Khong duoc gui lenh nao"
-    assert seeded_web.get_finding(fid)["resolution"] == "PENDING"
-
-
-async def test_sai_lech_can_dong_lenh_duoc_danh_dau_de_UI_khong_ve_nut(seeded_web: Database,
-                                                                       ) -> None:
-    """JS không tự suy ra hành động nào chạm MT5 — danh sách đó thuộc về engine."""
-    pair_id = _cap(seeded_web, 900011)
-    seeded_web.create_finding("REC-MT5", "SAFE", "MASTER_CLOSED_OFFLINE",
-                              suggested_action="CLOSE_CLIENT", pair_id=pair_id)
-    seeded_web.create_finding("REC-MT5", "SAFE", "BOTH_CLOSED",
-                              suggested_action="MARK_CLOSED", pair_id=pair_id)
-    theo_kind = {f["kind"]: f for f in views.danh_sach_sai_lech(seeded_web)["safe"]}
-    assert theo_kind["MASTER_CLOSED_OFFLINE"]["cham_mt5"] is True
-    assert theo_kind["BOTH_CLOSED"]["cham_mt5"] is False
-
-
-def test_khong_con_duong_nao_tu_dashboard_gui_lenh_xuong_mt5(seeded_web: Database) -> None:
-    """Chốt lại D-34 bằng danh sách route, không bằng trí nhớ.
-
-    Hai đường từng tồn tại: đóng khẩn cấp, và chấp nhận **hàng loạt** các sai lệch mức an toàn —
-    mà `MASTER_CLOSED_OFFLINE` lại là mức an toàn.
-    """
-    duong = {getattr(r, "path", "") for r in tao_app(Dashboard(seeded_web)).routes}
-    assert "/api/emergency" not in duong
-    assert "/api/findings/accept_all_safe" not in duong
-
-
-# -- nhiều Client, nhiều clicker ----------------------------------------------------------------
-
-async def test_them_token_clicker_moi_tu_dashboard(seeded_web: Database, tmp_path: Path) -> None:
-    """Client thứ hai đi đường giao diện cần một mục `[clicker_cl02]` — khai được ngay trên trang.
-
-    Bắt người vận hành mở `config.toml` trên VPS chỉ để dán một token là đi ngược đúng điều D-32
-    vừa làm.
-    """
-    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
-    async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
-        r = await c.post("/api/file_config", json={"doi": {"clicker_cl02.token": "TOK-CL02"}})
-        assert r.status_code == 200, r.text
-        doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
-        assert doc["clicker_cl02"]["token"] == "TOK-CL02"
-
-        # Mục vừa thêm phải hiện ra ở lần tải sau — nhưng chỉ dưới dạng "đã đặt".
-        dashboard.config = parse_config(doc, source_path=duong_dan, project_root=tmp_path)
-        r = await c.get("/api/config")
-        khoa = {d["khoa"]: d for d in r.json()["file_config"]}
-        assert khoa["clicker_cl02.token"]["bi_mat"] is True
-        assert khoa["clicker_cl02.token"]["gia_tri"] == UI["cfg_file_masked"]
-        assert "TOK-CL02" not in r.text
-
-
-async def test_ten_muc_clicker_sai_thi_khong_ghi_vao_file(seeded_web: Database,
-                                                          tmp_path: Path) -> None:
-    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
-    async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
-        for khoa in ("clicker-cl02.token", "clicker_CL02.token", "clicker_cl02.account_login"):
-            r = await c.post("/api/file_config", json={"doi": {khoa: "x"}})
-            assert r.status_code == 400, khoa
-    assert duong_dan.read_text(encoding="utf-8") == MAU_FILE_CONFIG
-
-
-async def test_xem_truoc_he_so_theo_tung_client(client: httpx.AsyncClient,
-                                               seeded_web: Database) -> None:
-    """Hai Client khác hệ số thì hai bảng xem trước phải khác nhau.
-
-    Bản cũ lấy `clients[0]` cho mọi khối, nên khối CL-02 hiển thị con số của CL-01 — một bảng
-    xem trước nói sai còn tệ hơn không có bảng nào, vì nó trông như đã được kiểm.
-    """
-    seeded_web.upsert_agent("AG-CLIENT-2", role="CLIENT", token_hash="x",
-                            magic_number=770002, account_login=222)
-    seeded_web.upsert_client_account("CL-02", agent_id="AG-CLIENT-2", volume_multiplier=2.0)
-    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT, volume_multiplier=0.5)
-
-    r = await client.get("/api/config")
-    preview = r.json()["preview"]
-
-    assert set(preview) == {CLIENT_ID, "CL-02"}
-    assert preview[CLIENT_ID] != preview["CL-02"]
-
-
-# -- khoi "Can lam" -----------------------------------------------------------------------------
-#
-# Day la cua chan duy nhat cua luong cai mot lenh: tro ly khong con hoi gi ve nghiep vu, nen neu
-# khoi nay bo sot mot cach hong thi khong con ai bat no nua.
-
-def _ma_can_lam(db: Database, config: Any = None) -> set[str]:
-    return {v["ma"] for v in views.viec_can_lam(db, config)}
-
-
-def test_can_lam_bat_clicker_chua_khai_so_tai_khoan(seeded_web: Database) -> None:
-    """Chưa khai thì clicker thoát mã 4 mỗi 60 giây, còn dashboard trông bình thường."""
-    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001)
-    assert "CLICKER_CHUA_KHAI" in _ma_can_lam(seeded_web)
-
-    dat_terminal_clicker(seeded_web, "AG-CLICKER-X", 538217, "538217 - Demo")
-    assert "CLICKER_CHUA_KHAI" not in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_tieu_de_khong_chua_so_tai_khoan(seeded_web: Database) -> None:
-    """Tiêu đề không chứa số tài khoản là hàng rào chống lái nhầm terminal bị vô hiệu."""
-    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001,
-                            account_login=538217, terminal_title="MetaTrader 5")
-    assert "TIEU_DE_KHONG_CHUA_SO_TK" in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_thieu_anh_xa_symbol(seeded_web: Database) -> None:
-    """Thiếu ánh xạ là MỌI lệnh Master bị bỏ qua — cách hỏng im lặng đắt nhất."""
-    assert "THIEU_ANH_XA" in _ma_can_lam(seeded_web)
-
-    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
-    assert "THIEU_ANH_XA" not in _ma_can_lam(seeded_web)
-
-    # Ánh xạ bị TẮT cũng là không có ánh xạ nào dùng được.
-    seeded_web.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=0)
-    assert "THIEU_ANH_XA" in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_algo_trading_tat_nhung_khong_bat_khi_chua_biet(
-        seeded_web: Database) -> None:
-    """`None` là "agent chưa báo", khác hẳn "biết là tắt". Chặn vì không biết là tự dừng hệ thống."""
-    assert "ALGO_TRADING_TAT" not in _ma_can_lam(seeded_web)
-
-    with seeded_web.transaction() as conn:
-        conn.execute("UPDATE agent SET trade_allowed = 0 WHERE agent_id = ?", (CLIENT_AGENT,))
-    assert "ALGO_TRADING_TAT" in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_duong_dong_master_UI_ma_chua_khai_clicker(seeded_web: Database) -> None:
-    seeded_web.set_config("master_close_route", "UI")
-    seeded_web.set_config("master_clicker_agent_id", "")
-    assert "MASTER_THIEU_CLICKER" in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_chua_bat_copy_va_khong_bat_khi_dang_RUNNING(seeded_web: Database) -> None:
-    assert "CHUA_BAT_COPY" in _ma_can_lam(seeded_web)
-    seeded_web.set_config("run_mode", "RUNNING")
-    assert "CHUA_BAT_COPY" not in _ma_can_lam(seeded_web)
-
-
-def test_can_lam_bat_chua_dat_mat_khau_dashboard(seeded_web: Database, tmp_path: Path) -> None:
-    """Không mật khẩu thì mọi nút Lưu trả 403 — người dùng phải biết trước khi bấm."""
-    dashboard, _ = _dashboard_co_file(seeded_web, tmp_path)
-    assert "CHUA_DAT_MAT_KHAU" not in _ma_can_lam(seeded_web, dashboard.config)
-
-    trong = MAU_FILE_CONFIG.replace('dashboard_password = "mat-khau-thu-nghiem"',
-                                    'dashboard_password = ""')
-    cfg = parse_config(tomllib.loads(trong), source_path=tmp_path / "config.toml",
-                       project_root=tmp_path)
-    assert "CHUA_DAT_MAT_KHAU" in _ma_can_lam(seeded_web, cfg)
 
 
 async def test_can_lam_di_theo_api_config_va_muc_CHAN_len_truoc(client: httpx.AsyncClient,
@@ -1151,20 +871,6 @@ def test_huong_dan_bat_khoa_clicker_con_sot_trong_config_toml(seeded_web: Databa
     assert _buoc(seeded_web, cfg)["UP_CONFIG_SOT"]["trang_thai"] == "CON_THIEU"
 
 
-async def test_api_huong_dan_doi_dang_nhap(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        assert (await c.get("/api/huong_dan")).status_code == 401
-
-
-async def test_api_tich_doi_dang_nhap_va_doi_mat_khau(seeded_web: Database) -> None:
-    """Ô tích là một lần **ghi vào database**, nên nó đi qua cùng cửa với mọi nút Lưu."""
-    than = {"ma": "UP_CTRL_F5", "tich": True}
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        assert (await c.post("/api/huong_dan/tich", json=than)).status_code == 401
-    async with _http(tao_app(Dashboard(seeded_web))) as c:        # khong co mat khau
-        assert (await c.post("/api/huong_dan/tich", json=than)).status_code == 403
-
-
 async def test_api_tich_ghi_duoc_va_tu_choi_ma_la(client: httpx.AsyncClient,
                                                   seeded_web: Database) -> None:
     r = await client.post("/api/huong_dan/tich", json={"ma": "LD_TOOLBOX", "tich": True})
@@ -1188,55 +894,6 @@ async def test_api_huong_dan_moi_buoc_co_cau_chu(client: httpx.AsyncClient) -> N
         assert n["ten"].strip() and n["chu"].strip()
         for b in n["buoc"]:
             assert b["chu"].strip(), b["ma"]
-
-
-# -- giu tab dich khi phai dang nhap ------------------------------------------------------------
-#
-# Lo bat duoc o lan cai that dau tien tren VPS (2026-09-21): script cai mo `/#huong-dan`, may vua
-# cai thi chua co phien nen `/` chuyen huong sang `/login`, va sau khi dang nhap thi POST /login
-# tra ve `/` -- khong con hash. Nguoi dung roi vao tab Tong quan, dung thu D-37 sinh ra de tranh.
-# Fragment KHONG BAO GIO di len server, nen trang dang nhap phai mang no qua bang mot truong form.
-
-async def test_dang_nhap_giu_lai_tab_dich(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        r = await c.post("/login", data={"password": MAT_KHAU, "dich": "huong-dan"},
-                         follow_redirects=False)
-    assert r.status_code == 303
-    assert r.headers["location"] == "/#huong-dan"
-
-
-async def test_dang_nhap_khong_co_tab_dich_thi_ve_trang_chu(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        r = await c.post("/login", data={"password": MAT_KHAU}, follow_redirects=False)
-    assert r.headers["location"] == "/"
-
-
-@pytest.mark.parametrize("dich", ["../evil", "https://vidu.com", "huong dan", "", "tong_quan"])
-async def test_dang_nhap_tu_choi_tab_dich_la(seeded_web: Database, dich: str) -> None:
-    """`dich` đi thẳng vào header `Location`, nên nhận bừa là mở một đường cho chuỗi lạ vào đó."""
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        r = await c.post("/login", data={"password": MAT_KHAU, "dich": dich},
-                         follow_redirects=False)
-    assert r.headers["location"] == "/"
-
-
-async def test_trang_dang_nhap_co_duong_mang_hash_qua(seeded_web: Database) -> None:
-    """Không có đoạn script này thì trường `dich` luôn rỗng và cả đường trên thành vô dụng."""
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        html = (await c.get("/login")).text
-    assert 'name="dich"' in html
-    assert "location.hash" in html
-
-
-def test_moi_tab_trong_index_html_deu_nam_trong_danh_sach_trang(project_root) -> None:
-    """Danh sách trắng và thanh tab phải khớp nhau.
-
-    Lệch một chiều thì một tab không tới được bằng đường dẫn; lệch chiều kia thì danh sách trắng
-    cho qua một tab không tồn tại.
-    """
-    html = (project_root / "bridge" / "web" / "static" / "index.html").read_text(encoding="utf-8")
-    trong_html = set(re.findall(r'data-man="([a-z-]+)"', html))
-    assert trong_html == set(MAN_HINH)
 
 
 # -- suy cau hinh clicker, nhin tu dashboard ----------------------------------------------------
@@ -1264,17 +921,6 @@ def test_can_lam_khong_bao_chua_khai_khi_suy_duoc(seeded_web: Database) -> None:
     assert "CLICKER_CHUA_KHAI" not in ma
 
 
-def test_can_lam_chua_dat_mat_khau_la_muc_CHAN(seeded_web: Database, tmp_path: Path) -> None:
-    """Mật khẩu trống thì MỌI endpoint ghi trả 403 — kể cả `/api/file_config`, tức không đặt nổi
-    mật khẩu từ chính trang này. Đó là chặn, không phải lưu ý."""
-    trong = MAU_FILE_CONFIG.replace('dashboard_password = "mat-khau-thu-nghiem"',
-                                    'dashboard_password = ""')
-    cfg = parse_config(tomllib.loads(trong), source_path=tmp_path / "config.toml",
-                       project_root=tmp_path)
-    viec = [v for v in views.viec_can_lam(seeded_web, cfg) if v["ma"] == "CHUA_DAT_MAT_KHAU"]
-    assert [v["muc"] for v in viec] == ["CHAN"]
-
-
 async def test_trang_cau_hinh_gui_danh_sach_symbol_va_de_xuat(client: httpx.AsyncClient,
                                                               seeded_web: Database) -> None:
     def spec(s, digits=2, contract=100.0):
@@ -1296,7 +942,6 @@ async def test_api_client_moi_tao_du_va_ghi_token_vao_config(seeded_web: Databas
                                                              tmp_path: Path) -> None:
     dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
     async with _http(tao_app(dashboard)) as c:
-        await c.post("/login", data={"password": MAT_KHAU})
         r = await c.post("/api/client_moi")
     assert r.status_code == 200, r.text
     d = r.json()
@@ -1311,13 +956,6 @@ async def test_api_client_moi_tao_du_va_ghi_token_vao_config(seeded_web: Databas
     assert len(doc[d["muc_clicker"]]["token"]) >= 32
     # Câu lệnh đăng ký tác vụ phải dán chạy được, không bắt người dùng tự ghép.
     assert d["muc_clicker"] in d["lenh_tac_vu"]
-
-
-async def test_api_client_moi_doi_mat_khau_va_dang_nhap(seeded_web: Database) -> None:
-    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
-        assert (await c.post("/api/client_moi")).status_code == 401
-    async with _http(tao_app(Dashboard(seeded_web))) as c:
-        assert (await c.post("/api/client_moi")).status_code == 403
 
 
 def test_huong_dan_mo_muc_lan_dau_ngay_sau_khi_tro_ly_cai_xong(db: Database) -> None:

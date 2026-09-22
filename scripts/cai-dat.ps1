@@ -388,16 +388,17 @@ function bao_dam_config([string] $venvPy) {
         $mau = Join-Path $ThuMuc "config.example.toml"
         if (-not (Test-Path $mau)) { throw "Khong tim thay config.example.toml trong $ThuMuc." }
 
-        $bytes = New-Object byte[] 24
-        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $matKhau = ([Convert]::ToBase64String($bytes)) -replace '[+/=]', ''
-
+        # KHONG sinh mat khau nua: dashboard khong con dang nhap (bo tu 2026-09-22). Ban cu sinh
+        # mot mat khau ngau nhien roi in ra DUNG MOT LAN luc cai -- ai khong chep lai ngay thi mat
+        # luon duong vao trang, va moi nut Luu tra 403 ma khong noi tai sao. Bat duoc o lan cai
+        # that thu hai tren VPS: buoc dau tien cua tab Huong dan (cap token) khong bam duoc.
+        #
         # ReadAllText chu KHONG phai `Get-Content -Raw`: Get-Content cua PowerShell 5.1 mac dinh
         # doc bang code page ANSI cua he thong, nen no doc config.example.toml (UTF-8) thanh
         # mojibake roi WriteAllText ben duoi ghi mojibake do ra UTF-8. Ket qua: moi dong chu thich
         # tieng Viet trong config.toml sinh ra deu hong. Khoa va gia tri toan ASCII nen TOML van
         # parse duoc va khong ai phat hien -- cho toi luc co mot gia tri khong phai ASCII.
-        $noi = [System.IO.File]::ReadAllText($mau) -replace 'dashboard_password = ""', "dashboard_password = `"$matKhau`""
+        $noi = [System.IO.File]::ReadAllText($mau)
         # PHAI la UTF-8 KHONG BOM: bridge/config.py mo file o che do nhi phan roi dua cho
         # tomllib, va BOM se lam tomllib nem loi parse voi mot thong bao khong he nhac toi BOM.
         [System.IO.File]::WriteAllText($cfg, $noi, (New-Object System.Text.UTF8Encoding($false)))
@@ -405,10 +406,10 @@ function bao_dam_config([string] $venvPy) {
         # Dung SID chu khong dung ten "Administrators"/"SYSTEM": Windows Server ban ngon ngu
         # khac khong co cac ten tieng Anh do.
         icacls $cfg /inheritance:r /grant:r "$($env:USERNAME):(R,W)" "*S-1-5-32-544:(F)" "*S-1-5-18:(F)" | Out-Null
-        ok "da tao config.toml voi mat khau ngau nhien"
+        ok "da tao config.toml"
         Write-Host ""
-        Write-Host "        Mat khau dashboard: $matKhau" -ForegroundColor Yellow
-        Write-Host "        (doc lai duoc trong $cfg -- khac voi token cua agent)" -ForegroundColor DarkGray
+        Write-Host "        Dashboard KHONG co dang nhap va chi nghe 127.0.0.1 -- ai vao duoc may" -ForegroundColor Yellow
+        Write-Host "        nay la sua duoc cau hinh copy. Dung mo cong 8080 ra mang." -ForegroundColor Yellow
     }
 
     Push-Location $ThuMuc

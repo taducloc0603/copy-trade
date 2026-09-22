@@ -14,14 +14,12 @@ nhất, nên trang này không được phụ thuộc bất cứ thứ gì ngoà
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
-import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import Cookie, FastAPI, Form, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from bridge.config import ConfigError, sua_config_toml
@@ -77,10 +75,9 @@ def _tra_loi(exc: LoiCauHinh, status: int = 400) -> JSONResponse:
 class Dashboard:
     """Gói trạng thái của dashboard. Tách khỏi module-level để test dựng được nhiều bản."""
 
-    def __init__(self, db: Database, password: str | None = None,
-                 processor: Any = None, server: Any = None, config: Any = None) -> None:
+    def __init__(self, db: Database, processor: Any = None, server: Any = None,
+                 config: Any = None) -> None:
         self.db = db
-        self.password = password
         #: `Config` đã nạp lúc Bridge khởi động. Trang Cấu hình hiện các khoá của `config.toml`
         #: và sửa được chúng (`/api/file_config`), nhưng **tiến trình đang chạy không nạp lại**:
         #: cấu hình khởi động nửa nạp nửa không là trạng thái không ai lường được. Giá trị mới có
@@ -89,32 +86,6 @@ class Dashboard:
         #: `EventProcessor` — để gọi `reconciler` và `closing`. Có thể None khi chỉ xem.
         self.processor = processor
         self.server = server
-        self.sessions: set[str] = set()
-
-    # -- xác thực ------------------------------------------------------------------------------
-
-    def can_dang_nhap(self) -> bool:
-        """Không đặt mật khẩu thì không bắt đăng nhập.
-
-        Tailscale đã lo phần mạng, nhưng vẫn nên có một lớp để người khác trong mạng nội bộ
-        không mở được. Bỏ trống là lựa chọn có ý thức của người vận hành, không phải mặc định
-        âm thầm.
-        """
-        return bool(self.password)
-
-    def kiem_tra(self, mat_khau: str) -> str | None:
-        if not self.can_dang_nhap():
-            return None
-        if not hmac.compare_digest(mat_khau, self.password or ""):
-            return None
-        token = secrets.token_urlsafe(24)
-        self.sessions.add(token)
-        return token
-
-    def hop_le(self, token: str | None) -> bool:
-        if not self.can_dang_nhap():
-            return True
-        return bool(token) and token in self.sessions
 
     # -- dữ liệu đẩy xuống ---------------------------------------------------------------------
 
@@ -152,97 +123,43 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     # Phục vụ CSS/JS từ đĩa. Không CDN: đúng lúc mất mạng là lúc cần nhìn thấy trạng thái nhất.
     app.mount("/static", TinhKhongGiuCache(directory=STATIC), name="static")
 
-    def _chan(sid: str | None) -> JSONResponse | None:
-        if dashboard.hop_le(sid):
-            return None
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
-
-    def _chan_ghi() -> JSONResponse | None:
-        """Sửa cấu hình cũng đòi dashboard có mật khẩu.
-
-        `hop_le` cho qua **mọi** request khi mật khẩu trống, mà các endpoint ghi ở đây đổi được
-        chiều copy, hệ số volume, đường mở/đóng và cả `config.toml`. Để chúng mở toang cho bất kỳ
-        ai chạm được tới cổng 8080 là đánh đổi sai: xem thì cứ xem, còn sửa thì phải đăng nhập.
-        Nút `run_mode` và đóng khẩn cấp giữ nguyên hành vi cũ (F-02 đã bàn riêng về chúng).
-        """
-        if dashboard.can_dang_nhap():
-            return None
-        return _tra_loi(LoiCauHinh("CHUA_DAT_MAT_KHAU"), status=403)
-
-    def _chan_cap_token() -> JSONResponse | None:
-        """Không có mật khẩu dashboard thì **không** cấp token ở đây.
-
-        `hop_le` cho qua mọi request khi `password` rỗng, và `config.py` chỉ bắt buộc mật khẩu khi
-        `host` không phải loopback — nên trên đúng cấu hình đang dùng, một nút cấp token sẽ là
-        đường phát hành danh tính **không cần xác thực**. Sửa cấu hình thì vẫn cho (hỏng thì sửa
-        lại được), nhưng token là danh tính: mất nó là mất quyền điều khiển tài khoản MT5.
-        """
-        if dashboard.can_dang_nhap():
-            return None
-        return _tra_loi(LoiCauHinh("CHUA_DAT_MAT_KHAU"), status=403)
-
     # -- trang ---------------------------------------------------------------------------------
 
-    @app.get("/login", response_class=HTMLResponse)
-    async def trang_dang_nhap(loi: int = 0) -> str:
-        return _trang_dang_nhap(bool(loi))
-
-    @app.post("/login")
-    async def dang_nhap(password: str = Form(""), dich: str = Form("")) -> RedirectResponse:
-        token = dashboard.kiem_tra(password)
-        if token is None:
-            return RedirectResponse("/login?loi=1", status_code=303)
-        # `dich` = tab người dùng muốn tới, do trang đăng nhập đọc từ `location.hash` và gửi kèm.
-        # Fragment không bao giờ đi lên server, nên nếu không mang nó qua đường này thì mọi đường
-        # dẫn có `#tab` đều mất tab sau khi đăng nhập — và script cài mở đúng một đường như vậy.
-        res = RedirectResponse(f"/#{dich}" if dich in MAN_HINH else "/", status_code=303)
-        res.set_cookie("sid", token, httponly=True, samesite="lax")
-        return res
-
     @app.get("/", response_class=HTMLResponse)
-    async def trang_chinh(sid: str | None = Cookie(None)) -> Any:
-        if not dashboard.hop_le(sid):
-            return RedirectResponse("/login", status_code=303)
+    async def trang_chinh() -> Any:
         return (STATIC / "index.html").read_text(encoding="utf-8")
 
     # -- API đọc -------------------------------------------------------------------------------
 
     @app.get("/api/snapshot")
-    async def api_snapshot(sid: str | None = Cookie(None)) -> Any:
-        return _chan(sid) or dashboard.anh_chup()
+    async def api_snapshot() -> Any:
+        return dashboard.anh_chup()
 
     @app.get("/api/findings")
-    async def api_findings(sid: str | None = Cookie(None)) -> Any:
-        return _chan(sid) or {"ui": UI, **views.danh_sach_sai_lech(dashboard.db)}
+    async def api_findings() -> Any:
+        return {"ui": UI, **views.danh_sach_sai_lech(dashboard.db)}
 
     @app.get("/api/alerts")
-    async def api_alerts(level: str | None = None, sid: str | None = Cookie(None)) -> Any:
-        return _chan(sid) or {"ui": UI, "alerts": views.nhat_ky(dashboard.db, level)}
+    async def api_alerts(level: str | None = None) -> Any:
+        return {"ui": UI, "alerts": views.nhat_ky(dashboard.db, level)}
 
     @app.get("/api/config")
-    async def api_config(sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        return {"ui": UI, "co_mat_khau": dashboard.can_dang_nhap(),
-                **views.trang_cau_hinh(dashboard.db, dashboard.config)}
+    async def api_config() -> Any:
+        return {"ui": UI, **views.trang_cau_hinh(dashboard.db, dashboard.config)}
 
     @app.get("/api/huong_dan")
-    async def api_huong_dan(sid: str | None = Cookie(None)) -> Any:
+    async def api_huong_dan() -> Any:
         """Hai danh sách việc từng bước, kèm trạng thái đã kiểm được của từng bước."""
-        if (loi := _chan(sid)) is not None:
-            return loi
         return {"ui": UI, **views.trang_huong_dan(dashboard.db, dashboard.config)}
 
     @app.get("/api/preview")
-    async def api_preview(multiplier: float, sid: str | None = Cookie(None)) -> Any:
-        return _chan(sid) or {"lines": views.xem_truoc_he_so(multiplier)}
+    async def api_preview(multiplier: float) -> Any:
+        return {"lines": views.xem_truoc_he_so(multiplier)}
 
     # -- API ghi -------------------------------------------------------------------------------
 
     @app.post("/api/run_mode")
-    async def api_run_mode(request: Request, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
+    async def api_run_mode(request: Request) -> Any:
         body = await request.json()
         mode = body.get("mode")
         if mode not in ("RUNNING", "PAUSE_NEW_ENTRIES", "PAUSED"):
@@ -252,16 +169,12 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "mode": mode}
 
     @app.post("/api/huong_dan/tich")
-    async def api_tich_huong_dan(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_tich_huong_dan(request: Request) -> Any:
         """Bật/tắt một ô tự tích của trang Hướng dẫn.
 
         Đi qua `_chan_ghi` như mọi nút Lưu: ô tích là một lần **ghi vào database**, và một dashboard
         không mật khẩu thì cho qua mọi request — không có lý do gì để ô này là ngoại lệ.
         """
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         body = await request.json()
         try:
             da = dat_tich_huong_dan(dashboard.db, str(body.get("ma") or ""),
@@ -271,16 +184,12 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "da_tich": sorted(da)}
 
     @app.post("/api/dat_lai")
-    async def api_dat_lai(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_dat_lai(request: Request) -> Any:
         """Đặt lại hệ thống. Hai mức, và cả hai đều bắt gõ đúng một cụm xác nhận riêng.
 
         Ràng buộc nằm ở `ops`: phải đang `PAUSED`, không còn cặp hay vị thế Master đang mở, không
         còn lệnh nào chưa xong — và sao lưu trước khi xoá.
         """
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         body = await request.json()
         kieu = body.get("kieu")
         if kieu not in CUM_DAT_LAI:
@@ -297,9 +206,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "kieu": kieu, **kq}
 
     @app.post("/api/findings/{finding_id}/accept")
-    async def api_accept(finding_id: int, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
+    async def api_accept(finding_id: int) -> Any:
         # Kiểm TRƯỚC khi đụng tới engine: câu trả lời cho một hành động chạm MT5 là "không", và
         # nó không phụ thuộc việc engine có đang chạy hay không. Dashboard chỉ sửa **sổ sách**;
         # đóng (hoặc mở) một vị thế thật là việc làm trong MT5, rồi quay lại bấm Bỏ qua kèm ghi
@@ -314,10 +221,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": ok}
 
     @app.post("/api/findings/{finding_id}/skip")
-    async def api_skip(finding_id: int, request: Request,
-                       sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
+    async def api_skip(finding_id: int, request: Request) -> Any:
         body = await request.json()
         note = (body.get("note") or "").strip()
         if not note:
@@ -327,22 +231,18 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": dashboard.processor.reconciler.skip_finding(finding_id, note)}
 
     @app.post("/api/alerts/{alert_id}/ack")
-    async def api_ack(alert_id: int, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
+    async def api_ack(alert_id: int) -> Any:
         dashboard.db.acknowledge_alert(alert_id)
         return {"ok": True}
 
     @app.post("/api/symbol_map/verify")
-    async def api_verify_map(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_verify_map(request: Request) -> Any:
         """Kiểm tra symbol **với sàn**, không chỉ kiểm chính tả.
 
         Gõ nhầm `XAUUSDm` thành `XAUUSDn` xảy ra thường xuyên, và hậu quả lộ ra đúng lúc Master
         vừa vào lệnh. Nguy hiểm hơn: tên copy từ website broker có thể chứa ký tự Cyrillic nhìn
         giống hệt chữ Latin. Chỉ có đối chiếu với spec sàn đẩy lên mới bắt được.
         """
-        if (loi := _chan(sid)) is not None:
-            return loi
         body = await request.json()
         client_id, client_symbol = body.get("client_id"), body.get("client_symbol")
         client = dashboard.db.get_client_account(client_id)
@@ -363,12 +263,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     # thể nới lỏng khác nhau.
 
     @app.post("/api/client/{client_id}")
-    async def api_sua_client(client_id: str, request: Request,
-                             sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
+    async def api_sua_client(client_id: str, request: Request) -> Any:
         body = await request.json()
         try:
             doi, dang_mo = sua_client(
@@ -386,11 +281,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "doi": doi, "dang_mo": dang_mo}
 
     @app.post("/api/client")
-    async def api_tao_client(request: Request, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
+    async def api_tao_client(request: Request) -> Any:
         body = await request.json()
         try:
             da = tao_client(dashboard.db, body.get("client_id") or "", body.get("agent_id") or "",
@@ -402,7 +293,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "client": da}
 
     @app.post("/api/client_moi")
-    async def api_client_moi(sid: str | None = Cookie(None)) -> Any:
+    async def api_client_moi() -> Any:
         """Tạo một Client mới cùng **tất cả** thứ đi kèm, không hỏi gì.
 
         Mã Client, tên hai agent, tên mục clicker, tên Scheduled Task — tất cả suy từ một con số
@@ -410,10 +301,6 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         lại cho người dùng là dán token vào EA và chạy một câu lệnh trên VPS: đăng ký Scheduled
         Task cần quyền Administrator, trình duyệt không với tới.
         """
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_cap_token()) is not None:
-            return loi
         try:
             kq = tao_client_moi(dashboard.db)
         except LoiCauHinh as exc:
@@ -443,12 +330,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, **kq}
 
     @app.post("/api/client/{client_id}/delete")
-    async def api_xoa_client(client_id: str, sid: str | None = Cookie(None)) -> Any:
+    async def api_xoa_client(client_id: str) -> Any:
         """Xoá hẳn một Client. Từ chối khi nó đã có cặp lệnh — khi đó hãy **tắt**."""
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         try:
             xoa_client(dashboard.db, client_id)
         except LoiCauHinh as exc:
@@ -457,11 +340,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/master_close_route")
-    async def api_duong_dong_master(request: Request, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
+    async def api_duong_dong_master(request: Request) -> Any:
         body = await request.json()
         try:
             doi = dat_duong_dong_master(dashboard.db, body.get("clicker_agent"),
@@ -472,12 +351,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "doi": doi}
 
     @app.post("/api/symbol_map")
-    async def api_luu_anh_xa(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_luu_anh_xa(request: Request) -> Any:
         """Kiểm với sàn **rồi mới** lưu — cùng phép kiểm của `/api/symbol_map/verify`."""
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         body = await request.json()
         try:
             spec = khai_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -489,11 +364,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
                                      ("symbol", "volume_min", "volume_step", "volume_max")}}
 
     @app.post("/api/symbol_map/disable")
-    async def api_tat_anh_xa(request: Request, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
+    async def api_tat_anh_xa(request: Request) -> Any:
         body = await request.json()
         try:
             tat_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -503,12 +374,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/symbol_map/delete")
-    async def api_xoa_anh_xa(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_xoa_anh_xa(request: Request) -> Any:
         """Xoá hẳn một ánh xạ. Tắt thì dòng còn đó; xoá thì không còn dấu vết."""
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         body = await request.json()
         try:
             xoa_anh_xa(dashboard.db, body.get("client_id") or "",
@@ -518,11 +385,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/system_config")
-    async def api_khoa_he_thong(request: Request, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
+    async def api_khoa_he_thong(request: Request) -> Any:
         body = await request.json()
         try:
             gia_tri = sua_khoa_he_thong(dashboard.db, body.get("khoa") or "", body.get("gia_tri"))
@@ -531,17 +394,13 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "khoa": body.get("khoa"), "gia_tri": gia_tri}
 
     @app.post("/api/file_config")
-    async def api_sua_file_config(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_sua_file_config(request: Request) -> Any:
         """Sửa `config.toml`. Kiểm nội dung mới **trước khi** ghi, và sao lưu bản cũ.
 
         Một `config.toml` hỏng là một Bridge không khởi động được — và lúc đó không còn dashboard
         nào để sửa lại. Nên phép kiểm ở đây chạy đúng `parse_config` của đường khởi động, chứ
         không phải một bản kiểm rút gọn viết riêng cho tầng web.
         """
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         if dashboard.config is None:
             return _tra_loi(LoiCauHinh("KHONG_CO_FILE_CONFIG"), status=409)
         body = await request.json()
@@ -568,12 +427,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "ban_sao": ban_sao.name, "can_khoi_dong_lai": True}
 
     @app.post("/api/agent")
-    async def api_tao_agent(request: Request, sid: str | None = Cookie(None)) -> Any:
+    async def api_tao_agent(request: Request) -> Any:
         """Tạo agent và trả token thô **đúng một lần**. Không ghi log, không lưu lại."""
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_cap_token()) is not None:
-            return loi
         body = await request.json()
         try:
             token = tao_agent(dashboard.db, body.get("agent_id") or "", body.get("role") or "",
@@ -585,13 +440,8 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "token": token}
 
     @app.post("/api/agent/{agent_id}/terminal")
-    async def api_terminal_clicker(agent_id: str, request: Request,
-                                   sid: str | None = Cookie(None)) -> Any:
+    async def api_terminal_clicker(agent_id: str, request: Request) -> Any:
         """Khai terminal của một clicker. Clicker đang chạy nhận giá trị mới trong vài giây."""
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_ghi()) is not None:
-            return loi
         body = await request.json()
         try:
             doi = dat_terminal_clicker(
@@ -618,11 +468,7 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         return {"ok": True, "doi": doi, "nap_lai": nap_lai}
 
     @app.post("/api/agent/{agent_id}/token")
-    async def api_cap_token(agent_id: str, sid: str | None = Cookie(None)) -> Any:
-        if (loi := _chan(sid)) is not None:
-            return loi
-        if (loi := _chan_cap_token()) is not None:
-            return loi
+    async def api_cap_token(agent_id: str) -> Any:
         try:
             token = cap_token(dashboard.db, agent_id)
         except LoiCauHinh as exc:
@@ -635,9 +481,6 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
     @app.websocket("/ws")
     async def ws(socket: WebSocket) -> None:
         await socket.accept()
-        if not dashboard.hop_le(socket.cookies.get("sid")):
-            await socket.close(code=4401)
-            return
         try:
             while True:
                 await socket.send_text(json.dumps(dashboard.anh_chup(), ensure_ascii=False,
@@ -649,30 +492,3 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             log.exception("Loi trong vong day WebSocket")
 
     return app
-
-
-#: Tab hợp lệ — cũng là `id` của các `<section class="man">` trong `index.html`.
-#:
-#: Dùng để **lọc** giá trị `dich` người dùng gửi lên: nó đi thẳng vào header `Location`, nên nhận
-#: bừa là mở một đường cho chuỗi lạ vào đó. Danh sách trắng ngắn và đủ, không cần regex.
-MAN_HINH = frozenset({"tong-quan", "huong-dan", "sai-lech", "cau-hinh", "nhat-ky"})
-
-
-def _trang_dang_nhap(loi: bool) -> str:
-    thong_bao = f'<p class="loi">{UI["login_wrong"]}</p>' if loi else ""
-    # Đoạn script nhỏ này là cách duy nhất để giữ lại tab đích: trình duyệt **không** gửi fragment
-    # lên server, kể cả khi nó vừa theo một lần chuyển hướng từ `/#huong-dan` sang `/login#huong-dan`.
-    # Nên đọc `location.hash` ngay lúc bấm Đăng nhập và gửi nó như một trường form bình thường.
-    return f"""<!doctype html><html lang="vi"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{UI["login_title"]}</title><link rel="stylesheet" href="/static/app.css"></head>
-<body class="dangnhap"><form method="post" action="/login" id="f">
-<h1>{UI["app_title"]}</h1>{thong_bao}
-<label>{UI["login_password"]}<input type="password" name="password" autofocus></label>
-<input type="hidden" name="dich" id="dich">
-<button type="submit">{UI["login_submit"]}</button></form>
-<script>
-document.getElementById("f").addEventListener("submit", function () {{
-  document.getElementById("dich").value = location.hash.slice(1);
-}});
-</script></body></html>"""

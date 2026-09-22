@@ -518,8 +518,8 @@ cấu hình gì — và đó là loại không-biết dẫn tới quyết địn
 * **Database** giữ cấu hình *nghiệp vụ*: agent (số tài khoản, magic, tiêu đề cửa sổ terminal của
   clicker), `client_account`, `symbol_map`, `system_config`. Sửa được trên dashboard, có hiệu lực
   ngay vì mọi khoá ở đây đều được đọc lại mỗi lần dùng.
-* **`config.toml`** chỉ giữ thứ **phải có trước khi Bridge chạy**: cổng, đường dẫn DB, mật khẩu
-  dashboard, và token của clicker. Dashboard **sửa được** chúng, nhưng theo ba điều kiện — vì một
+* **`config.toml`** chỉ giữ thứ **phải có trước khi Bridge chạy**: cổng, đường dẫn DB, và token
+  của clicker. Dashboard **sửa được** chúng, nhưng theo ba điều kiện — vì một
   `config.toml` hỏng là một Bridge không khởi động được, và lúc đó không còn dashboard nào để sửa
   lại: (1) nội dung mới chạy qua đúng `parse_config` của đường khởi động **trước khi** ghi, không
   qua được thì file cũ không bị đụng tới; (2) bản cũ được **sao lưu** kèm dấu thời gian; (3) sửa
@@ -549,20 +549,14 @@ tiên `--tham-so` > `config.toml` > Bridge giữ cho bản cài cũ chạy y nh�
    chặn đường MỞ; đường ĐÓNG rơi về `OrderSend` của EA theo `close_degraded_fallback = EA`, tức
    deal đóng mang `EXPERT` — đúng thứ đường đóng qua giao diện tồn tại để ngăn.
 
-**Mọi endpoint SỬA cấu hình đều đòi dashboard có mật khẩu.** `Dashboard.hop_le` cho qua mọi
-request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải loopback.
-Xem thì cứ xem — nhưng đổi chiều copy, hệ số volume, đường mở/đóng, xoá Client hay ghi
-`config.toml` thì phải đăng nhập, vì mỗi thứ trong số đó đổi cách hệ thống cư xử với tiền. Nút
-`run_mode` và đóng khẩn cấp giữ nguyên hành vi cũ (F-02 bàn riêng về chúng).
+**~~Mọi endpoint SỬA cấu hình đều đòi dashboard có mật khẩu.~~** Đã bỏ — xem **D-39**. Đăng nhập
+không còn tồn tại; đổi lại `bridge.host` bắt buộc là loopback.
 
 **`bridge.db_path` KHÔNG sửa được trên dashboard.** Đổi nó rồi khởi động lại là Bridge mở một
 database rỗng: toàn bộ agent, token, ánh xạ và cặp đang mở biến mất khỏi sổ trong khi vị thế thật
 vẫn nằm trên sàn. Đó không phải một khoá cấu hình, đó là một nút xoá sổ sách.
 
-**Cấp token trên dashboard bị chặn khi dashboard không có mật khẩu.** `Dashboard.hop_le` cho qua
-mọi request khi mật khẩu trống, mà `config.py` chỉ bắt buộc mật khẩu khi `host` không phải
-loopback — nên trên đúng cấu hình đang dùng, một nút cấp token sẽ là đường phát hành danh tính
-không cần xác thực. Sửa cấu hình thì vẫn cho: hỏng thì sửa lại được, còn token là danh tính.
+**~~Cấp token trên dashboard bị chặn khi dashboard không có mật khẩu.~~** Đã bỏ — xem **D-39**.
 
 ### D-33 — Có nút đặt lại hai mức trên dashboard; gỡ nút đóng khẩn cấp
 
@@ -678,7 +672,7 @@ khối **"Cần làm"** ở đầu tab Cấu hình (`views.viec_can_lam`) liệt
 mỗi mục nói **làm gì ở đâu**, và mục `CHẶN` nghĩa là hệ thống chưa copy được lệnh nào. Nó bắt: agent
 chưa `ONLINE`, clicker chưa khai số tài khoản/tiêu đề, **tiêu đề không chứa số tài khoản**, Algo
 Trading tắt, Client thiếu ánh xạ symbol, Client đi đường giao diện mà không có clicker, đường đóng
-Master `UI` mà chưa khai clicker, chưa đặt mật khẩu dashboard, và `run_mode` chưa `RUNNING`.
+Master `UI` mà chưa khai clicker, và `run_mode` chưa `RUNNING`.
 
 Khối đó **không biến mất khi rỗng** — "không còn việc nào" là thông tin người vận hành cần, và một
 khối thỉnh thoảng mới xuất hiện thì không ai học được chỗ để tìm nó.
@@ -757,9 +751,9 @@ và đăng ký Scheduled Task (cần quyền Administrator trên VPS) — nên t
 
 **Ba chỗ sai sửa kèm:**
 
-1. `CHUA_DAT_MAT_KHAU` từ mức Lưu ý lên **CHẶN**: mật khẩu trống thì **mọi** endpoint ghi trả 403 —
-   kể cả `/api/file_config`, tức không đặt nổi mật khẩu từ chính trang đó. Phải sửa `config.toml`
-   trên VPS rồi khởi động lại dịch vụ.
+1. ~~`CHUA_DAT_MAT_KHAU` từ mức Lưu ý lên **CHẶN**.~~ Mã này đã biến mất cùng với đăng nhập —
+   xem **D-39**. Chính cái vòng khoá kín mô tả ở đây (không đặt nổi mật khẩu từ trang cần mật khẩu)
+   là thứ làm lần cài thật tắc ở bước 1.
 2. `magic` biến khỏi đường tạo agent: EA **ghi đè** nó ở lần bắt tay đầu, và không chỗ nào trong
    Bridge so magic giữa các agent. Hỏi con số này không mua được gì.
 3. Khoá hệ thống, `config.toml` và Đặt lại gom vào mục **Nâng cao** đóng sẵn — một bản cài bình
@@ -770,3 +764,39 @@ trong `asyncio.to_thread` (sqlite3 chỉ dùng được trong đúng luồng đ�
 trên vòng sự kiện, chỉ phần ghi file mới đẩy sang luồng khác); và vẽ khối token **trước** khi gọi
 `taiCauHinh()`, mà hàm đó dựng lại cả tab — token hiện đúng một lần rồi bị chính mình xoá sau một
 nhịp.
+
+### D-39 — Dashboard không còn đăng nhập; đổi lại, nó chỉ được nghe loopback
+
+Ngày 2026-09-22, chạy thử tài liệu trên VPS: **bước 1** của tab Hướng dẫn — cấp lại token cho EA —
+không bấm được. Nút không hiện token nào. Nguyên nhân là một vòng khoá kín:
+
+* `cai-dat.ps1` sinh một mật khẩu ngẫu nhiên lúc cài và in ra **đúng một lần**. Không chép lại ngay
+  thì mất luôn đường vào.
+* Không đăng nhập được thì **mọi** endpoint ghi trả 403 (D-32 mục `_chan_ghi`), kể cả
+  `/api/file_config` — tức **không đặt nổi mật khẩu từ chính trang đó**.
+* Bước "Đặt mật khẩu dashboard" lại nằm ở vị trí **7** trong danh sách chín việc, sau bước 1 vốn
+  cần nó. Thứ tự ấy không bao giờ chạy được.
+
+Ba lớp đều hợp lý một mình, và cộng lại thành một bản cài không làm gì được. Đó là dấu hiệu của một
+cơ chế sai chỗ, không phải ba lỗi nhỏ.
+
+**Quyết định: gỡ hẳn đăng nhập.** Không còn `/login`, không còn cookie phiên, không còn
+`security.dashboard_password`, không còn `_chan` / `_chan_ghi` / `_chan_cap_token`. Ai mở được
+`http://127.0.0.1:8080` là dùng được mọi thứ trên trang.
+
+**Đổi lại — và đây là phần không được bỏ:** `bridge.host` giờ **bắt buộc** là loopback.
+`parse_config` từ chối khởi động với bất kỳ địa chỉ nào khác. Trước đây phép kiểm này đòi mật khẩu
+khi nghe ra ngoài; nay không còn mật khẩu nào để đòi, nên câu trả lời duy nhất còn lại là không mở
+ra ngoài. Kiểm toán 2026-09-06 gọi thẳng `/api/emergency` không cookie và nó đóng 3 cặp (F-02) —
+endpoint đó đã gỡ (D-33), nhưng bài học thì không: một bảng điều khiển không khoá trên một
+interface công khai là một sự cố đang chờ xảy ra. Muốn xem từ máy khác thì Tailscale hoặc SSH
+tunnel, không phải mở cổng.
+
+**Cái giá, nói thẳng:** ai vào được VPS là đổi được chiều copy, hệ số volume, đường mở/đóng, và cấp
+lại được token agent. Trên máy này ranh giới an toàn **là** ranh giới của phiên RDP, không hơn. Đó
+là một đánh đổi có ý thức cho một VPS một người vận hành, không phải một mặc định để nhân bản.
+
+**D-32 và D-38 bị sửa theo:** hai đoạn nói "mọi endpoint sửa cấu hình đều đòi dashboard có mật
+khẩu" và "cấp token bị chặn khi không có mật khẩu" không còn đúng. Bước `LD_MAT_KHAU` biến khỏi
+danh sách Cài đặt lần đầu — còn **tám** việc — và mã chặn `CHUA_DAT_MAT_KHAU` biến khỏi
+`viec_can_lam`. Số ô phải điền tay trên trang Cấu hình xuống **0**.

@@ -52,8 +52,8 @@ class ConfigError(Exception):
 class BridgeSection:
     """Mục ``[bridge]`` trong ``config.toml``."""
 
-    #: Mac dinh chi nghe loopback. Mo ra ngoai la mot quyet dinh phai co y thuc, va khi do
-    #: `parse_config` bat buoc phai co `dashboard_password` (F-02).
+    #: CHI nghe loopback duoc. Dashboard khong con xac thuc (bo dang nhap 2026-09-22), nen mo
+    #: ra ngoai la mo mot bang dieu khien khong khoa cho ca mang -- `parse_config` tu choi.
     host: str = "127.0.0.1"
     port: int = 8787
     web_port: int = 8080
@@ -64,7 +64,7 @@ class SecretSection(Mapping[str, Any]):
     """Mục ``[security]`` — bọc lại để giá trị không bao giờ lọt ra log.
 
     ``repr()`` và ``str()`` chỉ cho biết có bao nhiêu khoá, không cho biết nội dung.
-    Muốn lấy giá trị thì phải gọi tường minh, ví dụ ``config.security["dashboard_password"]``.
+    Muốn lấy giá trị thì phải gọi tường minh, ví dụ ``config.security["telegram_token"]``.
     """
 
     __slots__ = ("_data",)
@@ -149,7 +149,7 @@ def _require_port(value: Any, field: str) -> int:
     return value
 
 
-#: Địa chỉ chỉ máy này chạm được. Nghe ngoài phạm vi này thì bắt buộc phải có mật khẩu.
+#: Địa chỉ chỉ máy này chạm được. Nghe ngoài phạm vi này thì Bridge từ chối khởi động.
 LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
@@ -180,18 +180,20 @@ def parse_config(raw: Mapping[str, Any], source_path: Path, project_root: Path) 
     if not isinstance(security_raw, Mapping):
         raise ConfigError("Mục [security] phải là một bảng TOML")
 
-    # Không mật khẩu thì `Dashboard.hop_le()` cho qua MỌI request, kể cả không cookie — đó là
-    # lựa chọn có ý thức khi chỉ nghe loopback. Nhưng mặc định cũ là `host = "0.0.0.0"` cộng mật
-    # khẩu rỗng, tức làm đúng theo RUNBOOK sẽ ra một dashboard không khoá. Kiểm toán 2026-09-06
-    # gọi thẳng `/api/emergency` không cookie và nó đóng 3 cặp (F-02). Endpoint đó nay đã gỡ
-    # (D-33), nhưng `run_mode` và mọi nút Lưu cấu hình vẫn nằm sau cùng một cánh cửa.
-    if not _la_loopback(host) and not str(security_raw.get("dashboard_password") or "").strip():
+    # Dashboard KHONG con xac thuc: dang nhap da bi bo (2026-09-22), nen moi nut Luu, moi lan
+    # cap lai token va `run_mode` deu mo cho bat ky ai cham duoc toi cong web. Truoc day phep kiem
+    # nay doi mat khau khi nghe ra ngoai loopback; gio khong con mat khau nao de doi, nen cau tra
+    # loi duy nhat con lai la KHONG mo ra ngoai.
+    #
+    # Kiem toan 2026-09-06 goi thang `/api/emergency` khong cookie va no dong 3 cap (F-02).
+    # Endpoint do da go (D-33), nhung bai hoc thi khong: mot bang dieu khien khong khoa tren mot
+    # interface cong khai la mot su co dang cho xay ra.
+    if not _la_loopback(host):
         raise ConfigError(
-            f"bridge.host = {host!r} nghe tren moi interface nhung "
-            "security.dashboard_password de trong, nghia la dashboard KHONG co xac thuc: ai "
-            "cham duoc toi cong web deu bam duoc nut dong khan cap va doi duoc run_mode. "
-            "Sua mot trong hai: dat security.dashboard_password, hoac doi bridge.host thanh "
-            "127.0.0.1"
+            f"bridge.host = {host!r} nghe ngoai loopback, ma dashboard KHONG con xac thuc: ai "
+            "cham duoc toi cong web deu doi duoc chieu copy, he so volume va cap lai duoc token "
+            "agent. Doi bridge.host thanh 127.0.0.1. Muon xem tu may khac thi dung Tailscale hoac "
+            "mot SSH tunnel -- dung mo cong nay ra mang."
         )
 
     clickers: dict[str, SecretSection] = {}
@@ -264,7 +266,6 @@ KHOA_FILE_SUA_DUOC: dict[str, tuple[str, bool]] = {
     "bridge.host": ("str", False),
     "bridge.port": ("int", False),
     "bridge.web_port": ("int", False),
-    "security.dashboard_password": ("str", True),
     "security.telegram_token": ("str", True),
     "security.telegram_chat_id": ("str", False),
     "clicker.token": ("str", True),

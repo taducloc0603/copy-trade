@@ -110,8 +110,7 @@ async def run() -> int:
 
     # Dashboard chạy trong cùng tiến trình: nó đọc thẳng SQLite cục bộ và gọi API của tầng
     # engine, nên không cần tiến trình riêng và không có đường nào để hai bên lệch trạng thái.
-    dashboard = Dashboard(db, password=config.security.get("dashboard_password"),
-                          processor=processor, server=server, config=config)
+    dashboard = Dashboard(db, processor=processor, server=server, config=config)
     web = uvicorn.Server(uvicorn.Config(
         tao_app(dashboard), host=config.bridge.host, port=config.bridge.web_port,
         log_level="warning", access_log=False))

@@ -3435,3 +3435,49 @@ cua ve phai nen vo hai, va bat ca chung thi test keu oan, ma mot test keu oan se
 Kiem hai chieu: bo `@()` o mot cho -> test do dung dong do.
 
 959 test xanh (+1).
+
+## Bo han dang nhap khoi dashboard (2026-09-22)
+
+Chay thu tai lieu tren VPS tac ngay o BUOC 1 cua tab Huong dan: bam "Cap lai token" thi khong co
+token nao hien ra. Khong phai loi cua cai nut -- la mot vong khoa kin:
+
+* `cai-dat.ps1` sinh mot mat khau ngau nhien luc cai va in ra DUNG MOT LAN. Khong chep lai ngay thi
+  mat luon duong vao trang.
+* Khong dang nhap duoc thi MOI endpoint ghi tra 403, ke ca `/api/file_config` -- tuc khong dat noi
+  mat khau tu chinh trang can mat khau.
+* Buoc "Dat mat khau dashboard" lai nam o vi tri 7 trong danh sach chin viec, SAU buoc 1 von can no.
+
+Ba lop deu hop ly mot minh. Cong lai thanh mot ban cai khong lam gi duoc, va thu tu ay khong bao gio
+chay duoc. Do la dau hieu cua mot co che sai cho, khong phai ba loi nho -- nen go han, chu khong va.
+
+Da go: `/login`, cookie phien, `security.dashboard_password`, `_chan` / `_chan_ghi` /
+`_chan_cap_token`, `Dashboard.password/sessions/can_dang_nhap/kiem_tra/hop_le`, `MAN_HINH` va ca
+duong mang tab dich qua trang dang nhap (`9d863d0` -- khong con trang nao de mang qua). 26 endpoint
+bo tham so `sid`. Buoc `LD_MAT_KHAU` bien khoi danh sach: con TAM viec. So o phai dien tay tren trang
+Cau hinh: 1 -> 0.
+
+**Doi lai, va day la phan khong duoc bo:** `bridge.host` gio BAT BUOC la loopback. Truoc day phep
+kiem F-02 doi mat khau khi nghe ra ngoai; gio khong con mat khau nao de doi, nen cau tra loi duy
+nhat con lai la khong mo ra ngoai. Khong xoa phep kiem -- doi y nghia cua no. Kiem toan 2026-09-06
+goi thang `/api/emergency` khong cookie va no dong 3 cap; endpoint do da go (D-33) nhung bai hoc thi
+khong.
+
+Cai gia, noi thang trong D-39: ai vao duoc VPS la doi duoc chieu copy, he so volume va cap lai duoc
+token agent. Ranh gioi an toan gio LA ranh gioi cua phien RDP, khong hon.
+
+**Hai cho de sai ma test khong bat:**
+
+1. Thu tu trong script va: sua `MAU_FILE_CONFIG` truoc khi xoa cac test con chua chuoi do -> `thay()`
+   dem ra ba cho roi dung. Xoa het truoc, thay chu sau.
+2. Ba test van DAU nhung vi LY DO SAI sau khi bo khoa: `test_gia_tri_co_dau_nhay_bi_tu_choi` thu tren
+   `security.dashboard_password`, ma khoa do gio la "khoa la" nen bi tu choi truoc khi tham chi kiem
+   toi dau nhay. Doi sang `security.telegram_token`. Mot test dau vi ly do khac voi ly do no duoc
+   viet ra la mot test da chet ma khong ai biet.
+
+Kiem chung ngoai pytest: dung lai dung canh da tac (config.toml KHONG co mat khau, ban cai moi) va
+goi that qua ASGI -- `GET /` 200 khong chuyen huong, `GET /login` 404, `POST .../token` 200 co token,
+`system_config` va `file_config` deu 200, `dashboard_password` khong con trong danh sach khoa, danh
+sach lan dau con 8 buoc khong co `LD_MAT_KHAU`. Va sau phep kiem host: ba dia chi ngoai loopback bi
+tu choi kem duong sua, ba dia chi loopback chay duoc.
+
+907 test xanh (-52: xoa cac test chi ton tai vi dang nhap), ruff sach.

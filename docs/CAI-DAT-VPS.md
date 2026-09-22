@@ -84,7 +84,7 @@ Dòng đầu phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không có `(
 một bản script cũ — tải lại.
 
 Nó làm liền một mạch: cài Python 3.12 + git nếu thiếu → clone vào `C:\CopyBridge` → dựng `.venv`,
-cài gói → tạo `config.toml` (**mật khẩu dashboard ngẫu nhiên, in ra một lần — chép ngay**) → khởi
+cài gói → tạo `config.toml` → khởi
 tạo database → chạy bộ test → tạo agent, ghi token clicker vào `config.toml` → tạo `CL-01` với
 đường mở/đóng qua giao diện → đăng ký dịch vụ `CopyBridge` và các Scheduled Task → biên dịch EA →
 **mở dashboard trong trình duyệt**.
@@ -103,7 +103,7 @@ Chạy lại bao nhiêu lần cũng được — bước nào xong rồi in `BO 
 
 ## A2. Ba việc còn lại — làm trên trình duyệt và trong MT5
 
-Trình duyệt vừa mở ở `http://127.0.0.1:8080/#huong-dan` (mật khẩu in ra ở A1) — tab **Hướng dẫn**,
+Trình duyệt vừa mở ở `http://127.0.0.1:8080/#huong-dan` (không cần đăng nhập — D-39) — tab **Hướng dẫn**,
 mục **Cài đặt lần đầu**. Đó là danh sách chính thức: **chín bước, theo đúng thứ tự**, mỗi bước tự
 biết đã xong chưa, và bước nào dashboard không thấy được (gắn EA lên chart, mở Toolbox) thì có ô
 để bạn tự tích. Phần dưới đây là cùng nội dung, viết dài hơn để đọc trước khi bắt tay.
@@ -367,7 +367,7 @@ làm tương tự với `AG-MASTER` và `AG-CLICKER-MASTER`. Token giữ nguyên
 
 Token nằm trong database (dạng hash) và `config.toml`, nên chép đủ hai thứ này thì EA và clicker
 dùng lại được token cũ. Mất token EA thì cấp lại trên dashboard (tab Cấu hình → Agent → *Cấp lại
-token*, chỉ dùng được khi dashboard có mật khẩu) hoặc bằng `bridge.admin cap-token`, rồi dán lại
+token*) hoặc bằng `bridge.admin cap-token`, rồi dán lại
 vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao lưu — không phải khai lại.
 
 ## B6. Thêm Client thứ hai, tắt hoặc xoá Client đang có
@@ -461,7 +461,7 @@ Script làm, theo đúng thứ tự này:
 | Giết **wrapper** `chay-clicker.ps1` trước, rồi mới tới `-m bridge` / `-m clicker` | Ngược thứ tự thì vòng tự bật lại của wrapper mở ngay một clicker mới. Wrapper cũng là thứ giữ `logs\clicker-wrapper.log` **và** giữ cả thư mục cài (nó `Set-Location` vào đó), nên bỏ sót nó là bước xoá thư mục thất bại |
 | Clicker còn sống thì vẫn **bấm vào cửa sổ MT5** và còn giữ mutex `Global\CopyBridgeClicker-<mục>` | Bản cài mới sẽ thoát **mã 3** ("đã có clicker khác") mà không ai hiểu vì sao |
 | Xoá `CopyBridge*.ex5` và `MQL5\Files\copybridge\` của từng terminal | Thư mục đó giữ `<login>_state.json`, `_outbox.ndjson`, `_commands.ndjson`. Bỏ sót là bản cài mới đọc lại outbox của hệ thống cũ |
-| Xoá `config.toml`, mọi `config.toml.bak-*`, `config.toml.tam` **trước** thư mục | Chúng là **bản rõ** của mật khẩu dashboard và token clicker. Xoá trước thì nếu bước cuối thất bại, bí mật vẫn đã đi rồi |
+| Xoá `config.toml`, mọi `config.toml.bak-*`, `config.toml.tam` **trước** thư mục | Chúng là **bản rõ** của token clicker. Xoá trước thì nếu bước cuối thất bại, bí mật vẫn đã đi rồi |
 | Xoá `Desktop\cai-dat.ps1` và bộ cài trong `%TEMP%` | Bản `cai-dat.ps1` cũ trên Desktop đúng là cái bẫy mục A1 phải cảnh báo |
 | Xoá cả `C:\CopyBridge` | Thất bại thì script nói **còn lại gì** (vỏ rỗng, hay còn file — và có còn `config.toml` không), ai đang giữ, và in đúng câu lệnh chạy tay. **Không** báo thành công |
 
@@ -520,7 +520,7 @@ Hai cách nhẹ hơn, không gỡ gì:
   ```
 
   Đây **không phải** cách gỡ an toàn: thư mục cũ vẫn giữ `config.toml` và các bản
-  `config.toml.bak-*`, tức bản rõ của mật khẩu và token, cùng tiến trình clicker đang chạy.
+  `config.toml.bak-*`, tức bản rõ của token clicker, cùng tiến trình clicker đang chạy.
 
 ---
 
@@ -534,7 +534,7 @@ cd C:\CopyBridge
 ```
 
 Mục cuối là `tinh-hinh` — cách duy nhất biết chuyện đã xảy ra (không có kênh cảnh báo ngoài).
-Dashboard: `http://127.0.0.1:8080` (chỉ mở được trong VPS; mật khẩu trong `config.toml`).
+Dashboard: `http://127.0.0.1:8080` (chỉ mở được **trong** VPS, không có đăng nhập — D-39).
 
 **Sau mỗi lần VPS hoặc Bridge khởi động lại** — Bridge luôn về `PAUSED` (D-15), có chủ đích:
 
@@ -591,7 +591,7 @@ nào chưa xong. Database được **sao lưu trước khi xoá** (`data\backup\
 
 **Cấu hình nằm ở đâu:** cấu hình *nghiệp vụ* (agent, client, ánh xạ symbol, khoá hệ thống) nằm
 trong database — sửa trên dashboard là có hiệu lực ngay. `config.toml` giữ thứ cần **trước khi**
-Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker. Dashboard cũng sửa được các
+Bridge chạy: cổng, đường dẫn DB, token clicker. Dashboard cũng sửa được các
 khoá này, nhưng giá trị mới chỉ có hiệu lực **sau khi khởi động lại dịch vụ**:
 `.\scripts\khoi-dong-lai.ps1`. Giá trị bí mật không bao giờ hiện lại trên màn hình — ô để trống
 nghĩa là giữ nguyên (D-32).
@@ -599,7 +599,7 @@ nghĩa là giữ nguyên (D-32).
 Nội dung mới được kiểm bằng đúng phép kiểm của lần khởi động **trước khi** ghi, nên một giá trị
 sai bị từ chối và file cũ không hề bị đụng tới — không cần sửa tay sau một lần bị từ chối. Mỗi lần
 lưu để lại `config.toml.bak-<ngày-giờ>` cạnh file gốc và chỉ giữ **5 bản gần nhất**; đó là bản rõ
-của mật khẩu và token nên đừng chép chúng đi đâu.
+của token clicker nên đừng chép chúng đi đâu.
 
 **Một khoá còn sót trong `config.toml` sẽ đè giá trị khai trên dashboard** (thứ tự: dòng lệnh >
 `config.toml` > Bridge). Bản cài cũ thường còn `account_login` và `terminal_title` trong mục

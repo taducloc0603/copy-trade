@@ -109,36 +109,26 @@ def test_secret_section_khong_lo_gia_tri_qua_repr() -> None:
     assert sorted(secrets) == ["password", "token"]
 
 
-# -- F-02: khong duoc phoi dashboard ra ngoai ma khong co mat khau ------------------------------
+# -- F-02: dashboard khong con xac thuc, nen chi duoc nghe loopback ----------------------------
 
-def test_nghe_moi_interface_ma_khong_mat_khau_thi_tu_choi_khoi_dong(tmp_path: Path) -> None:
-    """Kiểm toán 2026-09-06 gọi `/api/emergency` không cookie và nó đóng 3 cặp (đường đó nay đã
-    gỡ — D-33 — nhưng lý do bắt buộc mật khẩu thì không đổi).
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.10", "::"])
+def test_nghe_ngoai_loopback_thi_tu_choi_khoi_dong(host: str, tmp_path: Path) -> None:
+    """Đăng nhập đã bị bỏ (2026-09-22), nên không còn gì khoá dashboard ngoài chính địa chỉ nghe.
 
-    Cơ chế "không mật khẩu thì không bắt đăng nhập" là có chủ đích và giữ nguyên; thứ phải chặn
-    là **tổ hợp** nghe ra ngoài + không mật khẩu.
+    Trước đây phép kiểm này đòi mật khẩu khi nghe ra ngoài loopback — kiểm toán 2026-09-06 gọi
+    `/api/emergency` không cookie và nó đóng 3 cặp (F-02). Giờ không còn mật khẩu nào để đòi, nên
+    câu trả lời duy nhất còn lại là **không mở ra ngoài**: một bảng điều khiển không khoá trên một
+    interface công khai là một sự cố đang chờ xảy ra.
     """
     with pytest.raises(ConfigError) as loi:
-        _parse({"bridge": {"host": "0.0.0.0"}}, tmp_path)
-    # Thong bao phai chi ra ca hai duong sua, khong chi bao "sai".
-    assert "dashboard_password" in str(loi.value) and "127.0.0.1" in str(loi.value)
-
-
-def test_nghe_moi_interface_co_mat_khau_thi_chay_duoc(tmp_path: Path) -> None:
-    cfg = _parse({"bridge": {"host": "0.0.0.0"},
-                  "security": {"dashboard_password": "mot-mat-khau-that"}}, tmp_path)
-    assert cfg.bridge.host == "0.0.0.0"
+        _parse({"bridge": {"host": host}}, tmp_path)
+    # Thong bao phai chi ra duong sua, khong chi bao "sai".
+    assert "127.0.0.1" in str(loi.value)
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", "  127.0.0.1  "])
-def test_loopback_thi_khong_bat_buoc_mat_khau(host: str, tmp_path: Path) -> None:
+def test_loopback_thi_chay_duoc(host: str, tmp_path: Path) -> None:
     assert _parse({"bridge": {"host": host}}, tmp_path) is not None
-
-
-def test_mat_khau_toan_khoang_trang_khong_tinh_la_co(tmp_path: Path) -> None:
-    with pytest.raises(ConfigError):
-        _parse({"bridge": {"host": "0.0.0.0"}, "security": {"dashboard_password": "   "}},
-               tmp_path)
 
 
 def test_muc_clicker_doc_duoc_va_khong_lot_ra_repr(tmp_path: Path) -> None:
@@ -245,12 +235,11 @@ def test_gia_tri_sai_thi_khong_cham_vao_file(tmp_path: Path) -> None:
     assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
 
 
-def test_mo_host_ra_ngoai_ma_khong_co_mat_khau_bi_tu_choi(tmp_path: Path) -> None:
+def test_mo_host_ra_ngoai_bi_tu_choi(tmp_path: Path) -> None:
     """Đúng phép kiểm F-02, chạy ở đây chứ không đợi tới lần khởi động sau."""
     duong_dan = _config(tmp_path)
     with pytest.raises(ConfigError):
-        sua_config_toml(duong_dan, {"bridge.host": "0.0.0.0", "security.dashboard_password": ""},
-                        project_root=tmp_path)
+        sua_config_toml(duong_dan, {"bridge.host": "0.0.0.0"}, project_root=tmp_path)
     assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
 
 
@@ -280,7 +269,7 @@ def test_them_token_cho_clicker_moi_tao_muc_moi_va_van_parse_duoc(tmp_path: Path
 def test_gia_tri_co_dau_nhay_bi_tu_choi_thay_vi_ghi_ra_toml_sai(tmp_path: Path) -> None:
     duong_dan = _config(tmp_path)
     with pytest.raises(ConfigError):
-        sua_config_toml(duong_dan, {"security.dashboard_password": 'co"nhay'},
+        sua_config_toml(duong_dan, {"security.telegram_token": 'co"nhay'},
                         project_root=tmp_path)
     assert duong_dan.read_text(encoding="utf-8") == MAU_CONFIG
 
