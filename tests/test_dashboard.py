@@ -1119,3 +1119,33 @@ def test_ghi_cau_hinh_ve_lai_tab_TRUOC_khi_goi_sauKhiXong(project_root) -> None:
     assert than.index("taiCauHinh()") < than.index("sauKhiXong(r.data)"), (
         "ghiCauHinh goi sauKhiXong TRUOC taiCauHinh(): moi thu no ve ra se bi xoa ngay sau do"
     )
+
+
+def test_moi_hanh_dong_cua_buoc_deu_duoc_JS_xu_ly(project_root, seeded_web: Database) -> None:
+    """Mã hành động khai trong `views.Buoc` phải có nhánh xử lý trong `app.js`.
+
+    Hai bên nối nhau bằng một chuỗi, không bằng kiểu — nên gõ sai hay đổi tên một bên là nút hiện
+    ra mà bấm không làm gì, **im lặng**. Đúng loại hỏng đắt nhất: người dùng bấm, không thấy gì,
+    rồi bấm lại.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    ma = {h for b in views.BUOC_LAN_DAU + views.BUOC_SAU_UPDATE for h in b.hanh_dong}
+    assert ma, "khong buoc nao co hanh dong -- bang khai bao co dung khong?"
+    for h in sorted(ma):
+        assert f'"{h}"' in js, f"app.js khong xu ly hanh dong {h}"
+
+
+def test_doi_che_do_tu_ve_lai_chu_khong_cho_websocket(project_root) -> None:
+    """`doiCheDo` phải kiểm kết quả POST **và** tự vẽ lại, không chờ WebSocket.
+
+    Bản cũ bắn POST rồi quên luôn: nhãn trạng thái chỉ đổi khi WebSocket đẩy bản chụp kế tiếp. Nên
+    WebSocket chết là bấm nút không thấy gì xảy ra — mà một POST thất bại **cũng** không thấy gì
+    xảy ra. Hai chuyện khác hẳn nhau trong cùng một vẻ im lặng, và người dùng báo đúng triệu chứng
+    đó ngày 2026-09-22.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("async function doiCheDo(")
+    than = js[dau:js.index("\n}\n", dau)]
+    assert "if (!r.ok)" in than, "doiCheDo khong kiem ket qua POST"
+    assert "alert(" in than, "doiCheDo that bai trong im lang"
+    assert "/api/snapshot" in than, "doiCheDo khong tu ve lai, van cho WebSocket"

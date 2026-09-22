@@ -315,30 +315,50 @@ async function ghiCauHinh(duong, than, sauKhiXong) {
   return true;
 }
 
-function hienToken(el, token) {
-  const box = document.createElement("div");
-  box.className = "khoi-cau-hinh token-moi";
-  const pre = document.createElement("pre");
-  pre.textContent = token;
-  pre.className = "lenh";
-  pre.title = UI.token_bam_chon;
-  pre.onclick = () => {
+// Token hien trong mot <dialog>, khong phai mot khoi chen vao trang. Ba ly do, va ly do thu ba
+// moi la ly do that:
+//   1. No la thu PHAI chep xong moi di tiep, nen no nen chan duong di cho toi luc do.
+//   2. Bam o dau trang Huong dan thi khoi token o cuoi tab Cau hinh khong ai nhin thay.
+//   3. Mot khoi chen vao DOM thi bat cu lan ve lai nao cung xoa mat no -- da xay ra HAI lan.
+//      Mot <dialog> khong nam trong vung duoc ve lai, nen no khong the bi xoa nham nua.
+function hienToken(agentId, token) {
+  dat("token-tieu-de", (UI.token_tieu_de || "").replace("{agent_id}", agentId));
+  dat("token-canh-bao", UI.token_once);
+  dat("token-chep", UI.token_chep);
+  dat("token-dong", UI.btn_close);
+  const o = $("token-gia-tri");
+  o.textContent = token;
+  o.title = UI.token_bam_chon;
+  const chonHet = () => {
     const r = document.createRange();
-    r.selectNodeContents(pre);
+    r.selectNodeContents(o);
     window.getSelection().removeAllRanges();
     window.getSelection().addRange(r);
   };
-  const dong = nut(UI.btn_close);
-  dong.onclick = () => box.remove();
-  box.append(nhan(UI.token_once, "canh-bao-nho"), pre, dong);
-  el.prepend(box);
+  o.onclick = chonHet;
+  $("token-chep").onclick = async () => {
+    // 127.0.0.1 la secure context nen Clipboard API dung duoc. Van boi san lam duong lui: quyen
+    // clipboard co the bi chinh sach trinh duyet chan, va luc do im lang la te nhat.
+    chonHet();
+    try {
+      await navigator.clipboard.writeText(token);
+      dat("token-chep", UI.token_da_chep);
+    } catch (e) {
+      document.execCommand && document.execCommand("copy");
+    }
+  };
+  $("token-dong").onclick = () => $("hop-token").close();
+  $("hop-token").showModal();
 }
 
 // Moi khoi la mot vung LUU RIENG. Dung chung ham nay de khong khoi nao quen vien hay tieu de --
 // nhin nham ranh gioi la sua o khoi nay roi bam nut cua khoi kia.
-function khoi(nhanTieuDe) {
+// `id` de trang Huong dan nhay thang toi dung khoi. Khong bat buoc: phan lon khoi khong phai
+// dich cua mot buoc nao.
+function khoi(nhanTieuDe, id) {
   const box = document.createElement("div");
   box.className = "khoi-cau-hinh";
+  if (id) box.id = id;
   box.appendChild(tieuDe(nhanTieuDe));
   return box;
 }
@@ -353,7 +373,7 @@ function chanKhoi(nutLuu, ghiChu) {
 }
 
 function khoiAgent(el) {
-  const box = khoi(UI.agent_title);
+  const box = khoi(UI.agent_title, "khoi-agent");
   const bang = document.createElement("table");
   const dau = bang.createTHead().insertRow();
   for (const h of ["agent_id", UI.agent_role, UI.agent_login, UI.agent_terminal,
@@ -394,7 +414,7 @@ function khoiAgent(el) {
     b.onclick = async () => {
       if (!(await hoiXacNhan(UI.confirm_new_token, null))) return;
       await ghiCauHinh("/api/agent/" + encodeURIComponent(a.agent_id) + "/token", {},
-                       (d) => hienToken(el, d.token));
+                       (d) => hienToken(a.agent_id, d.token));
     };
     tr.insertCell().appendChild(b);
   }
@@ -435,8 +455,10 @@ function khoiCanLam(el) {
 }
 
 function khoiClient(el) {
+  let dau = true;
   for (const c of CAU_HINH.clients) {
-    const box = khoi(UI.cfg_client_title + " " + c.client_id);
+    const box = khoi(UI.cfg_client_title + " " + c.client_id, dau ? "khoi-client" : null);
+    dau = false;
     // "Master dong thi Client dong" hien dang CHU, khong phai nut gat: FR-13 noi day la chuc
     // nang bat buoc, va thu khong duoc phep tat thi khong nen trong giong thu tat duoc.
     box.appendChild(nhan(UI.cfg_master_close_always, "canh-bao-nho"));
@@ -580,7 +602,7 @@ function khoiMaster(el) {
 }
 
 function khoiAnhXa(el) {
-  const box = khoi(UI.map_title);
+  const box = khoi(UI.map_title, "khoi-anh-xa");
   for (const x of CAU_HINH.symbol_maps) {
     const d = document.createElement("div");
     d.className = "dong-sai-lech";
@@ -724,7 +746,7 @@ function khoiDatLai(el) {
 
 function khoiFileConfig(el) {
   if (!CAU_HINH.file_config.length) return;
-  const box = khoi(UI.cfg_file_title);
+  const box = khoi(UI.cfg_file_title, "khoi-file-config");
   box.appendChild(nhan(UI.cfg_file_restart, "canh-bao-nho"));
 
   const o = {};
@@ -874,6 +896,10 @@ function dongBuoc(b) {
   }
 
   li.appendChild(chiTietBuoc(b));
+  if (b.tu_kiem) li.appendChild(veKiemLai(b));
+  if (KET_QUA_KIEM && KET_QUA_KIEM.ma === b.ma) {
+    li.appendChild(nhan(KET_QUA_KIEM.chu, "ket-qua-kiem"));
+  }
   return li;
 }
 
@@ -890,6 +916,75 @@ function khoiLenh(lenh) {
     window.getSelection().addRange(r);
   };
   return ma;
+}
+
+// Cac nut LAM NGAY cua mot buoc. Truoc day moi buoc chi noi "sang tab Cau hinh > khoi Agent",
+// nen nguoi dung doc o mot trang roi di lam o mot trang khac, va phai tu nho minh dang o buoc may.
+//
+// Hai loai nut, va chung khac nhau ve ban chat: `CAP_TOKEN_EA` / `BAT_COPY` lam luon tai cho;
+// `KHOI_*` nhay toi dung khoi o tab Cau hinh roi lam noi no len. KHONG nhung lai form cua khoi do
+// vao day: hai ban cua cung mot form la hai ban se lech nhau.
+function veHanhDong(b) {
+  if (!b.hanh_dong || !b.hanh_dong.length) return null;
+  const hop = document.createElement("div");
+  hop.className = "buoc-hanh-dong";
+  hop.appendChild(nhan(UI.hd_nhan_hanh_dong + ":", "nhan-nho"));
+  let co = false;
+  for (const ma of b.hanh_dong) {
+    if (ma === "CAP_TOKEN_EA") {
+      for (const ag of (HUONG_DAN.agent_ea || [])) {
+        const n = nut((UI.hd_hd_cap_token || "").replace("{agent_id}", ag));
+        n.onclick = async () => {
+          if (!(await hoiXacNhan(UI.confirm_new_token, null))) return;
+          const r = await goi("/api/agent/" + encodeURIComponent(ag) + "/token",
+                              { method: "POST", body: "{}" });
+          if (!r.ok) { alert(r.data.message || r.data.error || UI.loi_khong_ro); return; }
+          hienToken(ag, r.data.token);
+        };
+        hop.appendChild(n);
+        co = true;
+      }
+    } else if (ma === "BAT_COPY") {
+      const n = nut(UI.hd_hd_bat_copy, "chinh");
+      n.onclick = () => doiCheDo("RUNNING");
+      hop.appendChild(n);
+      co = true;
+    } else {
+      // Khoa de trong nhay: day la chuoi DI TREN DAY tu views.Buoc.hanh_dong, khong phai ten
+      // bien cuc bo. Viet tran thi no trong giong mot hang so JS va doi ten mot ben la hong im.
+      const khoi = { "KHOI_AGENT": ["khoi-agent", UI.hd_hd_khoi_agent],
+                     "KHOI_ANH_XA": ["khoi-anh-xa", UI.hd_hd_khoi_anh_xa],
+                     "KHOI_CLIENT": ["khoi-client", UI.hd_hd_khoi_client],
+                     "KHOI_FILE_CONFIG": ["khoi-file-config", UI.hd_hd_khoi_file_config] }[ma];
+      if (!khoi) continue;
+      const n = nut(khoi[1]);
+      n.onclick = () => moKhoiCauHinh(khoi[0]);
+      hop.appendChild(n);
+      co = true;
+    }
+  }
+  return co ? hop : null;
+}
+
+// Sang tab Cau hinh va cuon toi dung khoi, lam noi no len vai giay. Khong co buoc "lam noi len"
+// thi nhay toi mot trang dai van la bat nguoi dung tu tim.
+async function moKhoiCauHinh(idKhoi) {
+  const tab = document.querySelector('.tab[data-man="cau-hinh"]');
+  if (tab) moTab(tab);
+  await taiCauHinh();
+  const el = $(idKhoi);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("khoi-noi-bat");
+  setTimeout(() => el.classList.remove("khoi-noi-bat"), 2500);
+}
+
+// Nut "Kiem lai" cua mot buoc. Trang van tu cap nhat theo WebSocket, nhung "tu cap nhat luc nao
+// do" khong tra loi duoc cau hoi nguoi dung dang co trong dau: toi vua lam xong, da an chua?
+function veKiemLai(b) {
+  const n = nut(UI.hd_kiem_lai, "nut-kiem-lai");
+  n.onclick = async () => { await taiHuongDan(b.ma); };
+  return n;
 }
 
 // Phan chi tiet cua mot buoc: lam o dau, tung viec con theo thu tu, cach tu kiem, cai bay, va
@@ -917,6 +1012,8 @@ function chiTietBuoc(b) {
     hop.appendChild(ds);
   }
 
+  const nutLam = veHanhDong(b);
+  if (nutLam) hop.appendChild(nutLam);
   if (b.kiem) hop.appendChild(nhan(UI.hd_nhan_kiem + ": " + b.kiem, "buoc-kiem"));
   if (b.bay) hop.appendChild(nhan(UI.hd_nhan_bay + ": " + b.bay, "buoc-bay"));
   if (b.lenh) {
@@ -947,9 +1044,27 @@ function nhomHuongDan(n, moSan) {
   return hop;
 }
 
-async function taiHuongDan() {
+// Ban chup cua lan tai gan nhat: `veHanhDong` can `agent_ea` de ve nut "Cap token <agent>", va
+// no khong co duong nao khac de biet danh sach do.
+let HUONG_DAN = {};
+// Ket qua cua lan bam "Kiem lai" gan nhat, de ve lai mot dong ngay duoi dung buoc do.
+let KET_QUA_KIEM = null;
+
+async function taiHuongDan(maKiem) {
   const r = await goi("/api/huong_dan");
   if (!r.ok) return;
+  HUONG_DAN = r.data;
+  if (maKiem) {
+    const b = r.data.nhom.flatMap((n) => n.buoc).find((x) => x.ma === maKiem);
+    const gio = new Date().toLocaleTimeString("vi-VN");
+    let chu = "";
+    if (!b) chu = "";
+    else if (!b.tu_kiem) chu = (UI.hd_kiem_tu_tich || "").replace("{gio}", gio);
+    else if (b.trang_thai === "XONG") chu = (UI.hd_kiem_xong || "").replace("{gio}", gio);
+    else chu = (UI.hd_kiem_con_thieu || "").replace("{gio}", gio)
+                 .replace("{n}", String((b.thieu || []).length));
+    KET_QUA_KIEM = { ma: maKiem, chu: chu };
+  }
   UI = r.data.ui || UI;
   dat("tieu-de-huong-dan", UI.hd_title);
   const el = $("noi-dung-huong-dan");
@@ -988,6 +1103,25 @@ async function taiCauHinh() {
   khoiHeThong(nangCao);
   khoiFileConfig(nangCao);
   khoiDatLai(nangCao);
+}
+
+// `doiMode` PHAI doi ket qua va PHAI tu ve lai. Ban cu ban POST roi quen luon: nhan trang thai
+// chi doi khi WebSocket day ban chup ke tiep, nen WebSocket chet la bam nut khong thay gi xay
+// ra -- va mot POST that bai cung khong thay gi xay ra. Hai chuyen khac han nhau trong cung mot
+// ve im lang. Bat duoc khi chay thu tai lieu tren VPS 2026-09-22.
+async function doiCheDo(mode) {
+  const r = await goi("/api/run_mode", {
+    method: "POST", body: JSON.stringify({ mode: mode }) });
+  if (!r.ok) {
+    alert(r.data.message || r.data.error || UI.loi_khong_ro);
+    return false;
+  }
+  // Ve lai NGAY tu snapshot, khong cho WebSocket. Nut bam xong ma man hinh khong doi thi nguoi
+  // ta bam lai lan nua -- va voi mot nut doi che do, bam lai la mot hanh dong that.
+  const anh = await goi("/api/snapshot");
+  if (anh.ok) veTatCa(anh.data);
+  if (!$("huong-dan").classList.contains("an")) await taiHuongDan();
+  return true;
 }
 
 // -- vong day thoi gian thuc ------------------------------------------------------------------
@@ -1030,12 +1164,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   // o dau. Bat duoc bang Playwright, khong phai bang doc code.
   window.addEventListener("hashchange", tabTheoHash);
 
-  const doiMode = (mode) => goi("/api/run_mode", {
-    method: "POST", body: JSON.stringify({ mode: mode }) });
 
-  $("nut-pause-new").onclick = () => doiMode("PAUSE_NEW_ENTRIES");   // vo hai, hoan tac duoc
+
+  $("nut-pause-new").onclick = () => doiCheDo("PAUSE_NEW_ENTRIES");   // vo hai, hoan tac duoc
   $("nut-stop-sync").onclick = async () => {
-    if (await hoiXacNhan(UI.confirm_stop_sync, null)) doiMode("PAUSED");
+    if (await hoiXacNhan(UI.confirm_stop_sync, null)) doiCheDo("PAUSED");
   };
   // Cho bam ke ca khi con sai lech, nhung bat nhin thang vao cai minh dang bo lai.
   // Khoa nut thi nguoi ta se di tim cach lach.
@@ -1044,6 +1177,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       const loi = UI.confirm_resume_with_findings.replace("{n}", window.soSaiLech);
       if (!(await hoiXacNhan(loi, null))) return;
     }
-    doiMode("RUNNING");
+    doiCheDo("RUNNING");
   };
 });

@@ -3552,3 +3552,41 @@ lan thu dau tien ghi de `window.confirm` khong co tac dung va cho ra ket qua "va
 -- suyt ket luan nham la ban va khong an.
 
 913 test xanh (+1).
+
+## Lam ngay trong buoc, thay vi doc o day roi di lam o cho khac (2026-09-22)
+
+Bon viec, trong do mot la loi.
+
+**Nut Bat dau copy bam xong khong doi gi tren UI.** `doiMode` ban POST roi quen luon: nhan trang
+thai chi doi khi WebSocket day ban chup ke tiep. WebSocket chet la bam nut khong thay gi xay ra --
+va mot POST that bai CUNG khong thay gi xay ra. Hai chuyen khac han nhau trong cung mot ve im lang,
+va nguoi dung khong co cach nao phan biet. Gio `doiCheDo` kiem `r.ok`, bao loi neu hong, va tu ve
+lai tu `/api/snapshot` thay vi cho. Kiem bang trinh duyet voi WebSocket DANG CHET: nhan doi tu
+"Da dung" sang "Dang chay" ngay lap tuc -- do la bang chung ban va an, khong phai suy luan.
+
+**Token hien trong `<dialog>`.** Ly do thu ba moi la ly do that: mot khoi chen vao DOM thi bat cu
+lan ve lai nao cung xoa mat no, va chuyen do da xay ra HAI lan. Mot `<dialog>` khong nam trong vung
+duoc ve lai nen khong the bi xoa nham nua. Them nut Chep (Clipboard API -- 127.0.0.1 la secure
+context) voi duong lui boi san neu quyen bi chan.
+
+**Nut Lam ngay trong tung buoc.** Hai loai, khac nhau ve ban chat: `CAP_TOKEN_EA` / `BAT_COPY` lam
+luon tai cho, con `KHOI_*` nhay toi dung khoi o tab Cau hinh va lam noi no len. KHONG nhung lai form
+cua khoi do vao trang Huong dan: hai ban cua cung mot form la hai ban se lech nhau. Buoc Gan EA gio
+ve mot nut cho TUNG agent EA (`agent_ea` di kem payload), nen khong phai sang tab khac chi de lay
+mot chuoi.
+
+**Nut Kiem lai o tung buoc tu kiem.** Trang van tu cap nhat theo WebSocket, nhung "tu cap nhat luc
+nao do" khong tra loi duoc cau hoi dang co trong dau nguoi dung: toi vua lam xong, da an chua? Bam
+Kiem lai -> mot dong ngay duoi buoc: da xong, hoac con N viec.
+
+**Chu phai di theo nut.** Sau khi them nut, nam viec con van bao "Sang tab Cau hinh > khoi Agent"
+trong khi nut da nam ngay duoi. Sua chu -- neu khong thi chinh huong dan day nguoi dung di duong
+vong ma no vua bo.
+
+**Hai test khoa lai hai cho noi bang CHUOI, khong bang kieu:**
+- Moi ma trong `Buoc.hanh_dong` phai co nhanh xu ly trong `app.js`. Go sai mot ben la nut hien ra
+  ma bam khong lam gi, im lang. Test nay DO ngay lan dau: `app.js` viet khoa dang dinh danh tran
+  (`KHOI_AGENT:`) nen khong lo ra rang do la chuoi di tren day. Dong nhay lai.
+- `doiCheDo` phai kiem `r.ok`, phai `alert`, va phai tu goi `/api/snapshot`.
+
+915 test xanh (+2).

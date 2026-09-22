@@ -158,6 +158,23 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 .buoc-kiem  { margin: 4px 0; padding-left: 8px; border-left: 2px solid var(--xanh); }
 .buoc-bay   { margin: 4px 0; padding-left: 8px; border-left: 2px solid var(--cam); }
 
+/* Nut "Lam ngay" cua mot buoc: de nguoi dung lam tai cho thay vi doc o day roi di tim nut o tab
+   khac va tu nho minh dang o buoc may. */
+.buoc-hanh-dong { margin: 8px 0 4px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.buoc-hanh-dong .nhan-nho { width: 100%; }
+.buoc-hanh-dong button { font-size: 12px; padding: 4px 10px; }
+
+.nut-kiem-lai { margin-top: 6px; font-size: 12px; padding: 3px 10px; }
+.ket-qua-kiem { margin-top: 4px; font-size: 12px; color: var(--mo); }
+
+/* Nhay toi mot khoi ma khong lam no noi len thi van la bat nguoi dung tu tim tren mot trang dai. */
+.khoi-noi-bat { outline: 2px solid var(--lam); outline-offset: 2px; }
+
+/* Hop token: no la thu PHAI chep xong moi di tiep duoc, nen no chan duong di cho toi luc do. */
+#hop-token { min-width: 320px; max-width: 90vw; }
+#hop-token h3 { margin: 0 0 6px; }
+#hop-token pre { margin: 8px 0; white-space: pre-wrap; word-break: break-all; }
+
 /* Cau lenh de copy: nguoi dung dang o RDP nen bam-de-chon dang tin hon la boi bang chuot. */
 .ds-buoc .lenh {
   margin: 6px 0 0; padding: 8px 10px; background: var(--nen); border: 1px solid var(--vien);

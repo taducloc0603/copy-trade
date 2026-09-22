@@ -358,6 +358,23 @@ UI = {
     "hd_nhan_thieu": "Đang còn thiếu",
     "hd_nhan_lenh": "Đường dòng lệnh (bấm để chọn hết)",
 
+    # Nút làm ngay trong bước. Trước đây mỗi bước chỉ nói "sang tab Cấu hình > khối Agent", và
+    # người dùng phải đọc ở một trang rồi đi làm ở một trang khác, nhớ mình đang ở bước mấy.
+    "hd_nhan_hanh_dong": "Làm ngay",
+    "hd_hd_cap_token": "Cấp token cho {agent_id}",
+    "hd_hd_bat_copy": "Bắt đầu copy",
+    "hd_hd_khoi_agent": "Mở khối Agent",
+    "hd_hd_khoi_anh_xa": "Mở khối Ánh xạ symbol",
+    "hd_hd_khoi_client": "Mở khối Client",
+    "hd_hd_khoi_file_config": "Mở khối config.toml",
+
+    # Nút kiểm lại từng bước. Trang tự cập nhật theo WebSocket, nhưng "tự cập nhật lúc nào đó"
+    # không trả lời được câu hỏi người dùng đang có trong đầu: "tôi vừa làm xong, đã ăn chưa?"
+    "hd_kiem_lai": "Kiểm lại",
+    "hd_kiem_xong": "Kiểm lúc {gio}: đã xong.",
+    "hd_kiem_con_thieu": "Kiểm lúc {gio}: còn {n} việc — xem Đang còn thiếu ở trên.",
+    "hd_kiem_tu_tich": "Kiểm lúc {gio}: bước này Bridge không tự thấy được, bạn tự tích.",
+
     # -- Cài đặt lần đầu -----------------------------------------------------------------------
     "hd_ld_bien_dich": "Biên dịch hai EA thành .ex5 rồi chép vào MT5",
     "hd_ld_bien_dich_viec": (
@@ -378,15 +395,15 @@ UI = {
 
     "hd_ld_gan_ea": "Gắn EA lên chart và dán token, mỗi terminal đúng một chart",
     "hd_ld_gan_ea_viec": (
-        "Sang tab Cấu hình > khối Agent. Bấm Cấp lại token ở dòng AG-MASTER: token hiện ra MỘT "
-        "LẦN ngay trên trang, chép ngay và đừng đóng trang.",
+        "Bấm Cấp token cho AG-MASTER ở phần Làm ngay bên dưới. Token hiện ra trong một hộp "
+        "riêng: bấm Chép, hoặc bấm vào token để chọn hết. Nó chỉ hiện lần này.",
         "Trong MT5 của Master: mở đúng một chart của symbol bạn sẽ copy, rồi kéo CopyBridgeMaster "
         "từ Navigator lên chart đó.",
         "Hộp thoại mở ra, tab Inputs: AgentToken = token vừa chép, BridgeHost = 127.0.0.1, "
         "BridgePort = 8787. Bấm OK.",
         "Góc trên phải chart phải có mặt cười. Mặt buồn nghĩa là EA chưa chạy.",
-        "Về dashboard, Cấp lại token cho AG-CLIENT, rồi làm lại đúng các bước trên trong terminal "
-        "Client với CopyBridgeClient.",
+        "Về dashboard, bấm Cấp token cho AG-CLIENT, rồi làm lại đúng các bước trên trong "
+        "terminal Client với CopyBridgeClient.",
         "Terminal thứ ba, nếu bạn có mở thêm: KHÔNG gắn EA lên.",
     ),
     "hd_ld_gan_ea_kiem": ("Khối Agent hiện AG-MASTER và AG-CLIENT đều ONLINE. Hoặc chạy lệnh "
@@ -400,8 +417,8 @@ UI = {
     "hd_ld_khai_clicker_viec": (
         "Trong MT5 của Master, đọc thanh tiêu đề trên cùng của cửa sổ và chép nguyên văn. Nó "
         "thường có dạng: <số tài khoản> - <tên broker> - ...",
-        "Sang tab Cấu hình > khối Agent > dòng AG-CLICKER-MASTER: điền số tài khoản và tiêu đề "
-        "cửa sổ, rồi Lưu.",
+        "Bấm Mở khối Agent ở phần Làm ngay bên dưới, rồi ở dòng AG-CLICKER-MASTER: điền số tài "
+        "khoản và tiêu đề cửa sổ, rồi Lưu.",
         "Làm lại cho AG-CLICKER với tiêu đề của terminal Client.",
         "Chờ tới 70 giây rồi mới kết luận. Xem phần Bẫy hay gặp.",
     ),
@@ -441,7 +458,7 @@ UI = {
     "hd_ld_anh_xa_viec": (
         "Trong MT5 của Client: mở Market Watch (Ctrl+M) và kéo vào đó symbol bạn sẽ copy. Bridge "
         "chỉ thấy symbol nào đã có trong Market Watch.",
-        "Sang tab Cấu hình > khối Ánh xạ symbol.",
+        "Bấm Mở khối Ánh xạ symbol ở phần Làm ngay bên dưới.",
         "Chọn symbol bên Master, rồi symbol tương ứng bên Client. Trang đã đề xuất sẵn cặp khớp "
         "nếu tìm được — kiểm lại rồi Lưu.",
         "Làm cho từng symbol bạn định copy.",
@@ -466,7 +483,7 @@ UI = {
     "hd_ld_bat_copy_viec": (
         "Kiểm mọi bước trên đã xanh. Bật copy khi còn bước đỏ là mở đường cho lệnh đi vào một cấu "
         "hình chưa xong.",
-        "Bấm Bắt đầu copy ở thanh trên cùng — nút này thấy được ở mọi tab.",
+        "Bấm Bắt đầu copy ở phần Làm ngay bên dưới, hoặc nút cùng tên ở thanh trên cùng.",
         "Nhãn trạng thái phải chuyển sang RUNNING.",
     ),
     "hd_ld_bat_copy_kiem": "Thanh trên cùng hiện RUNNING thay vì PAUSED.",
@@ -623,6 +640,9 @@ UI = {
     "token_once": ("Token chỉ hiện một lần, không đọc lại được — database chỉ giữ hash. "
                    "Chép ngay bây giờ; mất thì cấp lại (token cũ hết hiệu lực)."),
     "token_bam_chon": "Bấm để chọn hết",
+    "token_tieu_de": "Token của {agent_id}",
+    "token_chep": "Chép",
+    "token_da_chep": "Đã chép",
     "btn_close": "Đóng",
 
     "map_title": "Ánh xạ symbol",

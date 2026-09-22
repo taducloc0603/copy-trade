@@ -472,6 +472,20 @@ BUOC_TU_TICH = "TU_TICH"
 NHOM_LAN_DAU = "LAN_DAU"
 NHOM_SAU_UPDATE = "SAU_UPDATE"
 
+#: Hành động làm được NGAY trong bước, không phải đọc rồi đi tìm nút ở tab khác.
+#:
+#: Hai loại, và chúng khác nhau về bản chất:
+#:   `CAP_TOKEN_EA`, `BAT_COPY`  -- làm luôn tại chỗ, không rời trang Hướng dẫn.
+#:   `KHOI_*`                    -- nhảy tới đúng khối ở tab Cấu hình và làm nổi nó lên. Không
+#:                                  nhúng lại cái khối đó vào đây: hai bản của cùng một form là
+#:                                  hai bản sẽ lệch nhau.
+HD_CAP_TOKEN_EA = "CAP_TOKEN_EA"
+HD_BAT_COPY = "BAT_COPY"
+HD_KHOI_AGENT = "KHOI_AGENT"
+HD_KHOI_ANH_XA = "KHOI_ANH_XA"
+HD_KHOI_CLIENT = "KHOI_CLIENT"
+HD_KHOI_FILE_CONFIG = "KHOI_FILE_CONFIG"
+
 #: Việc của một bước làm Ở ĐÂU. Ba nơi này đòi ba thứ khác nhau của người vận hành — đổi cửa sổ,
 #: đổi cách gõ, đổi cả tâm thế — nên nói trước là tiết kiệm được một lần mò.
 NOI_DASHBOARD = "DASHBOARD"
@@ -507,6 +521,8 @@ class Buoc(NamedTuple):
     khoa_lenh: str = ""
     #: Nhãn cái bẫy thường gặp. Rỗng = không có.
     khoa_bay: str = ""
+    #: Các hành động làm ngay trong bước. Rỗng = bước này không có gì bấm được.
+    hanh_dong: tuple[str, ...] = ()
 
 
 # `CHUA_CO_AGENT` / `CHUA_CO_CLIENT` đi kèm nhiều bước vì thiếu chúng thì phép kiểm thành **rỗng**:
@@ -521,22 +537,27 @@ BUOC_LAN_DAU: tuple[Buoc, ...] = (
          "hd_ld_bien_dich_viec", "hd_ld_bien_dich_kiem", "hd_lenh_bien_dich",
          "hd_ld_bien_dich_bay"),
     Buoc("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), NOI_MT5,
-         "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_lenh_liet_ke", "hd_ld_gan_ea_bay"),
+         "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_lenh_liet_ke", "hd_ld_gan_ea_bay",
+         (HD_CAP_TOKEN_EA,)),
     Buoc("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
          ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK",
           "CLICKER_CHUA_ONLINE"), NOI_DASHBOARD,
          "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_lenh_sua_agent",
-         "hd_ld_khai_clicker_bay"),
+         "hd_ld_khai_clicker_bay",
+         (HD_KHOI_AGENT,)),
     Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
          "hd_ld_algo_viec", "hd_ld_algo_kiem", "", "hd_ld_algo_bay"),
     Buoc("LD_TOOLBOX", "hd_ld_toolbox", (), NOI_MT5,
          "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "", "hd_ld_toolbox_bay"),
     Buoc("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), NOI_DASHBOARD,
-         "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_lenh_anh_xa", "hd_ld_anh_xa_bay"),
+         "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_lenh_anh_xa", "hd_ld_anh_xa_bay",
+         (HD_KHOI_ANH_XA,)),
     Buoc("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), NOI_DASHBOARD,
-         "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "hd_lenh_cau_hinh_client", ""),
+         "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "hd_lenh_cau_hinh_client", "",
+         (HD_KHOI_CLIENT,)),
     Buoc("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
-         "hd_ld_bat_copy_viec", "hd_ld_bat_copy_kiem", "hd_lenh_run_mode", "hd_ld_bat_copy_bay"),
+         "hd_ld_bat_copy_viec", "hd_ld_bat_copy_kiem", "hd_lenh_run_mode", "hd_ld_bat_copy_bay",
+         (HD_BAT_COPY,)),
     Buoc("LD_THU_DEMO", "hd_ld_thu_demo", (), NOI_MT5,
          "hd_ld_thu_demo_viec", "hd_ld_thu_demo_kiem", "hd_lenh_kiem_demo",
          "hd_ld_thu_demo_bay"),
@@ -555,9 +576,11 @@ BUOC_SAU_UPDATE: tuple[Buoc, ...] = (
     Buoc("UP_CODE_CU", "hd_up_code_cu", (), NOI_POWERSHELL,
          "hd_up_code_cu_viec", "hd_up_code_cu_kiem", "hd_lenh_kiem_tra", ""),
     Buoc("UP_CONFIG_SOT", "hd_up_config_sot", ("CONFIG_CON_KHOA_CLICKER",), NOI_DASHBOARD,
-         "hd_up_config_sot_viec", "hd_up_config_sot_kiem", "", "hd_up_config_sot_bay"),
+         "hd_up_config_sot_viec", "hd_up_config_sot_kiem", "", "hd_up_config_sot_bay",
+         (HD_KHOI_FILE_CONFIG,)),
     Buoc("UP_BAT_COPY", "hd_up_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
-         "hd_up_bat_copy_viec", "hd_up_bat_copy_kiem", "hd_lenh_run_mode", ""),
+         "hd_up_bat_copy_viec", "hd_up_bat_copy_kiem", "hd_lenh_run_mode", "",
+         (HD_BAT_COPY,)),
     Buoc("UP_TINH_HINH", "hd_up_tinh_hinh", (), NOI_POWERSHELL,
          "hd_up_tinh_hinh_viec", "hd_up_tinh_hinh_kiem", "hd_lenh_tinh_hinh", ""),
 )
@@ -596,6 +619,7 @@ def _mot_buoc(b: Buoc, thieu: list[dict[str, Any]], da_tich: set[str]) -> dict[s
         "trang_thai": trang_thai,
         "da_tich": b.ma in da_tich,
         "thieu": cua_buoc,
+        "hanh_dong": list(b.hanh_dong),
         # `tu_kiem` = Bridge tự biết bước này xong chưa. Giao diện dùng nó để quyết định hiện dấu
         # tích hay hiện ô cho người dùng tự tích — JS không được tự suy ra điều đó.
         "tu_kiem": bool(b.ma_kiem),
@@ -658,6 +682,9 @@ def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
         "che_do": che_do,
         "moc_cap_nhat": moc,
         "ea_doi": ea_doi,
+        "agent_ea": [str(r["agent_id"]) for r in db.query_all(
+            "SELECT agent_id FROM agent WHERE role IN ('MASTER', 'CLIENT') AND enabled = 1 "
+            "ORDER BY role, agent_id")],
         "nhom": [
             {"ma": NHOM_LAN_DAU, "ten": UI["hd_nhom_lan_dau"],
              "chu": UI["hd_nhom_lan_dau_chu"], "buoc": lan_dau},
