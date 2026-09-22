@@ -390,6 +390,54 @@ function chanKhoi(nutLuu, ghiChu) {
   return chan;
 }
 
+// Mot dong clicker. Hai canh, va chung trong khac han nhau:
+//
+//   nguon = SUY  -> KHONG ve o nhap nao. Bridge tu suy so tai khoan tu EA chay tren cung terminal
+//                   va lay chinh so do lam tieu de; hai gia tri ay CO Y khong ghi xuong DB (D-38).
+//                   Ban cu doc cot tho nen ve ra HAI O RONG cho mot clicker dang chay ngon --
+//                   nguoi dung thay o trong va tuong con thieu. Do la ly do co ham nay.
+//   nguon = KHAI -> ve hai o nhu cu. Khai tay van thang (D-38).
+//
+// Van co nut "Khai tay" o canh SUY: bo han duong de len la cat mat mot loi thoat that, va D-38
+// giu nguyen nguyen tac do.
+function veODongClicker(tr, a) {
+  const oLogin = tr.insertCell();
+  const oTieuDe = tr.insertCell();
+
+  const veONhap = () => {
+    oLogin.textContent = "";
+    oTieuDe.textContent = "";
+    const login = oSo(a.login_hieu_luc || a.account_login, "1");
+    const tieuDe = oChu(a.tieu_de_hieu_luc || a.terminal_title);
+    const luu = nut(UI.cfg_save);
+    luu.onclick = () => ghiCauHinh("/api/agent/" + encodeURIComponent(a.agent_id) + "/terminal",
+                                   { login: parseInt(login.value, 10) || null,
+                                     terminal_title: tieuDe.value });
+    oLogin.appendChild(login);
+    // O nhap va nut Luu nam CUNG MOT HANG: nut o dong duoi trong nhu mot nut roi, khong thay no
+    // thuoc ve o nao. Cau giai thich thi xuong dong duoi, vi no la chu chu khong phai thao tac.
+    const hangO = document.createElement("div");
+    hangO.className = "o-va-nut";
+    hangO.append(tieuDe, luu);
+    oTieuDe.append(hangO, nhan(UI.agent_terminal_hint, "canh-bao-nho"));
+  };
+
+  if (a.nguon === "KHAI") {
+    veONhap();
+    return;
+  }
+  // Cot so tai khoan hien con so TU SUY dang chu, dung nhu dong agent EA ngay duoi. De trong
+  // rieng dong clicker moi la cho lech.
+  oLogin.textContent = a.login_hieu_luc || "—";
+  const the = nhan(a.nguon === "SUY" ? UI.agent_tu_suy : UI.agent_chua_co_nguon, "canh-bao-nho");
+  const doi = nut(UI.agent_khai_tay);
+  doi.onclick = () => veONhap();
+  const hangO = document.createElement("div");
+  hangO.className = "o-va-nut";
+  hangO.append(the, doi);
+  oTieuDe.appendChild(hangO);
+}
+
 function khoiAgent(el) {
   const box = khoi(UI.agent_title, "khoi-agent");
   const bang = document.createElement("table");
@@ -408,21 +456,7 @@ function khoiAgent(el) {
     // Clicker khai so tai khoan + tieu de cua so ngay o day: hai gia tri nay truoc kia nam trong
     // config.toml tren VPS. Agent khac chi hien so, vi so cua chung den tu chinh terminal MT5.
     if (a.role === "CLICKER") {
-      const login = oSo(a.account_login, "1");
-      const tieuDe = oChu(a.terminal_title);
-      const luu = nut(UI.cfg_save);
-      luu.onclick = () => ghiCauHinh("/api/agent/" + encodeURIComponent(a.agent_id) + "/terminal",
-                                     { login: parseInt(login.value, 10) || null,
-                                       terminal_title: tieuDe.value });
-      tr.insertCell().appendChild(login);
-      const o = tr.insertCell();
-      // O nhap va nut Luu nam CUNG MOT HANG: nut o dong duoi trong nhu mot nut roi, khong thay
-      // no thuoc ve o nao. Cau giai thich thi xuong dong duoi, vi no la chu chu khong phai
-      // thao tac.
-      const hangO = document.createElement("div");
-      hangO.className = "o-va-nut";
-      hangO.append(tieuDe, luu);
-      o.append(hangO, nhan(UI.agent_terminal_hint, "canh-bao-nho"));
+      veODongClicker(tr, a);
     } else {
       tr.insertCell().textContent = a.account_login || "—";
       tr.insertCell().textContent = "";
@@ -498,8 +532,18 @@ function khoiClient(el) {
 
     box.append(hang(UI.cfg_client_enabled, hoatDong),
                hang(UI.cfg_copy_mode, chieu), hang(UI.cfg_multiplier, heSo),
-               hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong),
                hang(UI.cfg_can_close_master, dongMaster));
+
+    // Duong mo/dong xuong Nang cao: ca hai da dung san sau khi cai (tro-ly.ps1 va tao_client_moi
+    // deu dat UI), va doi chung la mot quyet dinh KIEN TRUC chu khong phai mot chinh sua thuong --
+    // no da co hop xac nhan rieng. Dung tien le D-38 da dung cho Khoa he thong / config.toml.
+    const nangCaoClient = document.createElement("details");
+    nangCaoClient.className = "nhom-huong-dan";
+    const dauNC = document.createElement("summary");
+    dauNC.textContent = UI.cfg_client_nang_cao;
+    nangCaoClient.append(dauNC, hang(UI.cfg_open_route, duongMo),
+                         hang(UI.cfg_close_route, duongDong));
+    box.appendChild(nangCaoClient);
 
     const xemTruoc = document.createElement("pre");
     // Theo dung Client nay. Dung mot bang chung cho moi Client la noi sai voi Client thu hai --
@@ -600,10 +644,20 @@ function veClientMoi(d) {
 
 function khoiMaster(el) {
   const box = khoi(UI.cfg_master_close_title);
-  const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
+  // Chi liet ke clicker CHUA BI CHIEM. Ban cu do vao day moi agent CLICKER, ke ca clicker da gan
+  // cho mot Client -- ma `ops._clicker_con_trong` tu choi dung nhung cai do (CLICKER_DA_DUNG).
+  // Moi nguoi dung chon mot thu chac chan bi tu choi la mot cai bay, khong phai mot lua chon.
+  const dangDung = new Set(CAU_HINH.clients.map((c) => c.clicker_agent_id).filter(Boolean));
+  const hienTai = CAU_HINH.master.master_clicker_agent_id;
+  const conTrong = CAU_HINH.agents
+    .filter((a) => a.role === "CLICKER" && (!dangDung.has(a.agent_id) || a.agent_id === hienTai))
     .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
-  const chonClicker = oChon(CAU_HINH.master.master_clicker_agent_id, [{ gia_tri: "", nhan: "—" }]
-    .concat(clickers));
+
+  // Dung mot lua chon VA no da duoc dat: khong con gi de chon, nen hien dang chu.
+  const motLuaChon = conTrong.length === 1 && hienTai === conTrong[0].gia_tri;
+  const chonClicker = motLuaChon
+    ? nhan(hienTai)
+    : oChon(hienTai, [{ gia_tri: "", nhan: "—" }].concat(conTrong));
   const duong = oChon(CAU_HINH.master.master_close_route, CAU_HINH.chon_duong);
   box.append(hang(UI.cfg_master_clicker, chonClicker), hang(UI.cfg_master_route, duong));
   const luu = nut(UI.cfg_save, "chinh");
@@ -611,7 +665,10 @@ function khoiMaster(el) {
     if (duong.value === "UI" && CAU_HINH.master.master_close_route !== "UI"
         && !(await hoiXacNhan(UI.confirm_master_close_ui, null))) return;
     await ghiCauHinh("/api/master_close_route", {
-      clicker_agent: chonClicker.value || null,
+      // `chonClicker` co the la mot <div> chu khong phai <select> khi chi con mot lua chon.
+      // Doc thang `.value` la `undefined` -> gui `null` -> XOA clicker cua Master, trong khi
+      // nguoi dung chi dinh doi duong dong. Bat duoc bang trinh duyet, khong phai bang test.
+      clicker_agent: (motLuaChon ? hienTai : chonClicker.value) || null,
       close_route: duong.value,
     });
   };
@@ -734,6 +791,10 @@ function khoiHeThong(el) {
     const d = document.createElement("div");
     d.className = "hang-cau-hinh";
     d.append(nhan(k.khoa, "nhan"), o, luu);
+    // Gia tri hien ra la gia tri CO HIEU LUC. Khoa chua ai doi thi no den tu mac dinh cua engine,
+    // khong phai tu DB -- va khac biet do phai nhin thay duoc, neu khong thi "da luu" va "dang
+    // chay bang mac dinh" trong giong het nhau.
+    if (k.mac_dinh) d.appendChild(nhan(UI.cfg_dang_mac_dinh, "canh-bao-nho"));
     box.appendChild(d);
   }
   el.appendChild(box);

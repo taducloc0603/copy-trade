@@ -31,6 +31,7 @@ from bridge.engine.sizing import (
     resolve_direction,
 )
 from bridge.logging_setup import get_logger
+from bridge.ops import gia_tri_khoa
 from bridge.protocol.dispatcher import CommandDispatcher, new_command_id
 from bridge.protocol.server import BridgeServer
 
@@ -235,7 +236,7 @@ class EventProcessor:
 
     async def check_reconcile(self, now: float) -> None:
         """Đối chiếu định kỳ mỗi `reconcile_interval_sec` (plan 8.4)."""
-        moi = self.db.get_config_int("reconcile_interval_sec", 60)
+        moi = gia_tri_khoa(self.db, "reconcile_interval_sec")
         if moi <= 0 or now - self._last_reconcile < moi:
             return
         self._last_reconcile = now
@@ -381,7 +382,7 @@ class EventProcessor:
         age_ms = self._event_age_ms(event)
         # Lệnh từ hàng đợi đương nhiên cũ hơn trần của đường thường (mặc định 5000ms) — nó vừa
         # nằm chờ clicker bấm xong lệnh trước. Trần riêng của hàng đợi là thứ quyết định ở đây.
-        max_age = (self.db.get_config_int("ui_open_queue_max_age_ms", 15000) if tu_hang_doi
+        max_age = (gia_tri_khoa(self.db, "ui_open_queue_max_age_ms") if tu_hang_doi
                    else int(client["max_event_age_ms"]))
         if age_ms is not None and age_ms > max_age:
             self._alert("WARNING", "EVENT_TOO_OLD",
@@ -767,7 +768,7 @@ class EventProcessor:
         Trước bản này chỗ đây **bỏ hẳn** lệnh, và bỏ một lệnh copy nghĩa là mất hedge.
         """
         client_id = client["client_id"]
-        tran = self.db.get_config_int("ui_open_queue_max_len", 20)
+        tran = gia_tri_khoa(self.db, "ui_open_queue_max_len")
         dang_cho = self.db.dem_hang_doi_ui(client_id)
         if dang_cho >= tran:
             # Đây là chặn cuối, không phải đường chạy bình thường. Hàng đợi chạm trần nghĩa là
@@ -802,7 +803,7 @@ class EventProcessor:
             log.info("Roi che do RUNNING, xoa %d lenh dang cho trong hang doi giao dien", so_xoa)
             return 0
 
-        max_age = self.db.get_config_int("ui_open_queue_max_age_ms", 15000)
+        max_age = gia_tri_khoa(self.db, "ui_open_queue_max_age_ms")
         da_bom: set[str] = set()
         mo_duoc = 0
 

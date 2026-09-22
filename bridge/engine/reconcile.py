@@ -30,6 +30,7 @@ from bridge.clock import parse_iso, utc_now, utc_now_iso
 from bridge.db.repo import Database
 from bridge.engine.sizing import to_decimal
 from bridge.logging_setup import get_logger
+from bridge.ops import gia_tri_khoa
 from bridge.protocol.dispatcher import CommandDispatcher
 
 log = get_logger(__name__)
@@ -142,7 +143,7 @@ class Reconciler:
         Mốc nhắc lần cuối ghi vào `system_config` chứ không giữ trong bộ nhớ: khởi động lại
         không được biến thành một cách vô tình để im lặng mãi.
         """
-        han_phut = self.db.get_config_int("finding_nhac_sau_phut", 60)
+        han_phut = gia_tri_khoa(self.db, "finding_nhac_sau_phut")
         if han_phut <= 0:
             return
         bay_gio = utc_now()

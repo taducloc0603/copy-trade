@@ -29,6 +29,7 @@ from bridge.clock import parse_iso, to_iso, utc_now, utc_now_iso
 from bridge.db.repo import Database
 from bridge.engine.sizing import round_to_step, to_decimal
 from bridge.logging_setup import get_logger
+from bridge.ops import MAC_DINH_KHOA, gia_tri_khoa
 from bridge.protocol.dispatcher import CommandDispatcher
 
 log = get_logger(__name__)
@@ -42,7 +43,7 @@ SYNC_CLOSE_MODES = frozenset({"RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"})
 TERMINAL_STATUSES = frozenset({"CLOSED", "OPEN_FAILED"})
 
 DEFAULT_CLOSE_DEADLINE_MS = 20000
-DEFAULT_CASCADE_WAIT_MS = 15000
+DEFAULT_CASCADE_WAIT_MS = MAC_DINH_KHOA["cascade_wait_master_ms"]
 
 #: Đường EA ↔ đường giao diện, ghép đôi. Đường đóng phía Client đi qua giao diện để deal đóng
 #: mang `DEAL_REASON = CLIENT` chứ không phải `EXPERT` — cùng lý do đường mở đã đổi ở phase 6b.
@@ -58,7 +59,7 @@ LOAI_DONG_QUA_UI = frozenset(LOAI_DONG_UI.values())
 #: Cửa sổ nhận cha cho event đóng do chính bot gây ra. Đo được: một chu kỳ đóng qua giao diện
 #: mất khoảng 0,3–3 giây, nên 5 giây là dư mà vẫn đủ hẹp để không nuốt nhầm một lệnh người dùng
 #: đóng tay ngay sau đó.
-DEFAULT_UI_CLOSE_GRACE_MS = 5000
+DEFAULT_UI_CLOSE_GRACE_MS = MAC_DINH_KHOA["ui_close_correlate_grace_ms"]
 
 #: Thời gian cộng thêm cho **mỗi** lệnh đóng Client khi đóng khẩn cấp chờ "Client trước, Master
 #: sau". Đo 2026-09-10: một lệnh đóng qua giao diện mất 5,1–5,9 giây và clicker xử lý tuần tự,
@@ -876,7 +877,7 @@ class CloseFlow:
         `LOAI_DONG_QUA_UI`, nên nếu EA cũng từ chối thì nó đi thẳng vào `_dong_that_bai`.
         """
         pair_id = pair["pair_id"]
-        roi_ve = (self.db.get_config("close_degraded_fallback", "EA") or "EA").upper()
+        roi_ve = str(gia_tri_khoa(self.db, "close_degraded_fallback")).upper()
         client = self.db.get_client_account(pair["client_id"])
         if roi_ve != "EA" or client is None:
             await self._dong_that_bai(pair, command, message, False)
@@ -1108,7 +1109,7 @@ class CloseFlow:
                 payload=payload, deadline_ms=deadline_ms,
             )
 
-        roi_ve = (self.db.get_config("close_degraded_fallback", "EA") or "EA").upper()
+        roi_ve = str(gia_tri_khoa(self.db, "close_degraded_fallback")).upper()
         if roi_ve != "EA":
             self._alert("CRITICAL", "CLOSE_KHONG_GUI_DUOC",
                         f"Khong dong duoc cap {pair_id}: {ly_do}, va close_degraded_fallback = "

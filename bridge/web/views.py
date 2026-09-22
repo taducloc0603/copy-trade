@@ -31,6 +31,7 @@ from bridge.ops import (
     cau_hinh_clicker,
     de_xuat_anh_xa,
     doc_tich_huong_dan,
+    gia_tri_khoa,
     ma_client_ke_tiep,
     symbol_cua_agent,
 )
@@ -778,7 +779,7 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
     """
     clients = [dict(r) for r in db.query_all("SELECT * FROM client_account ORDER BY client_id")]
     return {
-        "agents": [_mo_ta_agent_cau_hinh(r) for r in db.query_all(
+        "agents": [_mo_ta_agent_cau_hinh(db, r) for r in db.query_all(
             "SELECT * FROM agent ORDER BY role, agent_id")],
         "clients": clients,
         "symbol_maps": [dict(r) for r in db.query_all(
@@ -787,9 +788,14 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
             "master_close_route": (db.get_config("master_close_route", "EA") or "EA").upper(),
             "master_clicker_agent_id": (db.get_config("master_clicker_agent_id", "") or "").strip(),
         },
+        # Gửi giá trị **có hiệu lực**, không phải cột thô: `schema.sql` chỉ gieo hai trong bảy
+        # khoá, nên năm khoá còn lại đọc ra chuỗi rỗng và trang vẽ ô trống — trong khi engine vẫn
+        # chạy bằng mặc định của chính nó. Một ô trống ở đây đọc ra là "chưa đặt", và người vận
+        # hành không có cách nào biết hệ thống đang dùng số mấy.
         "he_thong": [
             {"khoa": khoa, "kieu": kieu, "tu": a, "den": b,
-             "gia_tri": db.get_config(khoa, ""),
+             "gia_tri": gia_tri_khoa(db, khoa),
+             "mac_dinh": not str(db.get_config(khoa, "") or "").strip(),
              "chon": list(a) if kieu == "enum" else None}
             for khoa, (kieu, a, b) in KHOA_SUA_DUOC.items()
         ],
@@ -811,8 +817,16 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
     }
 
 
-def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:
-    return {
+def _mo_ta_agent_cau_hinh(db: Database, row: Any) -> dict[str, Any]:
+    """Một dòng của khối Agent, kèm giá trị **có hiệu lực** cho clicker.
+
+    Trang phải biết giá trị đang dùng đến TỪ ĐÂU, không chỉ biết cột trong DB là gì. Bản đầu gửi
+    đúng cột thô, mà giá trị của clicker lại được suy lúc đọc và cố ý không ghi xuống (D-38) — nên
+    một clicker đã chạy ngon vẫn hiện **hai ô rỗng**, và ô rỗng đọc ra là "còn thiếu".
+
+    `nguon` là thứ trang cần: `SUY` thì không vẽ ô nhập nào, `KHAI` thì vẽ.
+    """
+    mo_ta = {
         "agent_id": row["agent_id"],
         "role": row["role"],
         "role_label": label(AGENT_ROLE, row["role"]),
@@ -823,6 +837,13 @@ def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:
         "magic_number": row["magic_number"],
         "enabled": row["enabled"],
     }
+    if row["role"] == "CLICKER":
+        hieu_luc = cau_hinh_clicker(db, str(row["agent_id"]))
+        mo_ta["nguon"] = hieu_luc["nguon"]
+        mo_ta["login_hieu_luc"] = hieu_luc["login"]
+        mo_ta["tieu_de_hieu_luc"] = hieu_luc["tieu_de"]
+        mo_ta["tu_agent"] = hieu_luc["tu_agent"]
+    return mo_ta
 
 
 def _mo_ta_file_config(config: Any) -> list[dict[str, Any]]:

@@ -670,6 +670,13 @@ UI = {
     "agent_role": "Vai trò",
     "agent_login": "Số tài khoản",
     "agent_terminal": "Tiêu đề cửa sổ terminal",
+    # Dòng clicker khi giá trị đang tự suy: không ô nhập nào, chỉ một thẻ nói giá trị đến từ đâu.
+    # Ô nhập rỗng đọc ra là "còn thiếu", và đó là điều người dùng báo lại.
+    "agent_tu_suy": "tự suy từ EA cùng terminal",
+    "agent_chua_co_nguon": "chưa có EA nào trên terminal này",
+    "agent_khai_tay": "Khai tay",
+    "cfg_dang_mac_dinh": "đang dùng mặc định",
+    "cfg_client_nang_cao": "Nâng cao: đường mở / đóng lệnh",
     "agent_terminal_hint": ("Clicker nhận hai giá trị này lúc kết nối. Lưu xong, clicker "
                             "nối lại sau vài giây — không phải khởi động lại tác vụ."),
     "agent_status": "Trạng thái",

@@ -3742,3 +3742,47 @@ Hai test khoa TINH CHAT chu khong khoa thu tu cu the: so lan doi `noi` giua hai 
 tri cu -> do "nhay cho 5 lan"; tra cau "Trong MT5" vao buoc anh xa -> do dung ten buoc.
 
 936 test xanh (+2).
+
+## Trang Cau hinh: bo o khong ai cham, va sua mot khoi hien thi SAI (2026-09-22)
+
+Nguoi dung bao: dong clicker hien hai o nhap RONG, lam ho tuong con thieu. Dung, va goc re o payload
+chu khong o giao dien: `_mo_ta_agent_cau_hinh` gui cot THO, ma gia tri cua clicker lai duoc suy luc
+doc va CO Y khong ghi xuong DB (D-38). Hai cho khac trong cung file da dung gia tri co hieu luc --
+khoi Agent la cho duy nhat con doc cot tho.
+
+O dieu khien nhin thay ngay (khong phai mo gi): **26 -> 19**.
+
+**1. Dong clicker.** `nguon != KHAI` thi khong ve o nhap nao. Cot so tai khoan hien con so tu suy
+dang chu -- giong het dong agent EA ngay duoi, de trong rieng dong clicker moi la cho lech. Cot tieu
+de hien mot the "tu suy tu EA cung terminal", kem nut **Khai tay** cho truong hop ngoai le (D-38 giu
+nguyen "khai tay van thang", nen bo han duong de len la cat mat mot loi thoat that).
+
+**2. Khoi Khoa he thong dang hien SAI -- day la phat hien dang gia nhat cua lan ra soat.**
+`KHOA_SUA_DUOC` co bay khoa, `schema.sql` chi gieo HAI. Nam khoa con lai chua bao gio nam trong DB,
+nen trang ve **o so rong** trong khi engine van chay bang mac dinh cung cua chinh no. Rieng
+`close_degraded_fallback` hien "EA" vi do la lua chon dau danh sach, khong phai vi DB luu gi. Ma chu
+thich cua khoi thi noi "Doi la co hieu luc ngay" -- dung, nhung con so dang hien khong phai con so
+dang chay.
+
+Gom mac dinh ve `ops.MAC_DINH_KHOA` + `ops.gia_tri_khoa`, va bat CA ENGINE lan trang doc tu do. Truoc
+do chung nam rai bon cho: hai hang co ten trong `closing.py`, ba so tran trong `processor.py`, mot
+trong `reconcile.py`.
+
+**3. Khoi Duong dong Master dang moi chon thu may chu se tu choi.** No do vao danh sach moi agent
+CLICKER, ke ca clicker da gan cho mot Client -- ma `_clicker_con_trong` tu choi dung nhung cai do
+(`CLICKER_DA_DUNG`). Gio loc con clicker chua bi chiem; con dung mot va da duoc dat thi hien dang chu.
+
+**4. Hai o duong mo/dong cua Client xuong Nang cao.** Ca hai da dung san sau khi cai, va doi chung
+la mot quyet dinh kien truc chu khong phai mot chinh sua thuong.
+
+**Mot loi do chinh viec sua nay de ra, va chi bat duoc bang trinh duyet:** khi o chon clicker thanh
+mot `<div>`, nut Luu van doc `chonClicker.value` -> `undefined` -> `|| null` -> **xoa clicker cua
+Master**. Nguoi dung chi dinh doi duong dong lai mat luon clicker, im lang. Test doc ma nguon khoa
+lai, va da kiem bang cach bam that: bam Luu xong `master_clicker_agent_id` con nguyen.
+
+**Mot test chi co gia tri o mot chieu.** `test_mac_dinh_trang_bao_DUNG_BANG_mac_dinh_engine` khong do
+khi doi so trong `MAC_DINH_KHOA` -- vi hang trong `closing.py` gio dan xuat tu chinh no, dung nhu
+thiet ke. Dot bien DUNG la chep lai mot so tran vao `closing.py`, va luc do no do. Neu chi viet test
+roi thay xanh thi da tuong la da phu.
+
+941 test xanh (+5).

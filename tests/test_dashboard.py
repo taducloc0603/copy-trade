@@ -1257,3 +1257,98 @@ def test_viec_con_khong_noi_sai_NOI_LAM(seeded_web: Database) -> None:
             dau = viec.lower()[:30]
             for mau in cam.get(b.noi, ()):
                 assert mau not in dau, f"{b.ma} (noi={b.noi}) co viec con bat sang cho khac: {viec[:60]}"
+
+
+def test_khoi_agent_nhan_duoc_gia_tri_CO_HIEU_LUC_cua_clicker(seeded_web: Database) -> None:
+    """Payload phải nói giá trị của clicker đến TỪ ĐÂU, không chỉ nói cột DB là gì.
+
+    Giá trị của clicker được suy lúc đọc và **cố ý không ghi xuống** (D-38). Bản đầu gửi đúng cột
+    thô, nên một clicker đã chạy ngon vẫn hiện hai ô **rỗng** trên trang Cấu hình — và ô rỗng đọc
+    ra là "còn thiếu". Người dùng báo lại đúng triệu chứng đó.
+    """
+    seeded_web.upsert_agent(CLIENT_AGENT, role="CLIENT", token_hash="h", magic_number=770001,
+                            account_login=538217)
+    # Clicker gan cho CL-01: do la lien ket `cau_hinh_clicker` di theo de suy ra so tai khoan.
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=0)
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                     clicker_agent_id="AG-CLICKER-X")
+    ag = {a["agent_id"]: a for a in views.trang_cau_hinh(seeded_web)["agents"]}
+    clicker = [a for a in ag.values() if a["role"] == "CLICKER"]
+    assert clicker, "chua tao duoc clicker nao"
+    assert ag["AG-CLICKER-X"]["nguon"] == "SUY", ag["AG-CLICKER-X"]
+    for a in clicker:
+        assert "nguon" in a, f"{a['agent_id']}: payload khong noi gia tri den tu dau"
+        assert a["nguon"] in ("KHAI", "SUY", "CHUA_CO")
+        if a["nguon"] == "SUY":
+            assert a["login_hieu_luc"], a
+            assert a["tieu_de_hieu_luc"], a
+    # Agent EA khong co cac khoa nay -- chung chi co nghia voi clicker.
+    assert "nguon" not in ag[MASTER_AGENT]
+
+
+def test_khoa_he_thong_hien_gia_tri_DANG_CHAY_chu_khong_phai_o_rong(db: Database) -> None:
+    """Khoá chưa ai đổi phải hiện **mặc định của engine**, kèm cờ `mac_dinh`.
+
+    `schema.sql` chỉ gieo hai trong bảy khoá, nên năm khoá còn lại đọc ra chuỗi rỗng và trang vẽ ô
+    trống — trong khi engine vẫn chạy bằng mặc định cứng của chính nó. Một ô trống đọc ra là "chưa
+    đặt", và người vận hành không có cách nào biết hệ thống đang dùng số mấy.
+    """
+    from bridge.ops import KHOA_SUA_DUOC
+    he_thong = {k["khoa"]: k for k in views.trang_cau_hinh(db)["he_thong"]}
+    assert set(he_thong) == set(KHOA_SUA_DUOC)
+    for khoa, k in he_thong.items():
+        assert str(k["gia_tri"]).strip(), f"{khoa}: van hien o rong"
+
+    # Đổi một khoá: nó thôi là mặc định, các khoá khác không đổi theo.
+    db.set_config("ui_open_queue_max_len", "33")
+    he_thong = {k["khoa"]: k for k in views.trang_cau_hinh(db)["he_thong"]}
+    assert he_thong["ui_open_queue_max_len"]["mac_dinh"] is False
+    assert str(he_thong["ui_open_queue_max_len"]["gia_tri"]) == "33"
+    assert he_thong["finding_nhac_sau_phut"]["mac_dinh"] is True
+
+
+def test_mac_dinh_trang_bao_DUNG_BANG_mac_dinh_engine_that_su_dung(db: Database) -> None:
+    """Con số trang hiện phải **là** con số engine dùng, không phải một bản chép tay.
+
+    Trước đây mặc định nằm rải bốn chỗ: hai hằng có tên trong `closing.py`, ba số trần trong
+    `processor.py`, một trong `reconcile.py`. Chép chúng sang `views` là tạo ra hai nguồn sự thật,
+    và lệch kiểu đó thì **im lặng**: trang nói 15 giây, engine chờ 20, không ai sai rõ ràng.
+    """
+    from bridge.engine.closing import DEFAULT_CASCADE_WAIT_MS, DEFAULT_UI_CLOSE_GRACE_MS
+    from bridge.ops import MAC_DINH_KHOA, gia_tri_khoa
+
+    assert DEFAULT_CASCADE_WAIT_MS == MAC_DINH_KHOA["cascade_wait_master_ms"]
+    assert DEFAULT_UI_CLOSE_GRACE_MS == MAC_DINH_KHOA["ui_close_correlate_grace_ms"]
+    # Và `gia_tri_khoa` trên một DB trống phải trả về đúng bảng mặc định đó.
+    for khoa, mac_dinh in MAC_DINH_KHOA.items():
+        if not db.get_config(khoa, ""):
+            assert gia_tri_khoa(db, khoa) == mac_dinh, khoa
+
+
+def test_khoi_master_khong_moi_chon_clicker_da_bi_chiem(project_root) -> None:
+    """Danh sách clicker của Master phải lọc bỏ clicker đã gán cho một Client.
+
+    `ops._clicker_con_trong` từ chối chúng với `CLICKER_DA_DUNG`. Mời người dùng chọn một thứ chắc
+    chắn bị từ chối là một cái bẫy, không phải một lựa chọn.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("function khoiMaster(")
+    than = js[dau:js.index("\n}\n", dau)]
+    assert "clicker_agent_id" in than, "khoiMaster khong he nhin toi clicker cua cac Client"
+    assert "dangDung" in than or "filter" in than, "khoiMaster khong loc danh sach"
+
+
+def test_khoi_master_khong_xoa_clicker_khi_no_hien_dang_chu(project_root) -> None:
+    """Nút Lưu của khối Master không được gửi `null` khi ô clicker là chữ, không phải `<select>`.
+
+    Khi chỉ còn một lựa chọn hợp lệ, ô chọn được thay bằng một `<div>` — và `div.value` là
+    `undefined`, nên `|| null` biến nó thành "xoá clicker của Master". Người dùng chỉ định đổi
+    đường đóng lại mất luôn clicker, im lặng.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("function khoiMaster(")
+    than = js[dau:js.index("\n}\n", dau)]
+    assert "chonClicker.value || null" not in than, (
+        "doc thang .value tren mot phan tu co the la <div> -- xem chu thich trong ham"
+    )
+    assert "motLuaChon ? hienTai" in than

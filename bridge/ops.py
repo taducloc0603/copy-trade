@@ -482,6 +482,32 @@ KHOA_SUA_DUOC: dict[str, tuple[str, Any, Any]] = {
     "close_degraded_fallback": ("enum", ("EA", "SKIP"), None),
 }
 
+#: Giá trị **engine thật sự dùng** khi `system_config` chưa có khoá đó.
+#:
+#: `schema.sql` chỉ gieo hai trong bảy khoá trên, nên năm khoá còn lại chưa bao giờ nằm trong DB —
+#: engine chạy bằng mặc định của chính nó, còn trang Cấu hình thì vẽ một **ô rỗng**. Một ô rỗng đọc
+#: ra là "chưa đặt", và người vận hành không có cách nào biết hệ thống đang dùng số mấy.
+#:
+#: Để chúng ở ĐÂY, và bắt cả engine lẫn trang cùng đọc từ đây. Chép số ra hai chỗ là hai con số sẽ
+#: lệch nhau, và lệch kiểu này thì im lặng: trang nói 15 giây, engine chờ 20, không ai sai rõ ràng.
+MAC_DINH_KHOA: dict[str, Any] = {
+    "cascade_wait_master_ms": 15_000,
+    "ui_open_queue_max_age_ms": 15_000,
+    "ui_open_queue_max_len": 20,
+    "ui_close_correlate_grace_ms": 5_000,
+    "reconcile_interval_sec": 60,
+    "finding_nhac_sau_phut": 60,
+    "close_degraded_fallback": "EA",
+}
+
+
+def gia_tri_khoa(db: Database, khoa: str) -> Any:
+    """Giá trị **có hiệu lực** của một khoá `system_config`: đã lưu, hoặc mặc định của engine."""
+    mac_dinh = MAC_DINH_KHOA[khoa]
+    if isinstance(mac_dinh, int):
+        return db.get_config_int(khoa, mac_dinh)
+    return (db.get_config(khoa, mac_dinh) or mac_dinh)
+
 
 def _clicker_con_trong(db: Database, clicker_agent: str, tru_client: str | None = None) -> None:
     """Một clicker lái ĐÚNG MỘT terminal, nên nó thuộc về đúng một Client (hoặc về Master).
