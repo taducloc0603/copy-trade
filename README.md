@@ -55,7 +55,7 @@ Phần lớn logic test được bằng mock agent, không cần MT5. EA và cli
 
 Cấu hình nghiệp vụ (agent, client, ánh xạ symbol, khoá hệ thống) nằm trong database và **sửa
 trên dashboard**, tab Cấu hình (D-32). `config.toml` chỉ giữ thứ cần trước khi Bridge chạy — cổng,
-đường dẫn DB, mật khẩu dashboard, token clicker — và cũng sửa được trên trang đó, nhưng phải khởi
+đường dẫn DB, token clicker — và cũng sửa được trên trang đó, nhưng phải khởi
 động lại dịch vụ mới có hiệu lực.
 
 ## Tài liệu
@@ -64,10 +64,18 @@ trên dashboard**, tab Cấu hình (D-32). `config.toml` chỉ giữ thứ cần
 |---|---|
 | [docs/CAI-DAT-VPS.md](docs/CAI-DAT-VPS.md) | Cài đặt, cập nhật, vận hành hằng ngày |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Giải thích cấu hình, lệnh vận hành, **xử lý sự cố** (mục 7), điều kiện chạy thật (mục 8) |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Các quyết định thiết kế D-01…D-32 và lý do — **đọc trước khi sửa hành vi** |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Kiến trúc, ranh giới vai trò, luồng dữ liệu |
-| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | Bảng nghiệm thu TEST-01…TEST-32 và nguồn bằng chứng |
-| [docs/BACKLOG.md](docs/BACKLOG.md) | Giới hạn đã biết và việc còn nợ (B-xx) |
-| [docs/CONVENTIONS.md](docs/CONVENTIONS.md), [docs/GLOSSARY.md](docs/GLOSSARY.md) | Quy ước code, thuật ngữ |
-| [plan/](plan/) | Kế hoạch triển khai theo phase (hồ sơ thiết kế, code có trích dẫn) |
-| [PROGRESS.md](PROGRESS.md) | Nhật ký tiến độ và các lần đo |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Thuật ngữ dùng trong dashboard và tài liệu |
+
+Các tài liệu **nội bộ** dưới đây **không đi kèm bản cài**: `scripts/cai-dat.ps1` xoá chúng khỏi thư
+mục cài sau mỗi lần cài hoặc cập nhật, nên liên kết ở đây trỏ thẳng lên GitHub (D-42).
+
+| Tài liệu nội bộ | Dùng khi |
+|---|---|
+| [DECISIONS.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/DECISIONS.md) | Các quyết định thiết kế D-01…D-42 và lý do — **đọc trước khi sửa hành vi** |
+| [ARCHITECTURE.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/ARCHITECTURE.md) | Kiến trúc, ranh giới vai trò, luồng dữ liệu |
+| [ACCEPTANCE.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/ACCEPTANCE.md) | Bảng nghiệm thu TEST-01…TEST-32 và nguồn bằng chứng |
+| [BACKLOG.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/BACKLOG.md) | Giới hạn đã biết và việc còn nợ (B-xx) |
+| [CONVENTIONS.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/CONVENTIONS.md) | Quy ước code |
+| [NOI-BO-nhieu-client.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/NOI-BO-nhieu-client.md) | Mở phần 1 Master × N Client |
+| [plan/](https://github.com/taducloc0603/copy-trade/tree/main/plan) | Kế hoạch triển khai theo phase (hồ sơ thiết kế, code có trích dẫn) |
+| [PROGRESS.md](https://github.com/taducloc0603/copy-trade/blob/main/PROGRESS.md) | Nhật ký tiến độ và các lần đo |

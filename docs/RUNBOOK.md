@@ -1,7 +1,7 @@
 # RUNBOOK — vận hành MT5 Copy Bridge
 
 *Cập nhật 2026-09-17 (sau phase 12). Cài đặt và cập nhật: [CAI-DAT-VPS.md](CAI-DAT-VPS.md). Đọc
-[DECISIONS.md](DECISIONS.md) trước nếu định sửa hành vi; tài liệu này nói cách **chạy** và **xử lý sự cố**.*
+[DECISIONS.md](https://github.com/taducloc0603/copy-trade/blob/main/docs/DECISIONS.md) trước nếu định sửa hành vi; tài liệu này nói cách **chạy** và **xử lý sự cố**.*
 
 ---
 

@@ -1,0 +1,16 @@
+# Hai file khach BAM DUP -- va `scripts/cai-dat.ps1` ma CAI-DAT.cmd TAI THANG tu
+# raw.githubusercontent.com -- phai giu nguyen tung byte, ke ca ngat dong CRLF.
+#
+# `-text` chu KHONG PHAI `text eol=crlf`. Hai cai nay cho ket qua NGUOC NHAU o day:
+# `text eol=crlf` chuan hoa blob ve LF roi moi doi thanh CRLF luc CHECKOUT -- nhung ban tai bang
+# `curl` KHONG di qua checkout, nen no nhan LF, tuc dung cai loi ma dong do tuong la dang va.
+# `-text` tat chuan hoa: blob giu y nguyen CRLF, nen ca `git clone` lan `curl` deu dung.
+#
+# Da do 2026-09-22, bang byte chu khong bang `grep` (grep tren Git Bash dem sai chinh cho nay va
+# da mot lan bao nguoc ket qua): CAI-DAT.cmd luc do la LF THUAN, 2748 byte, 0 CRLF -- ke ca ban
+# GitHub tra ve. Da doi thanh CRLF cung luc them file nay.
+#
+# Doi lai: mot may Linux clone ve cung nhan CRLF. Chap nhan duoc -- day la script chi chay tren
+# Windows.
+*.cmd -text
+*.ps1 -text

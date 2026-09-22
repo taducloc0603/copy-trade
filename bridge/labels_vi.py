@@ -652,11 +652,13 @@ UI = {
                           "cần mở mục này — mọi khoá ở đây đều có mặc định an toàn."),
 
     "cfg_clicker_new_title": "Thêm token cho một clicker mới",
+    # Ví dụ ở đây cố ý là cl01/CL-01, không phải cl02/CL-02: bản giao cấu hình cho một Client
+    # (D-42), và một ví dụ nói "CL-02" là tự chỉ ra cái cửa mà giao diện vừa đóng lại.
     "cfg_clicker_new_hint": ("Mỗi Client đi đường giao diện cần một clicker riêng, và mỗi clicker "
-                             "một mục trong config.toml. Đặt tên theo mã Client, ví dụ cl02 cho "
-                             "CL-02, rồi dán token của agent clicker vào đây. Sau khi lưu, đăng ký "
+                             "một mục trong config.toml. Đặt tên theo mã Client, ví dụ cl01 cho "
+                             "CL-01, rồi dán token của agent clicker vào đây. Sau khi lưu, đăng ký "
                              "tác vụ trên VPS bằng: scripts\\tao-dich-vu.ps1 -ChiTacVuClicker "
-                             "-TacVuClicker clicker_cl02"),
+                             "-TacVuClicker clicker_cl01"),
     "cfg_clicker_new_name": "Tên (sau chữ clicker_)",
     "cfg_clicker_new_token": "Token của clicker",
     "cfg_clicker_new_missing": "Cần cả tên mục và token.",

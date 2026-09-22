@@ -56,11 +56,11 @@ $ErrorActionPreference = 'Continue'
 # dong nay thi no ra ky tu rac trong console dung code page he thong.
 try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new() } catch { }
 
-$script:TongBuoc = 12
+$script:TongBuoc = 13
 # Ghi cung trong file chu khong hoi git: tinh huong hong that la mot ban cai-dat.ps1 chep ra
 # Desktop cua VPS, nam ngoai moi kho git, bao mot loi da duoc sua tu lau. In so nay ra banner de
 # nguoi van hanh doc mot dong la biet minh dang chay ban nao. DOI SO NAY MOI LAN SUA SCRIPT.
-$script:PhienBan = "2026-09-11"
+$script:PhienBan = "2026-09-22"
 
 # So sanh khoa giua config.toml va config.example.toml. Viet bang Python chu khong phai
 # PowerShell vi PS 5.1 khong co bo doc TOML nao, va tomllib thi da nam san trong venv.
@@ -274,6 +274,89 @@ function truoc_khi_cap_nhat([string] $venvPy) {
 # ---------------------------------------------------------------------------------------------
 # B4. Ma nguon
 # ---------------------------------------------------------------------------------------------
+# Tai lieu NOI BO -- khong de nam san trong thu muc cai cua khach.
+#
+# Day la mot RANH GIOI THUONG MAI, KHONG PHAI MOT CAI KHOA: kho nay CONG KHAI, nen ai mo GitHub
+# van doc duoc het. Muc dich hep va that: khong dat 9.389 dong tai lieu noi bo -- ke ca
+# NOI-BO-nhieu-client.md, tuc chinh cach mo khoa phan nhieu Client (D-42) -- ngay trong thu muc
+# khach mo hang ngay.
+#
+# Duong dan khai TUONG MINH tung cai. Mot mau chung kieu `docs\*` se xoa ca CAI-DAT-VPS.md va
+# RUNBOOK.md, tuc hai tai lieu duy nhat khach thuc su can.
+$script:DuongNoiBo = @(
+    "PROGRESS.md",
+    "plan",
+    "docs\NOI-BO-nhieu-client.md",
+    "docs\BACKLOG.md",
+    "docs\DECISIONS.md",
+    "docs\ACCEPTANCE.md",
+    "docs\ARCHITECTURE.md",
+    "docs\CONVENTIONS.md"
+)
+
+# Dua trang thai ve SACH truoc khi pull.
+#
+# DA DO (2026-09-22, hai kho git thu tren cung may): `git pull --ff-only` KHONG tu choi khi file
+# chi bi xoa khoi thu muc lam viec -- no chay binh thuong, va tu tao lai nhung file ma ban moi co
+# cham vao. Nen ham nay KHONG phai de cuu lan pull; dung tin no la vay.
+#
+# Ly do that, va nho hon: sau lan don dau tien, `git status` bao cac duong nay la " D". Chot thu
+# hai cua `don_ban_khach` -- "dang co thay doi chua commit thi de nguyen" -- doc chinh
+# `git status`, nen khong lam sach truoc thi cai chot ay khong con phan biet duoc "da xoa tu lan
+# truoc" voi "nguoi phat trien dang sua do". Mot trang thai xac dinh dang gia hon mot trang thai
+# tinh co dung.
+#
+# Khong dung `git checkout -- .`: qua rong, no cuon ca sua tay that cua nguoi van hanh.
+function phuc_hoi_tai_lieu_noi_bo() {
+    if (-not (Test-Path (Join-Path $ThuMuc ".git"))) { return }
+    # TUNG DUONG MOT, khong dua ca danh sach vao mot lenh: `git checkout --` gap MOT pathspec
+    # khong khop la bao loi va KHONG phuc hoi cai nao ca. Mot file bi doi ten tren nhanh moi se
+    # keo theo ca bay cai con lai khong duoc phuc hoi, roi `pull` tu choi -- va thong bao luc do
+    # khong he nhac toi ham nay.
+    foreach ($d in $script:DuongNoiBo) {
+        git -C $ThuMuc checkout -- $d 2>&1 | Out-Null
+    }
+}
+
+# Chay SAU buoc test: bo test co doc PROGRESS.md va docs\NOI-BO-nhieu-client.md, va
+# `cai-dat.ps1` HUY CA LAN CAI khi test do -- xoa truoc la tu lam khach khong cai duoc.
+function don_ban_khach() {
+    buoc_moi "Don tai lieu noi bo khoi ban cai"
+
+    # CHOT 1: chi xoa khi co .git. Khong co git thi khong co duong phuc hoi, va truong hop do la
+    # "thu muc du an chep qua RDP" -- xoa o day la xoa mot chieu. Thua mot ban ro tai lieu con hon
+    # xoa mat ban duy nhat cua ai do.
+    if (-not (Test-Path (Join-Path $ThuMuc ".git"))) {
+        bo_qua "khong phai kho git -- khong co duong phuc hoi, khong xoa"
+        return
+    }
+
+    $soXoa = 0
+    foreach ($d in $script:DuongNoiBo) {
+        $duong = Join-Path $ThuMuc $d
+        if (-not (Test-Path $duong)) { continue }
+
+        # CHOT 2: dang sua do thi de nguyen. Tinh huong that: mot nguoi phat trien chay chinh
+        # script nay trong ban lam viec cua ho. Xoa PROGRESS.md dang co sua tay chua commit la mat
+        # han -- `git checkout` khong lay lai duoc thu chua bao gio duoc ghi vao git.
+        $dangSua = @(git -C $ThuMuc status --porcelain -- $d 2>$null)
+        if ($dangSua.Count -gt 0) {
+            bo_qua "$d dang co thay doi chua commit -- khong xoa"
+            continue
+        }
+
+        try {
+            Remove-Item -Recurse -Force $duong -ErrorAction Stop
+            $soXoa++
+        } catch {
+            # Khong nem: mot tai lieu con sot lai khong lam he thong sai mot ly nao.
+            canh "khong xoa duoc $d ($($_.Exception.Message))"
+        }
+    }
+    if ($soXoa -gt 0) { ok "da xoa $soXoa duong tai lieu noi bo" }
+    else { bo_qua "khong con tai lieu noi bo nao" }
+}
+
 function lay_ma_nguon([bool] $coGit) {
     buoc_moi "Lay ma nguon"
     $coPyproject = Test-Path (Join-Path $ThuMuc "pyproject.toml")
@@ -288,6 +371,9 @@ function lay_ma_nguon([bool] $coGit) {
     }
 
     if ($coDotGit) {
+        # Phuc hoi tai lieu noi bo da xoa o lan truoc, de trang thai git sach khi vao pull.
+        # `don_ban_khach` o cuoi lan chay nay xoa lai.
+        phuc_hoi_tai_lieu_noi_bo
         git -C $ThuMuc fetch --prune
         # Khong tu `stash`, khong tu `reset --hard`. Doan y nguoi van hanh o day la cach lam mat
         # mot ban va sua tay luc 2 gio sang.
@@ -656,59 +742,37 @@ function canh_bao_path_cu() {
     Write-Host "   `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')" -ForegroundColor DarkGray
 }
 
+# CHI chay khi tro ly KHONG chay duoc, va CHI o lan cai dau -- xem cho goi o cuoi file.
+#
+# Khoi nay truoc day co mot "hoac lam tay, dung thu tu nay" gom sau buoc, trong do co ca lenh
+# `them-client`. Hai van de: no la mot ban chi dan SONG SONG voi tab Huong dan (va hai ban song
+# song thi se lech -- da lech that), va no in ra man hinh khach dung cai lenh ma ban giao co y
+# khong nhac toi (D-42). Gio no chi con la mot con tro.
 function in_buoc_tiep() {
     buoc_moi "Xong"
-    $venvPy = ".venv\Scripts\python.exe"
     Write-Host ""
     tach
     Write-Host " BUOC TIEP THEO" -ForegroundColor Cyan
     tach
     Write-Host @"
- CHAY MOT LENH NAY, no hoi xac nhan tung buoc roi tu lam theo dung thu tu:
+ Tro ly chua chay (xem ly do o khoi ngay tren). CHAY MOT LENH NAY trong PowerShell
+ mo bang "Run as administrator":
 
       $ThuMuc\scripts\tro-ly.ps1 -ThuMuc "$ThuMuc"
 
  No tao agent, ghi token clicker thang vao config.toml, tao dong client, dang ky
- dich vu (Bridge bat dau chay o day), bien dich EA, cho EA len ONLINE, khai bao
- anh xa symbol, roi chay kiem tra. Chay lai bao nhieu lan cung duoc.
+ dich vu (Bridge bat dau chay o day), bien dich EA va chep vao MT5, roi mo tab
+ Huong dan. Chay lai bao nhieu lan cung duoc: buoc nao xong roi se in BO QUA.
 
- ---------------------------------------------------------------------------
- Hoac lam tay, DUNG THU TU NAY:
+ Xong lenh do thi moi viec con lai nam tren tab Huong dan cua dashboard, muc
+ "Cai dat lan dau" -- tung buoc, dung thu tu, co nut Chay san.
 
- 1. Tao agent va cap token (database moi LUON RONG -- data/ nam trong .gitignore):
-      cd "$ThuMuc"
-      $venvPy -m bridge.admin them-agent AG-MASTER  --role MASTER  --magic 770001
-      $venvPy -m bridge.admin them-agent AG-CLIENT  --role CLIENT  --magic 770001
-      $venvPy -m bridge.admin them-agent AG-CLICKER --role CLICKER --magic 770001
-    Token tho HIEN DUNG MOT LAN. Token cua AG-CLICKER dat vao muc [clicker] trong config.toml,
-    dung dat tren dong lenh -- dong lenh cua tien trinh thi may nao cung doc duoc.
-    KHONG can --login: EA tu bao so tai khoan luc bat tay dau tien, con so tai khoan va tieu de
-    cua so cua clicker thi khai tren dashboard (tab Cau hinh > Agent).
-
- 2. Tao dong client -- THIEU BUOC NAY LA anh-xa-symbol BAO 'Khong co client':
-      $venvPy -m bridge.admin them-client CL-01 --agent AG-CLIENT --clicker-agent AG-CLICKER --open-route UI --close-route UI
-
- 3. Dang ky dich vu va tac vu. PHAI LAM TRUOC BUOC 4: day la thu khoi dong Bridge,
-    va EA gan len chart khi chua ai nghe cong 8787 se khong bao gio len ONLINE.
-      $ThuMuc\scripts\tao-dich-vu.ps1 -ThuMuc "$ThuMuc"
-
- 4. Cai hai terminal MT5, bien dich va gan EA, dien token vao tham so EA.
-
- 5. Mo dashboard http://127.0.0.1:8080 > tab Cau hinh va khai hai thu:
-    - Agent: so tai khoan + tieu de cua so terminal cho tung clicker. Chua khai thi clicker
-      khong lai duoc terminal nao (no thoat ma 4 va thu lai moi 60 giay).
-    - Anh xa symbol -- THIEU BUOC NAY LA MOI LENH MASTER BI BO QUA trong im lang.
-      (can EA Client dang chay va symbol da keo vao Market Watch)
-
- 6. Moi lan dang nhap:
-      $ThuMuc\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
-
- Chi tiet tung buoc: docs\CAI-DAT-VPS.md (Phan A: cai moi, Phan B: may da co he thong)
+ Moi lan dang nhap VPS:  $ThuMuc\scripts\kiem-tra.ps1 -ThuMuc "$ThuMuc"
 "@
     Write-Host ""
     # Duong chay duoc chinh docs/CAI-DAT-VPS.md khuyen nghi -- tai rieng cai-dat.ps1 roi chay de
     # no tu clone -- dat $PSScriptRoot o Desktop, con canh-bao.txt thi nam trong ban vua clone.
-    # Khong do tim o $ThuMuc thi buoc cuoi nem mot cuc loi Get-Content mau do va khoi 6 canh bao
+    # Khong do tim o $ThuMuc thi buoc cuoi nem mot cuc loi Get-Content mau do va khoi 7 canh bao
     # "khong lam = mat tien" bien mat, dung cai phan dang ra phai doc ky nhat.
     $canhBao = @(
         (Join-Path $PSScriptRoot "canh-bao.txt"),
@@ -747,10 +811,17 @@ try {
     bao_dam_thu_muc
     bao_dam_config $venvPy
     khoi_tao_va_kiem $venvPy
+    # SAU buoc test, khong truoc: bo test doc PROGRESS.md va docs\NOI-BO-nhieu-client.md.
+    don_ban_khach
     sau_khi_cap_nhat $commitCu
-    # Tro ly da in khoi ket cua rieng no (ba viec con lai, canh-bao.txt) va da mo dashboard, nen
-    # in tiep khoi "BUOC TIEP THEO" nam viec nua chi lam nguoi doc khong biet phai theo cai nao.
-    if (-not (chay_tro_ly)) { in_buoc_tiep }
+    # Tro ly da in khoi ket cua rieng no (con tro sang tab Huong dan + canh-bao.txt) va da mo
+    # dashboard, nen in tiep khoi "BUOC TIEP THEO" nua chi lam nguoi doc khong biet theo cai nao.
+    #
+    # `-and (-not $CapNhat)`: `chay_tro_ly` tra $false cho MOI lan -CapNhat, nen truoc day khach
+    # bam CAP-NHAT.cmd la nhan tron khoi "BUOC TIEP THEO" cua lan cai DAU -- lenh chay tro ly,
+    # lenh them-client, tat ca. Duong cap nhat da co khoi ket rieng: `sau_khi_cap_nhat` bat lai
+    # dich vu, ghi moc cap nhat, roi mo tab Huong dan o muc "Sau khi cap nhat code".
+    if (-not (chay_tro_ly) -and (-not $CapNhat)) { in_buoc_tiep }
     # In SAU cung, ke ca khi tro ly da in khoi ket cua rieng no: day la thu chan lan cap nhat ke
     # tiep, nen no phai la dong cuoi nguoi dung con nhin thay.
     canh_bao_path_cu

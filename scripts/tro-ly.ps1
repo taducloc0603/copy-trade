@@ -314,7 +314,7 @@ function buoc_thong_so() {
         "cac lenh anh-xa-symbol va cau-hinh-client. Cu Enter.",
         "",
         "Vi du   : CL-01",
-        "Cach lay: khong phai tra o dau. Nhieu Client thi CL-02, CL-03..."
+        "Cach lay: khong phai tra o dau. Ban giao cau hinh cho MOT Client -- cu Enter."
     )
     $script:IdClientAcc = hoi_chuoi "Ma client" "CL-01"
     ok "da ghi nhan"
@@ -506,41 +506,29 @@ function buoc_dong_master() {
 # ---------------------------------------------------------------------------------------------
 # B6. Bien dich EA
 # ---------------------------------------------------------------------------------------------
-function tim_metaeditor() {
-    $ungVien = @(
-        (Join-Path $env:ProgramFiles "MetaTrader 5\MetaEditor64.exe"),
-        (Join-Path ${env:ProgramFiles(x86)} "MetaTrader 5\MetaEditor64.exe")
-    )
-    foreach ($u in $ungVien) { if ($u -and (Test-Path $u)) { return $u } }
-    $tim = Get-ChildItem $env:ProgramFiles -Filter MetaEditor64.exe -Recurse -ErrorAction SilentlyContinue |
-           Select-Object -First 1
-    if ($tim) { return $tim.FullName }
-    return $null
-}
-
+# KHONG bien dich tai cho nua. Truoc day ham nay co `tim_metaeditor` rieng va vong lap MetaEditor
+# rieng, nen no bien dich ra `ea\*.ex5` roi DUNG O DO -- khong chep vao MQL5\Experts cua MT5. Ban
+# tren dashboard (`bien-dich-ea.ps1`, dot-source `chung-mt5.ps1`) thi chep. Hai ban bien dich, va
+# ban YEU hon lai la ban khach gap trong luc cai. Gio chi con mot ban.
 function buoc_bien_dich() {
-    buoc_moi "Bien dich EA"
+    buoc_moi "Bien dich EA va chep vao MT5"
     giai_thich @(
-        "Bien dich ea\*.mq5 thanh .ex5 bang MetaEditor, khong can mo giao dien.",
-        "Chua cai MT5 thi bo qua buoc nay, cai xong chay lai script."
+        "Bien dich ea\*.mq5 thanh .ex5 bang MetaEditor, roi chep .ex5 vao MQL5\Experts cua MOI",
+        "terminal MT5 tim thay tren may. Khong can mo giao dien MT5.",
+        "Chua cai MT5 thi bo qua buoc nay -- tab Huong dan co nut Chay lam lai duoc sau."
     )
-    $me = tim_metaeditor
-    if (-not $me) {
-        canh "khong thay MetaEditor64.exe -- cai MT5 truoc, roi chay lai script nay."
-        return
-    }
-    if (-not (hoi_co_khong "Bien dich hai EA bang $me ?")) { bo_qua "nguoi dung tu choi"; return }
+    $bd = Join-Path $PSScriptRoot "bien-dich-ea.ps1"
+    if (-not (Test-Path $bd)) { canh "khong thay $bd"; return }
+    if (-not (hoi_co_khong "Bien dich hai EA va chep vao MT5?")) { bo_qua "nguoi dung tu choi"; return }
 
-    $log = Join-Path $ThuMuc "logs\compile.log"
-    foreach ($ea in @("CopyBridgeMaster.mq5", "CopyBridgeClient.mq5")) {
-        $nguon = Join-Path $ThuMuc "ea\$ea"
-        if (-not (Test-Path $nguon)) { canh "khong thay $nguon"; continue }
-        # MetaEditor thoat khac 0 khi chi co canh bao, nen su ton tai cua .ex5 moi la bang chung.
-        & $me "/compile:$nguon" "/log:$log" | Out-Null
-        $ex5 = [IO.Path]::ChangeExtension($nguon, ".ex5")
-        if (Test-Path $ex5) { ok "$ea -> $(Split-Path -Leaf $ex5)" }
-        else { canh "$ea bien dich khong ra .ex5 -- doc $log" }
+    & $bd -ThuMuc $ThuMuc
+    # Ma 2 (khong thay MetaEditor) va ma 3 (khong thay thu muc du lieu MT5) deu co nghia "chua cai
+    # MT5", KHONG phai loi cai dat -- tab Huong dan co nut Chay de lam lai sau. Nen khong duoc nem.
+    if ($LASTEXITCODE -eq 0) { ok "da bien dich va chep vao MT5" }
+    elseif ($LASTEXITCODE -eq 2 -or $LASTEXITCODE -eq 3) {
+        canh "chua thay MT5 tren may -- cai MT5 roi bam nut Chay o buoc bien dich, tab Huong dan."
     }
+    else { canh "bien-dich-ea.ps1 tra ve $LASTEXITCODE -- doc phan tren." }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -567,7 +555,8 @@ function cong_theo_khoa([string] $khoa) {
     } finally { Pop-Location }
 }
 
-function cong_bridge()  { return (cong_theo_khoa "port") }
+# `cong_bridge` da bo: khoi ket khong con in BridgePort nua. Con so do nam o tab Huong dan, buoc
+# gan EA -- va do la cho duy nhat nen co no.
 function cong_web()     { return (cong_theo_khoa "web_port") }
 
 function dang_nghe([int] $cong) {
@@ -659,7 +648,7 @@ function buoc_kiem_tra() {
 # B12. Ket
 # ---------------------------------------------------------------------------------------------
 function buoc_ket() {
-    buoc_moi "Xong -- con ba viec, lam het tren trinh duyet va trong MT5"
+    buoc_moi "Xong phan may -- phan con lai lam tren tab Huong dan"
 
     $congWeb = cong_web
     if ($null -eq $congWeb) { $congWeb = 8080 }
@@ -667,30 +656,32 @@ function buoc_ket() {
     # biet buoc nao da xong. Mo trang chu roi de nguoi dung tu tim ra tab la bo lai dung cai kho.
     $diaChi = "http://127.0.0.1:$congWeb/#huong-dan"
 
+    # KHOI NAY CO LAI THANH MOT CON TRO, CO Y.
+    #
+    # Truoc day no ke lai tung viec: "con ba viec", "chep ea\*.ex5 vao MQL5\Experts bang tay",
+    # "khai SO TAI KHOAN va TIEU DE CUA SO cho tung clicker". Ca ba cau da SAI sau ngay
+    # 2026-09-22: tab Huong dan co CHIN buoc, viec chep .ex5 gio la mot nut, va Bridge tu suy so
+    # tai khoan clicker tu EA chay cung terminal nen khai tay la viec "thuong khong phai lam"
+    # (khai tay con DE len gia tri suy ra, va co the lai nham terminal).
+    #
+    # Bai hoc da tra gia: mot ban chi dan song song la mot ban SE lech. Khach non-tech doc hai
+    # ban trai nhau trong vong mot phut thi khong biet theo cai nao. Nen khoi nay khong ke viec
+    # nua -- no chi tro tay sang cho duy nhat co viec, la tab Huong dan.
     Write-Host ""
     tach
-    Write-Host " HE THONG DA DUNG XONG. CON BA VIEC, VA CHUNG NAM O HAI CHO:" -ForegroundColor Yellow
+    Write-Host " XONG PHAN MAY. PHAN CON LAI NAM TRON TREN TAB HUONG DAN." -ForegroundColor Yellow
     tach
     Write-Host @"
 
-  Tren dashboard ($diaChi -- tab Cau hinh):
+  Trinh duyet vua mo tab HUONG DAN:  $diaChi
 
-    1. Khoi Agent > Cap lai token cho AG-MASTER va AG-CLIENT. Token hien MOT LAN
-       ngay tren trang; dan vao tham so AgentToken cua EA tuong ung.
-    2. Khoi Agent > khai SO TAI KHOAN va TIEU DE CUA SO cho tung clicker.
-       Tieu de phai chua so tai khoan: do la thu clicker doi chieu truoc MOI cu bam.
-    3. Khoi Anh xa symbol > khai symbol Master ung voi symbol nao ben Client.
+  Trong do la danh sach "Cai dat lan dau", theo dung thu tu. Lam tu tren xuong,
+  khong bo buoc nao. Moi buoc noi ro: lam gi, biet la xong khi nao, va cai bay
+  hay gap. Buoc nao may lam duoc thi co nut Chay ngay tai do; buoc nao dashboard
+  khong nhin thay duoc (keo EA len chart, mo Toolbox trong MT5) thi co o de ban
+  tu tich.
 
-  Trong MT5 (viec duy nhat khong tu dong hoa duoc):
-
-    - Chep ea\*.ex5 vao MQL5\Experts cua tung terminal (File > Open Data Folder),
-      keo EA len DUNG MOT chart, dien AgentToken vua lay, BridgeHost = 127.0.0.1,
-      BridgePort = $(cong_bridge).
-    - Bat nut Algo Trading, va mo Toolbox (Ctrl+T) o tab Trade.
-
-  Trinh duyet vua mo tab HUONG DAN: ba viec tren nam trong danh sach "Cai dat lan
-  dau", theo dung thu tu, va moi buoc tu biet da xong chua. Buoc nao dashboard khong
-  thay duoc (gan EA len chart, mo Toolbox) thi co o de ban tu tich.
+  Trang tu biet buoc nao da xong, nen dong lai mo lai luc nao cung duoc.
   Con buoc nao chua xong thi he thong KHONG copy duoc lenh nao.
 
   Moi lan dang nhap VPS:  $ThuMuc\scripts\kiem-tra.ps1

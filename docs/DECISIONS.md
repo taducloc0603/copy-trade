@@ -942,3 +942,64 @@ Chặn sâu hơn chỉ làm phiền chính người bán lúc hỗ trợ khách,
 bản giao (giới hạn 1, đã có `CL-01`) và đòi lần thứ hai ra `CL-02` đầy đủ. Một năng lực giữ lại mà
 không ai chạy là một năng lực hỏng trong im lặng. Vì cùng lý do đó, `docs/ACCEPTANCE.md` (ca B-06,
 hai Client) và bảng lệnh trong `docs/RUNBOOK.md` **giữ nguyên**.
+
+---
+
+## D-43 — Đường cài phải khớp tab Hướng dẫn, và không mang tài liệu nội bộ theo
+
+*2026-09-22*
+
+**Bối cảnh.** Cùng ngày với D-39 (bỏ đăng nhập), D-40 (tab Hướng dẫn thành 9 bước có nút Chạy) và
+D-42 (giấu nhiều Client), ba thứ khách đọc **cuối cùng** — khối kết của `scripts/tro-ly.ps1`,
+`scripts/canh-bao.txt`, và khối `BUOC TIEP THEO` của `scripts/cai-dat.ps1` — vẫn là bản cũ. Chúng
+ra lệnh cho khách chép `.ex5` bằng tay (đã là một nút), khai số tài khoản clicker (Bridge tự suy),
+và nói "còn ba việc" (có chín). Không một lỗi nào trong số đó làm test đỏ hay làm hệ thống chạy
+sai — chúng chỉ làm một người non-tech đọc hai bản chỉ dẫn trái nhau trong vòng một phút.
+
+**Quyết định 1 — script không kể lại việc, script trỏ.** Mọi khối kết co lại thành một con trỏ sang
+tab Hướng dẫn. Đây là cùng một luật với `docs/CAI-DAT-VPS.md` (*"Đó là hướng dẫn chính thức, không
+phải tài liệu này"*), mở rộng ra cho script: **một bản chỉ dẫn song song là một bản sẽ lệch**, và
+lần này nó đã lệch thật. Hệ quả kèm theo: khối `BUOC TIEP THEO` mất luôn phần "hoặc làm tay, đúng
+thứ tự này" sáu bước — trong đó có `them-client`, tức chính câu lệnh D-42 cố ý không nhắc.
+
+**Quyết định 2 — một bản biên dịch EA, không phải hai.** `tro-ly.ps1` từng có `tim_metaeditor` và
+vòng lặp MetaEditor riêng, nên nó biên dịch ra `ea\*.ex5` rồi **dừng ở đó** — không chép vào
+`MQL5\Experts`. Bản trên dashboard (`scripts/bien-dich-ea.ps1`) thì chép. Hai bản, và bản yếu hơn
+lại là bản khách gặp trong lúc cài. Giờ trợ lý gọi bản dùng chung.
+
+**Quyết định 3 — `in_buoc_tiep` không chạy trên đường `-CapNhat`.** `chay_tro_ly` trả `$false` cho
+**mọi** lần `-CapNhat`, nên mỗi lần khách bấm `CAP-NHAT.cmd` là nhận trọn khối của lần cài đầu.
+Đường cập nhật đã có khối kết riêng (`sau_khi_cap_nhat`).
+
+**Quyết định 4 — tài liệu nội bộ không nằm trong thư mục cài.** `cai-dat.ps1::don_ban_khach` xoá
+`PROGRESS.md`, `plan/`, và năm tài liệu nội bộ trong `docs/` (kể cả `NOI-BO-nhieu-client.md`) sau
+mỗi lần cài hoặc cập nhật. Ba điều buộc phải đúng, mỗi điều vì một cách hỏng cụ thể:
+
+1. **Chạy SAU bước test.** Bộ test đọc `PROGRESS.md` và `docs/NOI-BO-nhieu-client.md`, và
+   `cai-dat.ps1` **huỷ cả lần cài** khi test đỏ. Dọn trước là tự làm khách không cài được, với một
+   thông báo lỗi không hề nhắc tới việc dọn.
+2. **Khai tường minh từng đường.** Một mẫu `docs\*` sẽ xoá cả `CAI-DAT-VPS.md` và `RUNBOOK.md` —
+   đúng hai thứ duy nhất khách cần.
+3. **Hai chốt an toàn:** không có `.git` thì không xoá (không có đường phục hồi), và đường nào đang
+   có thay đổi chưa commit thì để nguyên — tình huống thật là một người phát triển chạy chính script
+   này trong bản làm việc của họ, và `git checkout` không lấy lại được thứ chưa bao giờ vào git.
+
+Liên kết tương đối tới các tài liệu ấy trong `README.md` và `docs/RUNBOOK.md` đổi thành URL GitHub:
+một đường dẫn không đứt vì việc dọn. Và như D-42 đã ghi, đây là **ranh giới thương mại, không phải
+cái khoá** — kho công khai, ai mở GitHub vẫn đọc hết.
+
+**Quyết định 5 — `.gitattributes` dùng `-text`, không dùng `text eol=crlf`.** `CAI-DAT.cmd` và
+`scripts/cai-dat.ps1` được `curl` tải **thẳng** từ `raw.githubusercontent.com`, tức không đi qua
+checkout. `text eol=crlf` chuẩn hoá blob về LF rồi mới đổi thành CRLF *lúc checkout*, nên bản tải
+bằng curl sẽ nhận LF — đúng cái hỏng mà dòng đó tưởng là đang vá. `-text` tắt chuẩn hoá.
+
+Đo được, và đáng ghi vì nó đã một lần dẫn sai: `CAI-DAT.cmd` lúc đó **là LF thuần** (2748 byte, 0
+CRLF), và `grep -c $'$'` trên Git Bash báo ngược — 68 CRLF. Đọc **byte** mới ra sự thật. File đã
+được đổi sang CRLF cùng lúc thêm `.gitattributes`.
+
+**Thứ B-08 nhận được ở đây.** `canh-bao.txt` mục 1 đổi từ "chưa ai chứng minh, phải đo" thành một
+chỉ dẫn hành động: **giữ phiên RDP mở**, và sau mỗi lần mất kết nối thì chạy `kiem-tra.ps1` trước
+khi tin là còn đang copy. Lý do phải nói ra kiểu hỏng: nó không báo lỗi — **dashboard vẫn xanh**
+trong khi cú bấm không tới cửa sổ nào. Chỉ nói "giữ phiên mở" thì khách mất kết nối một lần rồi tin
+rằng nó vẫn chạy. B-08 vẫn **chưa đo**, và `docs/BACKLOG.md` giữ nguyên nguyên văn "chặn triển khai
+VPS": không sửa backlog cho êm tai khi phép đo chưa chạy.

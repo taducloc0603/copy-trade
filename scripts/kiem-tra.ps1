@@ -118,8 +118,11 @@ if ($null -eq $cfg) {
     } catch {
         $ma = $null
         if ($_.Exception.Response) { $ma = [int] $_.Exception.Response.StatusCode }
-        # 302 (chuyen toi /login) va 401 deu la dashboard con song, chi la chua dang nhap.
-        if ($ma -eq 302 -or $ma -eq 401) { xanh "dashboard tra loi $ma (chua dang nhap)" }
+        # Truoc day 302/401 duoc tinh la XANH ("chi la chua dang nhap"). Dashboard KHONG CON dang
+        # nhap tu 2026-09-22 (D-39): khong con /login de chuyen toi, nen 302/401 bay gio la hong
+        # THAT. Mot cai bao xanh sai o day dat hon moi thu khac trong script nay -- day chinh la
+        # thu khach dung de tin rang he thong dang song.
+        if ($ma) { do_ "dashboard tra loi $ma -- khong con duong dang nhap nao, day la loi" }
         else { do_ "dashboard khong tra loi: $($_.Exception.Message)" }
     }
 }

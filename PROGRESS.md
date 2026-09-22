@@ -3892,3 +3892,60 @@ khach chiu doc van thay `ops.SO_CLIENT_MAC_DINH`, thay chinh muc D-42, va thay
 `docs/NOI-BO-nhieu-client.md`. Giau o day chi co nghia la KHONG CHU DONG MOI, khong phai che duoc.
 
 953 test xanh (+1).
+
+---
+
+## 2026-09-22 — Lam sach duong cai truoc khi gui `CAI-DAT.cmd` cho khach (D-43)
+
+Cau hoi khoi dau: "gui file cai dat cho nguoi dung duoc chua?". Tra loi: **chua**, va ly do khong
+phai tinh nang thieu -- duong cai tre mot ngay so voi phan con lai. Trong cung ngay, ban giao bo
+dang nhap (D-39), viet lai tab Huong dan thanh 9 buoc co nut Chay (D-40), gop bien dich + chep EA
+thanh mot nut, va giau nhieu Client (D-42). Ba thu khach doc CUOI CUNG thi khong ai sua theo.
+
+Chi tiet quyet dinh: D-43. Ghi o day nhung thu chi thay duoc khi CHAY.
+
+### Ba phep do bac bo chinh gia thiet cua toi
+
+**1. `git pull --ff-only` KHONG tu choi khi file bi xoa.** Toi da viet vao chu thich rang no tu choi
+("Your local changes would be overwritten"), va do la ca ly do ton tai cua
+`phuc_hoi_tai_lieu_noi_bo`. Do tren hai kho git that: pull chay binh thuong, va tu tao lai nhung
+file ma ban moi co cham vao. Ham do van giu, nhung vi mot ly do NHO HON va that: chot "dang sua do
+thi de nguyen" cua `don_ban_khach` doc `git status`, nen khong lam sach truoc thi no khong phan biet
+duoc "da xoa tu lan truoc" voi "nguoi phat trien dang sua". Da sua lai chu thich cho khop phep do --
+mot ly do sai viet trong ma nguon te hon la khong viet gi.
+
+**2. `grep -c $'$'` tren Git Bash dem SAI ngat dong.** No bao `CAI-DAT.cmd` co 68 CRLF. Doc byte
+bang Python: **0 CRLF, 68 LF, 2748 byte** -- LF thuan. Ban GitHub tra ve cung vay. Neu tin grep thi
+ket luan la "khong co gi phai sua" va file dau tien khach chay van o trang thai mong manh do. Doc
+byte, dung doc dong.
+
+**3. `text eol=crlf` se lam moi thu TE HON.** Dong `.gitattributes` toi viet dau tien chuan hoa blob
+ve LF roi doi lai CRLF luc checkout -- nhung `CAI-DAT.cmd` duoc `curl` tai THANG, khong qua
+checkout, nen no se nhan LF. Tuc dong do tao ra dung cai loi no tuong la dang va. Dung `-text`.
+
+### Hai lan test do vi chinh loi giai thich cua no
+
+Cac test moi cam nhung cum tu nhu "con ba viec", "them-client", "eol=crlf" -- va cho giai thich VI
+SAO chung bi cam lai nam ngay trong chu thich canh ban sua. Lan chay dau: sau test do, khong mot cai
+nao vi ma nguon sai. Cach sua de nhat luc do la xoa loi giai thich, tuc mat dung thu dang giu nhat.
+Da them `_phan_in_ra()` (bo dong bat dau bang `#`) va loc dong khai cua `.gitattributes`.
+
+Mot phep cam qua rong nua: `.ex5 vao MQL5` bat nham chinh cau MOI, dung -- "nut do tu chep .ex5 vao
+MQL5\Experts". Thu hep con `Chep ea\*.ex5`, tuc cau RA LENH cho khach chep tay. Cung ho loi voi
+bay "mo them" ghi hom qua: mot phep cam bat nham la mot phep cam se bi noi ra cho qua.
+
+### Kiem hai chieu
+
+18 trong 23 test moi do khi chay tren ban da commit. Nam cai con lai xanh vi chung khoa trang thai
+da dung san (so muc canh-bao, mat khau o vai file). Va hai ham don tai lieu duoc chay THAT tren mot
+cap kho git thu -- trich nguyen van tu `cai-dat.ps1`, khong go lai: vong 1 xoa 4 duong va giu
+`RUNBOOK.md` + `CAI-DAT-VPS.md`; vong 2 (co ban moi) pull xong don lai, ket qua y het; va chot 2 giu
+nguyen `PROGRESS.md` dang co sua chua commit.
+
+### Con no
+
+Chua dien tap cai sach tren VPS. Do la phan duy nhat tra loi duoc cau hoi ban dau; moi thu tren chi
+la dieu kien can. `cai-dat.ps1:480` huy ca lan cai khi mot test do, nen bo test phai xanh tren mot
+ban clone SACH, khong phai tren may nay.
+
+975 test xanh (+22).

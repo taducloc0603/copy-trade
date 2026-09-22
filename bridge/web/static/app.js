@@ -898,7 +898,7 @@ function khoiFileConfig(el) {
   vungMoi.append(nhan(UI.cfg_clicker_new_title, "nhan"),
                  nhan(UI.cfg_clicker_new_hint, "ghi-chu"));
   const oTen = oChu("");
-  oTen.placeholder = "cl02";
+  oTen.placeholder = "cl01";
   const oToken = document.createElement("input");
   oToken.type = "password";
   oToken.autocomplete = "new-password";

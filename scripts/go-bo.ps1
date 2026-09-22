@@ -13,7 +13,7 @@
 
     Truoc ban nay cach go duy nhat la muc B7 cua docs\CAI-DAT-VPS.md: `-GoBo` roi `Rename-Item`.
     No de lai bon thu: tien trinh clicker dang chay, EA con gan tren chart cung .ex5 va
-    MQL5\Files\copybridge cua tung terminal, BAN RO cua mat khau dashboard + token clicker trong
+    MQL5\Files\copybridge cua tung terminal, BAN RO cua token clicker trong
     thu muc vua doi ten, va thu muc tac vu \CopyBridge\ + tools\nssm + bo cai trong %TEMP%.
 
     Script KHONG go: Python, git, NSSM (winget, may khac con dung); autologon + tat sleep + tat
@@ -114,7 +114,7 @@ function file_ea_cua_tool() {
 }
 
 function file_bi_mat() {
-    # config.toml va MOI ban sao cua no: mot ban sao la mot ban RO cua mat khau dashboard va token
+    # config.toml va MOI ban sao cua no: mot ban sao la mot ban RO cua token clicker (mat khau
     # clicker. `.tam` la file trung gian cua duong sua tu dashboard, co the sot lai sau mot cu chet.
     if (-not (Test-Path $ThuMuc)) { return @() }
     return @(Get-ChildItem $ThuMuc -Filter "config.toml*" -File -ErrorAction SilentlyContinue |
@@ -160,7 +160,7 @@ function in_xem_truoc() {
     if ($ea.Count -gt 0) { foreach ($f in $ea) { se $f } }
     else { Write-Host "  (khong thay EA hay du lieu EA trong terminal nao)" -ForegroundColor DarkGray }
 
-    foreach ($f in @(file_bi_mat)) { se "$f  <-- ban ro mat khau/token" }
+    foreach ($f in @(file_bi_mat)) { se "$f  <-- ban ro token clicker" }
     foreach ($f in @(rac_tam))     { se $f }
 
     if (Test-Path $ThuMuc) { se "ca thu muc $ThuMuc (database, log, .venv, tools\nssm)" }
@@ -345,7 +345,7 @@ function xoa_thu_muc_cai() {
         $biMat = @($conLai | Where-Object { $_.Name -like "config.toml*" })
         if ($biMat.Count -gt 0) {
             canh ("VAN CON BI MAT tren dia: " + (($biMat | ForEach-Object { $_.Name }) -join ', ') +
-                  " -- do la ban ro cua mat khau dashboard va token clicker. Xoa chung truoc.")
+                  " -- do la ban ro cua token clicker. Xoa chung truoc.")
         }
         # Dung dong lenh, KHONG dung duong dan file thuc thi: ke giu file hay gap nhat la
         # chay-clicker.ps1, ma no chay bang powershell.exe nam trong System32 -- loc theo

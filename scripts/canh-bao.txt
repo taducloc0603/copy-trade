@@ -1,13 +1,17 @@
 =====================================================================
  SCRIPT KHONG LAM DUOC 7 VIEC SAU. KHONG LAM = MAT TIEN.
 =====================================================================
- 1. PHIEN RDP NGAT (B-08) -- CHUA AI CHUNG MINH.
+ 1. GIU PHIEN RDP MO. PHIEN NGAT = CHUA AI CHUNG MINH (B-08).
     Toan bo duong mo lenh dua vao clicker dieu khien giao dien MT5
     bang PostMessage. Lap luan "khong can desktop tuong tac nen chay
     duoc khi phien RDP da ngat" chua bao gio duoc do tren VPS that.
-    PHAI DO TRUOC KHI TIN: ngat phien RDP (dong cua so, KHONG Sign
-    out), mo lenh tren Master, roi kiem QUA DATABASE xem cap co duoc
-    tao khong.
+    NEN CU COI NHU KHONG CHAY: giu cua so RDP MO trong luc can copy.
+    VA DAY LA CHO DE MAT TIEN NHAT: kieu hong te nhat khong phai bao
+    loi, ma la dashboard VAN XANH trong khi cu bam khong tuong toi
+    cua so nao. Sau MOI lan mat ket noi RDP, dang nhap lai roi chay
+    scripts\kiem-tra.ps1 TRUOC KHI tin la he thong con dang copy.
+    Muon biet chac: ngat phien RDP (dong cua so, KHONG Sign out), mo
+    lenh tren Master, roi kiem QUA DATABASE xem cap co duoc tao khong.
 
  2. ALGO TRADING (B-09).
     Ca duong MO lan duong DONG phia Client deu di qua giao dien nen
@@ -29,10 +33,12 @@
     Hop thoai New Order lay symbol theo chart dang mo. Phai mo dung
     chart do va giu nguyen.
 
- 5. MT5 VA EA PHAI LAM TAY.
-    Cai terminal, bien dich EA, gan EA len chart, dien token. Bien
-    dich lai roi thi PHAI GO EA KHOI CHART ROI GAN LAI -- doi khung
-    thoi gian KHONG nap lai .ex5 tu dia.
+ 5. GAN EA LEN CHART PHAI LAM TAY.
+    Cai terminal MT5, keo EA len chart, dien token -- khong tu dong
+    hoa duoc. Con viec BIEN DICH va CHEP .ex5 vao MT5 thi da co nut
+    Chay o tab Huong dan, khong phai lam tay nua.
+    Bien dich lai roi thi PHAI GO EA KHOI CHART ROI GAN LAI -- doi
+    khung thoi gian KHONG nap lai .ex5 tu dia.
 
  6. MUC TOAN VEN CUA CLICKER PHAI >= CUA MT5.
     MT5 chay "Run as administrator" ma clicker chay thuong thi UIPI
@@ -40,14 +46,14 @@
     KHONG CO GI XAY RA. Hoac ca hai deu thuong, hoac ca hai deu nang
     quyen.
 
- 7. PHAI KHAI SO TAI KHOAN + TIEU DE CUA SO CHO TUNG CLICKER.
-    Tren dashboard: http://127.0.0.1:8080 > tab Cau hinh > Agent.
-    Tro ly cai dat KHONG hoi hai gia tri nay nua (D-32). Chua khai
-    thi clicker THOAT (ma 4) va thu lai moi 60 giay -- he thong dung
-    xong van khong bam duoc lenh nao. Tieu de phai CHUA SO TAI KHOAN:
-    do la thu clicker doi chieu voi cua so that truoc khi bam.
-    Cung trang do khai ANH XA SYMBOL -- thieu anh xa la moi lenh
-    Master bi bo qua trong im lang.
+ 7. ANH XA SYMBOL PHAI KHAI. CLICKER THI THUONG KHONG.
+    Tren dashboard: http://127.0.0.1:8080 > tab Cau hinh.
+    ANH XA SYMBOL -- thieu anh xa la MOI LENH MASTER BI BO QUA trong
+    im lang: khong loi, khong canh bao, chi la khong co gi xay ra.
+    CLICKER -- binh thuong khong phai khai gi: Bridge tu suy so tai
+    khoan tu EA chay cung terminal, va lay chinh so do lam tieu de
+    cua so. Chi khai tay khi trang bao do. Khai tay la DE LEN gia tri
+    Bridge tu suy, nen khai sai so la clicker lai NHAM TERMINAL.
     BAN CAI CU: xoa account_login/terminal_title khoi config.toml
     truoc, vi FILE THANG DATABASE -- con chung trong file thi sua
     tren dashboard khong co tac dung, va khong script nao kiem ho.
