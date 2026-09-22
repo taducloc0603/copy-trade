@@ -3409,3 +3409,29 @@ nhanh cong, va mot `Get-ScheduledTask` gia cho ba nhanh tac vu. Khong dang ky du
 
 958 test xanh (+2). Hai test moi khoa lai dung hai cho vua sai: bang kiem phai hep, va `docs/` khong
 duoc bao nguoi dung chay `Restart-Service` nua.
+
+### Va ngay: script khoi dong lai chet o nhanh MUNG nhat (2026-09-22)
+
+Lan chay dau tien tren VPS, `khoi-dong-lai.ps1` dung dich vu xong roi nem:
+
+    LOI: The property 'Count' cannot be found on this object.
+
+PowerShell TRAI PHANG gia tri tra ve cua ham: `return @()` rong thanh `$null` o cho goi, mot phan tu
+thanh scalar. Voi `Set-StrictMode` thi `$null.Count` nem ngay. Ba cho: `$giu = cho_nha ...`,
+`$conGiu = cho_nha ...`, va `(ai_dang_giu $_).Count`. Boc `@()` o cho goi la xong.
+
+Dieu dang ghi khong phai cai loi -- la vi sao no song sot qua buoc kiem chung. Hai ly do, va ca hai
+deu la loi cua nguoi kiem:
+
+1. **Harness khong bat `Set-StrictMode`.** No la mot script roi, con `khoi-dong-lai.ps1` bat
+   StrictMode ngay dau file. Harness khong dung moi truong that nen khong the bat duoc loi that.
+2. **Chay thu dung mot lan, o trang thai co tien trinh giu cong.** Duong hong thi chay duoc; duong
+   LANH -- cong da duoc nha, mang rong -- moi la duong no. Nhanh "khong co gi bat thuong" la nhanh
+   de quen kiem nhat, va no lai la nhanh chay 99% so lan.
+
+Test moi (`test_ham_tra_ve_mang_luon_duoc_boc_o_cho_goi`) doc chinh ma nguon: ham nao `return @(`
+thi khong duoc GAN truc tiep vao bien. Chi soi dang gan -- loi goi trong pipeline da nam trong `@()`
+cua ve phai nen vo hai, va bat ca chung thi test keu oan, ma mot test keu oan se bi noi ra cho qua.
+Kiem hai chieu: bo `@()` o mot cho -> test do dung dong do.
+
+959 test xanh (+1).

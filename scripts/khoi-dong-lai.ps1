@@ -63,6 +63,10 @@ function cong_theo_khoa([string] $khoa) {
     } finally { Pop-Location }
 }
 
+# Ba ham duoi tra ve MANG, va moi cho GAN phai boc lai bang @(). PowerShell trai phang gia tri
+# tra ve cua ham: mot mang rong thanh $null, mot phan tu thanh scalar. Voi Set-StrictMode thi
+# $null.Count nem "The property 'Count' cannot be found on this object" -- va do la cach script nay
+# chet ngay lan chay dau tien tren VPS (2026-09-22), dung o nhanh MUNG nhat: cong da duoc nha.
 function ai_dang_giu([int] $cong) {
     return @(Get-NetTCPConnection -State Listen -LocalPort $cong -ErrorAction SilentlyContinue |
              ForEach-Object { [int] $_.OwningProcess } | Sort-Object -Unique)
@@ -81,7 +85,7 @@ function cho_nha([int[]] $cong, [int] $giay) {
 function cho_nghe([int[]] $cong, [int] $giay) {
     $han = (Get-Date).AddSeconds($giay)
     while ((Get-Date) -lt $han) {
-        $thieu = @($cong | Where-Object { (ai_dang_giu $_).Count -eq 0 })
+        $thieu = @($cong | Where-Object { @(ai_dang_giu $_).Count -eq 0 })
         if ($thieu.Count -eq 0) { return $true }
         Start-Sleep -Seconds 2
     }
@@ -115,7 +119,7 @@ try {
     }
 
     tieu_de "Cho cong duoc nha"
-    $giu = cho_nha $cong $GiayChoNha
+    $giu = @(cho_nha $cong $GiayChoNha)
     if ($giu.Count -eq 0) {
         ok "khong con ai giu cong $congAgent / $congWeb"
     } else {
@@ -131,7 +135,7 @@ try {
             Stop-Process -Id $p -Force -ErrorAction SilentlyContinue
             ok "da giet PID $p"
         }
-        $conGiu = cho_nha $cong 10
+        $conGiu = @(cho_nha $cong 10)
         if ($conGiu.Count -gt 0) {
             canh ("VAN con PID " + ($conGiu -join ', ') + " giu cong. Dung tay roi chay lai.")
             exit 2

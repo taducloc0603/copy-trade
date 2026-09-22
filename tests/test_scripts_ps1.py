@@ -111,3 +111,43 @@ def test_tai_lieu_khong_con_bao_dung_restart_service(project_root: Path) -> None
             assert "đừng dùng" in dong, (
                 f"{duong_dan.name}:{so} con bao chay Restart-Service: {dong.strip()[:90]}"
             )
+
+
+def test_ham_tra_ve_mang_luon_duoc_boc_o_cho_goi(project_root: Path) -> None:
+    """Hàm `return @(...)` mà được **gán** vào biến thì phải bọc lại bằng `@(...)`.
+
+    PowerShell trải phẳng giá trị trả về của hàm: mảng rỗng thành `$null`, một phần tử thành scalar.
+    Với `Set-StrictMode` — mọi script ở đây đều bật — `$null.Count` nổ ngay:
+
+        The property 'Count' cannot be found on this object.
+
+    Đó là cách `khoi-dong-lai.ps1` chết ở lần chạy đầu trên VPS (2026-09-22), và nó chết đúng ở
+    nhánh **mừng nhất**: cổng đã được nhả, không có tiến trình mồ côi nào. Tức nhánh hỏng thì chạy
+    được, nhánh lành thì nổ — nên chạy thử một lần rất dễ kết luận là "đã kiểm rồi".
+
+    Chỉ soi dạng **gán** `$x = ten ...`. Lời gọi trong một pipeline đã nằm trong `@(...)` của vế
+    phải thì vô hại, và bắt cả chúng thì test kêu oan — mà một test kêu oan sẽ bị nới ra cho qua.
+    """
+    for duong_dan in _cac_script(project_root):
+        noi_dung = duong_dan.read_text(encoding="utf-8")
+        tra_mang = {
+            ten
+            for ten, than in re.findall(
+                r"^function\s+([A-Za-z_][\w-]*)\s*(?:\([^)]*\))?\s*\{(.*?)^\}",
+                noi_dung,
+                re.DOTALL | re.MULTILINE,
+            )
+            if "return @(" in than
+        }
+        for so, dong in enumerate(noi_dung.splitlines(), 1):
+            if dong.lstrip().startswith("#"):
+                continue
+            gan = re.match(r"\s*\$\w+\s*=\s*(.+)$", dong)
+            if gan is None:
+                continue
+            ve_phai = gan.group(1).lstrip()
+            ten = re.match(r"([A-Za-z_][\w-]*)\b", ve_phai)
+            assert ten is None or ten.group(1) not in tra_mang, (
+                f"{duong_dan.name}:{so}: gan truc tiep tu `{ten.group(1)}` (ham tra ve mang) ma "
+                f"khong boc @() -- mang rong se thanh $null, va .Count nem duoi Set-StrictMode"
+            )
