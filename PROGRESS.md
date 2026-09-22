@@ -3337,3 +3337,26 @@ Va mot lo nho cung loai: alert(r.data.message || r.data.error || "") ra mot hop 
 500 tra ve text/plain. Mot alert rong la bao cao loi te nhat co the.
 
 953 test xanh (+15), ruff sach.
+
+## Cai lan dau khong bao gio duoc nhan ra (2026-09-22)
+
+Lan cai that thu hai: cai moi tinh, nhung tab Huong dan mo muc "Sau khi cap nhat code".
+
+Luat chon muc hoi "chua co agent hoac chua co Client?" de nhan ra lan cai dau. Cau hoi ay KHONG
+BAO GIO DUNG: `tro-ly.ps1` tao san bon agent va CL-01 ngay trong lan cai, nen ngay khi cai xong ca
+hai ma do deu vang mat va trang roi vao nhanh else.
+
+Cau hoi dung khong phai "da co agent chua" ma la "viec cua lan cai dau da xong chua": chua gan EA,
+chua khai clicker, chua co anh xa symbol thi du agent co ton tai, day van la mot ban cai chua dung
+xong.
+
+Hai cho phai can than khi doi luat, va ca hai deu la ly do khong dung lai `con_viec`:
+- Bo LD_BAT_COPY khoi phep quyet dinh: run_mode ve PAUSED sau MOI lan khoi dong lai (D-15), nen
+  tinh no thi mot may dang chay tot vua restart cung bi coi la moi cai.
+- Chi tinh buoc tu kiem duoc, khong tinh o tu tich: o khong ai bam thi chua xong vinh vien, va
+  trang se ket o muc Lan dau mai mai.
+
+Dung lai duoc ca hai chieu tren DB tam truoc khi sua, va ba test khoa lai. Kiem bang cach stash
+RIENG views.py (stash ca cay thi cat luon test moi, va bai kiem thanh vo nghia).
+
+956 test xanh (+3).

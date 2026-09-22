@@ -1318,3 +1318,55 @@ async def test_api_client_moi_doi_mat_khau_va_dang_nhap(seeded_web: Database) ->
         assert (await c.post("/api/client_moi")).status_code == 401
     async with _http(tao_app(Dashboard(seeded_web))) as c:
         assert (await c.post("/api/client_moi")).status_code == 403
+
+
+def test_huong_dan_mo_muc_lan_dau_ngay_sau_khi_tro_ly_cai_xong(db: Database) -> None:
+    """Lỗi bắt được ở lần cài thật thứ hai (2026-09-22): trang mở mục "Sau khi cập nhật" cho một
+    máy vừa cài lần đầu.
+
+    Bản đầu hỏi "chưa có agent hoặc chưa có Client?" để nhận ra lần cài đầu — câu hỏi ấy **không
+    bao giờ đúng**, vì `tro-ly.ps1` tạo sẵn bốn agent và `CL-01` ngay trong lần cài. Câu hỏi đúng
+    là "việc của lần cài đầu đã xong chưa".
+    """
+    for a, r in [("AG-MASTER", "MASTER"), ("AG-CLIENT", "CLIENT"), ("AG-CLICKER", "CLICKER"),
+                 ("AG-CLICKER-MASTER", "CLICKER")]:
+        db.upsert_agent(a, role=r, token_hash="h", magic_number=770001)
+    db.upsert_client_account("CL-01", agent_id="AG-CLIENT", clicker_agent_id="AG-CLICKER",
+                             open_route="UI", close_route="UI")
+
+    assert views.trang_huong_dan(db)["che_do"] == "LAN_DAU"
+
+
+def test_huong_dan_may_dang_chay_vua_khoi_dong_lai_khong_bi_coi_la_moi_cai(db: Database) -> None:
+    """`run_mode` về `PAUSED` sau **mỗi** lần khởi động lại (D-15), nên nếu tính bước "bấm Bắt đầu
+    copy" vào phép quyết định thì mọi máy vừa restart đều bị coi là mới cài."""
+    db.upsert_agent("AG-MASTER", role="MASTER", token_hash="h", magic_number=770001,
+                    account_login=538216, status="ONLINE", trade_allowed=1)
+    db.upsert_agent("AG-CLIENT", role="CLIENT", token_hash="h", magic_number=770001,
+                    account_login=538217, status="ONLINE", trade_allowed=1)
+    db.upsert_agent("AG-CLICKER", role="CLICKER", token_hash="h", magic_number=0,
+                    status="ONLINE")
+    db.upsert_client_account("CL-01", agent_id="AG-CLIENT", clicker_agent_id="AG-CLICKER",
+                             open_route="UI", close_route="UI")
+    db.upsert_symbol_map("CL-01", "XAUUSD", "XAUUSDm", enabled=1)
+    db.set_config("run_mode", "PAUSED")
+
+    assert views.trang_huong_dan(db)["che_do"] == "SAU_UPDATE"
+
+
+def test_huong_dan_o_tu_tich_chua_bam_khong_lam_ket_o_muc_lan_dau(db: Database) -> None:
+    """Ô tự tích không ai bấm thì chưa xong vĩnh viễn — tính nó vào là trang kẹt ở Lần đầu mãi."""
+    db.upsert_agent("AG-MASTER", role="MASTER", token_hash="h", magic_number=770001,
+                    account_login=538216, status="ONLINE", trade_allowed=1)
+    db.upsert_agent("AG-CLIENT", role="CLIENT", token_hash="h", magic_number=770001,
+                    account_login=538217, status="ONLINE", trade_allowed=1)
+    db.upsert_agent("AG-CLICKER", role="CLICKER", token_hash="h", magic_number=0, status="ONLINE")
+    db.upsert_client_account("CL-01", agent_id="AG-CLIENT", clicker_agent_id="AG-CLICKER",
+                             open_route="UI", close_route="UI")
+    db.upsert_symbol_map("CL-01", "XAUUSD", "XAUUSDm", enabled=1)
+    db.set_config("run_mode", "RUNNING")
+
+    hd = views.trang_huong_dan(db)
+    lan_dau = next(n for n in hd["nhom"] if n["ma"] == "LAN_DAU")
+    assert any(b["trang_thai"] == "TU_TICH" and not b["da_tich"] for b in lan_dau["buoc"])
+    assert hd["che_do"] == "SAU_UPDATE"

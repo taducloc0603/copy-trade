@@ -561,11 +561,31 @@ def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
         return any(b["trang_thai"] == BUOC_CON_THIEU
                    or (b["trang_thai"] == BUOC_TU_TICH and not b["da_tich"]) for b in buoc)
 
-    # Mở sẵn nhóm nào: vừa cập nhật mà còn việc thì mở nhóm update; máy chưa có agent hoặc chưa có
-    # Client nào thì đang là lần cài đầu. Còn lại thì người mở trang này là người vừa cập nhật.
+    def con_chan(buoc: list[dict[str, Any]]) -> bool:
+        """Còn bước nào **Bridge tự kiểm được** mà chưa xong không.
+
+        Khác `con_viec` ở hai chỗ, và cả hai đều cần thiết để chọn đúng nhóm:
+
+        * **Không tính ô tự tích.** Ô không ai bấm thì chưa xong vĩnh viễn, và trang sẽ kẹt ở mục
+          Lần đầu mãi mãi.
+        * **Không tính `LD_BAT_COPY`.** `run_mode` về `PAUSED` sau **mỗi** lần khởi động lại
+          (D-15), nên tính nó thì một máy đang chạy tốt vừa restart cũng bị coi là mới cài.
+        """
+        return any(b["trang_thai"] == BUOC_CON_THIEU and b["ma"] != "LD_BAT_COPY" for b in buoc)
+
+    # Mở sẵn nhóm nào.
+    #
+    # Bản đầu hỏi "chưa có agent hoặc chưa có Client?" để nhận ra lần cài đầu — và nó **không bao
+    # giờ đúng**: `tro-ly.ps1` tạo sẵn bốn agent và `CL-01` ngay trong lần cài, nên ngay khi cài
+    # xong cả hai mã ấy đều vắng mặt và trang mở mục "Sau khi cập nhật" cho một máy vừa cài lần
+    # đầu. Lỗi lộ ra ở đúng lần chạy thật đầu tiên.
+    #
+    # Câu hỏi đúng không phải "đã có agent chưa" mà là **"việc của lần cài đầu đã xong chưa"**:
+    # chưa gắn EA, chưa khai clicker, chưa có ánh xạ symbol thì dù agent có tồn tại, đây vẫn là một
+    # bản cài chưa dựng xong.
     if moc and con_viec(sau_update):
         che_do = NHOM_SAU_UPDATE
-    elif "CHUA_CO_AGENT" in ma_thieu or "CHUA_CO_CLIENT" in ma_thieu:
+    elif con_chan(lan_dau):
         che_do = NHOM_LAN_DAU
     else:
         che_do = NHOM_SAU_UPDATE
