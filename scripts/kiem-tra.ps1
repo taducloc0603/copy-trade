@@ -173,6 +173,20 @@ if (Test-Path $reflog) {
     }
 }
 
+# 4c. git co goi duoc khong
+# Moi lan cap nhat deu bat dau bang `git pull`, va tai lieu bao go dung cau do. Nhung winget cai
+# git xong chi cap nhat PATH trong registry: mot cua so PowerShell mo tu TRUOC luc cai van mang
+# PATH cu va bao "git: The term 'git' is not recognized" -- mot thong bao khong he nhac toi PATH,
+# nen khong ai noi duoc no ve nguyen nhan. Da chan that mot lan cap nhat 2026-09-22.
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    xanh ("git goi duoc: " + ((git --version) -join ''))
+} else {
+    do_ ("khong goi duoc git trong cua so nay, nen `git pull` se bao 'not recognized'. PATH cua " +
+         "cua so nay cu hon lan cai git. Mo cua so PowerShell MOI, hoac nap lai PATH: " +
+         "`$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + " +
+         "[Environment]::GetEnvironmentVariable('Path','User')")
+}
+
 # 5. Hai terminal MT5
 $term = @(Get-Process terminal64 -ErrorAction SilentlyContinue)
 if ($term.Count -eq 2) { xanh "co 2 terminal MT5" }

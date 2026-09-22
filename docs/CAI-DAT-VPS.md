@@ -163,6 +163,18 @@ bản.
 > **Luôn có `-CapNhat` trên máy đã cài.** Thiếu nó, script từ chối chạy khi dịch vụ đang Running
 > — nếu không, code mới nằm trên đĩa nhưng Bridge và clicker vẫn chạy code cũ.
 
+> **`git : The term 'git' is not recognized`?** Cửa sổ PowerShell này mở từ **trước** lúc cài git,
+> nên nó mang `PATH` cũ — winget chỉ cập nhật `PATH` trong registry, không cập nhật cho tiến trình
+> đang chạy. Mở một cửa sổ PowerShell **mới**, hoặc nạp lại ngay trong cửa sổ này:
+>
+> ```powershell
+> $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' +
+>             [Environment]::GetEnvironmentVariable('Path','User')
+> ```
+>
+> Thông báo của Windows không nhắc một chữ nào về `PATH`, nên đây là chỗ dễ kết luận nhầm là "bản
+> mới chưa có gì". `kiem-tra.ps1` có một mục riêng kiểm đúng việc này.
+
 Sau khi cập nhật:
 
 ```powershell

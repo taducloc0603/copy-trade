@@ -195,6 +195,9 @@ function bao_dam_git() {
     buoc_moi "Kiem tra git"
     if ($BoQuaGit) { bo_qua "-BoQuaGit"; return $false }
     if (Get-Command git -ErrorAction SilentlyContinue) { ok ((git --version) -join ''); return $true }
+    # Tu day tro xuong la PHAI CAI. Danh dau lai: chi khi vua cai thi cac cua so PowerShell mo tu
+    # TRUOC do moi khong thay git, va chi khi do moi can canh bao o cuoi.
+    $script:VuaCaiGit = $true
 
     if (Get-Command winget -ErrorAction SilentlyContinue) {
         canh "Chua co git, dang cai bang winget"
@@ -639,6 +642,20 @@ function sau_khi_cap_nhat([string] $commitCu) {
     if (Test-Path $troLy) { & $troLy -ThuMuc $ThuMuc -TenDichVu $TenDichVu -ChiMoDashboard }
 }
 
+# PATH moi chi co trong tien trinh NAY va trong cac tien trinh mo SAU day. Mot cua so PowerShell
+# mo tu truoc luc cai van mang PATH cu, va `git pull` o do bao "not recognized" -- mot thong bao
+# khong he nhac toi PATH, nen khong ai noi duoc no ve day. Da xay ra that 2026-09-22: nguoi dung
+# khong cap nhat duoc va tuong ban moi chua co tinh nang.
+function canh_bao_path_cu() {
+    if (-not $script:VuaCaiGit) { return }
+    Write-Host ""
+    Write-Host " LUU Y: vua cai git trong lan nay." -ForegroundColor Yellow
+    Write-Host " Cua so PowerShell nao dang mo TU TRUOC se khong thay git: `git pull` o do se bao" -ForegroundColor Yellow
+    Write-Host " 'not recognized'. Mo mot cua so PowerShell MOI, hoac nap lai PATH trong cua so cu:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "   `$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')" -ForegroundColor DarkGray
+}
+
 function in_buoc_tiep() {
     buoc_moi "Xong"
     $venvPy = ".venv\Scripts\python.exe"
@@ -734,6 +751,9 @@ try {
     # Tro ly da in khoi ket cua rieng no (ba viec con lai, canh-bao.txt) va da mo dashboard, nen
     # in tiep khoi "BUOC TIEP THEO" nam viec nua chi lam nguoi doc khong biet phai theo cai nao.
     if (-not (chay_tro_ly)) { in_buoc_tiep }
+    # In SAU cung, ke ca khi tro ly da in khoi ket cua rieng no: day la thu chan lan cap nhat ke
+    # tiep, nen no phai la dong cuoi nguoi dung con nhin thay.
+    canh_bao_path_cu
     exit 0
 } catch {
     Write-Host ""
