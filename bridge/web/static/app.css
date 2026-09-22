@@ -122,6 +122,14 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 .nhom-huong-dan[open] > summary {
   margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--vien);
 }
+/* Tieu de nho truoc moi khoi buoc: no noi truoc "sap toi minh phai mo MT5". Ba khoi nay dung
+   bang ba lan nguoi dung phai doi cua so -- thu khong doc ra duoc tu mot danh sach khong nhom. */
+.moc-noi {
+  margin: 14px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--lam); border-top: 1px solid var(--vien); padding-top: 8px;
+}
+.nhom-huong-dan > .moc-noi:first-of-type { border-top: 0; margin-top: 8px; }
+
 .ds-buoc { margin: 10px 0 0; padding-left: 1.6rem; }
 .ds-buoc li {
   padding: 6px 0 6px 6px; margin-bottom: 8px; font-size: 13px; line-height: 1.55;

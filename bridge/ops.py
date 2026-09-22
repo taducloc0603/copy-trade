@@ -712,9 +712,18 @@ def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
     Hai giá trị này từng nằm ở `config.toml`, nên đổi terminal là phải sửa file trên VPS rồi chạy
     lại tác vụ. Ở đây chúng nằm trong DB, clicker nhận lại ở lần bắt tay kế tiếp.
 
-    Mẩu tiêu đề phải chứa **số tài khoản**: cửa sổ MT5 mở đầu tiêu đề bằng số tài khoản, và chính
-    nó là thứ clicker đối chiếu trước khi bấm. Một mẩu tiêu đề không chứa số tài khoản (ví dụ
-    "MetaTrader 5") khớp cả hai terminal, và khi đó clicker từ chối lái — hoặc tệ hơn, lái nhầm.
+    Mẩu tiêu đề phải **mở đầu** bằng số tài khoản, không chỉ chứa nó ở đâu đó. Hai lý do, và cả
+    hai đều đọc được trong `clicker/ui/probe.py`:
+
+    * `account_login_from_title` lấy đúng **token đầu tiên** của tiêu đề cửa sổ và đòi nó toàn chữ
+      số. Cửa sổ MT5 luôn mở đầu bằng số tài khoản, nên một mẩu như `"Connext 538216"` không bao
+      giờ khớp được — mà phép kiểm cũ (`str(so) not in tieu_de`) lại **cho lưu** nó.
+    * Mẩu tiêu đề là thứ dò bằng `in` trong tiêu đề thật, nên mọi ký tự thừa không có trên cửa sổ
+      đều làm nó khớp **không gì cả**. Một tiêu đề `"538216 (2)"` cũng qua được phép kiểm cũ, rồi
+      nằm im trong database cho tới lúc clicker báo canary đỏ không ai hiểu vì sao.
+
+    Một mẩu không chứa số tài khoản (ví dụ `"MetaTrader 5"`) thì khớp cả hai terminal, và khi đó
+    clicker từ chối lái — hoặc tệ hơn, lái nhầm.
     """
     agent = _agent_phai_co(db, agent_id, "CLICKER")
     doi: dict[str, Any] = {}
@@ -729,7 +738,7 @@ def dat_terminal_clicker(db: Database, agent_id: str, login: int | None = None,
     # cũ cũng ra một cặp lệch, và cặp lệch nghĩa là clicker lái nhầm terminal.
     so = doi.get("account_login", agent["account_login"]) or 0
     tieu_de = doi.get("terminal_title", agent["terminal_title"]) or ""
-    if doi and so and tieu_de and str(so) not in tieu_de:
+    if doi and so and tieu_de and not tieu_de.startswith(str(so)):
         raise LoiCauHinh("TIEU_DE_KHONG_CO_SO_TK", tieu_de=tieu_de, login=so)
     if not doi:
         return {}

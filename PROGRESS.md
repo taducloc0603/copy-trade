@@ -3683,3 +3683,62 @@ JS dung sai. Phai them mot test doc chinh `app.js`. Kiem hai chieu moi lo ra die
 test roi thay xanh thi da tuong la da phu.
 
 934 test xanh (+4).
+
+## Ra soat de don gian hoa: 38 viec con -> 30, 5 lan nhay cho -> 3 (2026-09-22)
+
+Ra soat ma nguon cho thay mot phan dang ke so viec trong danh sach Cai dat lan dau la **viec may da
+lam duoc, hoac da tu lam roi ma trang khong biet**.
+
+**1. Buoc khai clicker gan nhu luon thua.** `ops.cau_hinh_clicker` tu suy so tai khoan tu EA chay
+tren cung terminal, tieu de mac dinh chinh la so do, va `viec_can_lam` xet gia tri CO HIEU LUC chu
+khong phai cot trong DB. Chinh docstring `server.py:402-405` da ghi: *"mot ban cai moi khong can ai
+go gi thi clicker van chay duoc ngay sau khi EA len"*. Ma trang van bao lam du bon viec.
+
+Chung minh bang cach chay that: truoc khi EA bat tay buoc la CON_THIEU; sau khi dat `account_login`
+cho hai agent EA thi buoc chuyen **XONG**, `nguon=SUY`, tieu de suy ra `538216`/`538217` -- khong ai
+go gi. 4 viec con -> 3, va dong mot doi thanh "thuong khong phai lam gi".
+
+**2. Chep .ex5 la viec may lam duoc.** `go-bo.ps1` da co ham liet ke moi thu muc du lieu MT5;
+`bien-dich-ea.ps1` chi IN ra bao nguoi dung tu chep. Gio no chep that, ca hai file vao moi terminal.
+6 viec con -> 3, va xoa han cai bay "moi terminal mot thu muc rieng".
+
+Tach `thu_muc_du_lieu_mt5` ra `scripts/chung-mt5.ps1` cho ca hai script dung chung: mot ben CHEP vao,
+mot ben XOA ra, hai ban quet khac nhau la co .ex5 nam o cho lan go khong dung toi.
+
+**Mot cai bay o buoc nay, va no khong hien nhien:** ham cu dung `$env:APPDATA`, ma nut Chay tren
+dashboard sinh tien trinh con cua DICH VU -- chay bang LocalSystem hoac tai khoan autologon, nen
+`$env:APPDATA` cua no khong phai cua nguoi dang ngoi truoc may. No se tim thay 0 terminal roi bao
+xong. Ban moi quet `C:\Users\*\AppData\Roaming\MetaQuotes\Terminal`. Kiem bang cach dat
+`$env:APPDATA` sang mot duong dan khong ton tai: van tim ra du hai thu muc.
+
+**3. Mot buoc khai SAI CHO LAM.** `LD_ANH_XA` khai `noi = DASHBOARD` nhung viec con dau tien la
+"Trong MT5 cua Client: mo Market Watch". Chuyen sang khoi MT5.
+
+**4. Thu tu: doi dung MOT buoc.** `LD_KHAI_CLICKER` tu vi tri 3 xuong sau `LD_TOOLBOX`. 5 lan nhay
+cho -> 3. No xuong duoi con vi mot ly do dung dan hon ca viec gom nhom: no chi tu suy duoc SAU khi
+EA da bat tay.
+
+**5. Trung so tai khoan.** Nguoi dung de nghi "trung thi danh so phia duoi". Khong lam duoc, va day
+la bang chung: `probe.py:50-51` khop bang `title_contains in get_window_text(hwnd)` -- tieu de la mot
+MAU DE DO trong tieu de cua so that. `538216 (2)` khop khong cua so nao. Thay vao do: ma
+`CLICKER_TRUNG_SO_TK` muc CHAN, neu ca hai ten agent.
+
+Kem theo: siet `dat_terminal_clicker` -- tieu de phai MO DAU bang so tai khoan, khong chi chua no.
+`account_login_from_title` lay dung token dau tien, nen `"Connext 538216"` chac chan hong ma phep
+kiem cu van cho luu. Noi thang gioi han: `"538216 (2)"` VAN duoc nhan, vi may chu khong the biet cua
+so that co chu do hay khong -- thu that su do va cham la phep phat hien trung.
+
+**6. O symbol phia Client.** No DA la danh sach chon; o go tay chi hien khi Client do chua co symbol
+nao trong `symbol_spec`, ma bang ay chi duoc EA Client day len luc bat tay. Cai sai that la no khong
+noi gi ca -- gio co mot dong giai thich, va ben Master cung ve lai giong ben Client thay vi quyet
+mot lan luc ve.
+
+**Giao dien:** danh sach chia thanh ba khoi theo NOI LAM, moi khoi mot tieu de nho. So thu tu van
+lien mach (mot `<ol start=...>` cho moi khoi, khong phai mot `<li>` phan cach -- mot `<li>` van an
+mot so va danh sach nhay so trong nhu bi thieu).
+
+Hai test khoa TINH CHAT chu khong khoa thu tu cu the: so lan doi `noi` giua hai buoc lien tiep phai
+<= 3, va viec con cua mot buoc khong duoc bat sang cho khac. Kiem hai chieu: tra buoc clicker ve vi
+tri cu -> do "nhay cho 5 lan"; tra cau "Trong MT5" vao buoc anh xa -> do dung ten buoc.
+
+936 test xanh (+2).

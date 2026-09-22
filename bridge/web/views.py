@@ -363,6 +363,8 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
         them(MUC_CHAN, "CHUA_CO_CLIENT", UI["can_lam_chua_co_client"])
 
     # -- clicker: hai ô phải có, và tiêu đề phải chứa số tài khoản ------------------------------
+    #: Số tài khoản có hiệu lực của từng clicker, để bắt trùng ở cuối vòng.
+    so_cua_clicker: dict[str, int] = {}
     for a in agents:
         if a["role"] != "CLICKER" or not a["enabled"]:
             continue
@@ -372,6 +374,8 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
         hieu_luc = cau_hinh_clicker(db, a["agent_id"])
         login = hieu_luc["login"]
         tieu_de = hieu_luc["tieu_de"]
+        if login:
+            so_cua_clicker[str(a["agent_id"])] = int(login)
         # Khai tay một đằng, EA báo một nẻo: clicker đang lái nhầm terminal, hoặc terminal vừa
         # đăng nhập sang tài khoản khác. Không tự chọn hộ — nêu cả hai con số.
         if (hieu_luc["nguon"] == "KHAI" and hieu_luc["login_suy"]
@@ -390,6 +394,22 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
             them(MUC_CHAN, "TIEU_DE_KHONG_CHUA_SO_TK",
                  UI["can_lam_tieu_de_lech"].format(agent_id=a["agent_id"], login=login,
                                                    tieu_de=tieu_de))
+
+    # -- hai clicker cùng một số tài khoản -----------------------------------------------------
+    # Tiêu đề mặc định là **chính số tài khoản**, nên hai clicker cùng số nghĩa là hai mẩu tiêu đề
+    # giống hệt nhau — và `clicker/ui/probe.py` khớp bằng `in` trong tiêu đề cửa sổ thật, nên mẩu
+    # ấy khớp CẢ HAI cửa sổ. Lúc đó `find_terminal` từ chối lái ("Co N cua so cung khop"), canary
+    # đỏ, và người vận hành không có manh mối nào nối về đây.
+    #
+    # Bắt ở đây là bắt **trước khi** clicker chạy. Không tự sửa hộ bằng một hậu tố: mọi ký tự
+    # không có trên cửa sổ thật đều làm mẩu tiêu đề khớp KHÔNG GÌ CẢ — tệ hơn hẳn trùng.
+    theo_so: dict[int, list[str]] = {}
+    for ag, so in so_cua_clicker.items():
+        theo_so.setdefault(so, []).append(ag)
+    for so, ds in sorted(theo_so.items()):
+        if len(ds) > 1:
+            them(MUC_CHAN, "CLICKER_TRUNG_SO_TK",
+                 UI["can_lam_clicker_trung_so"].format(login=so, agent=" và ".join(sorted(ds))))
 
     # -- agent chưa nối ------------------------------------------------------------------------
     # Tách theo role, vì hai loại đòi hai việc KHÁC HẲN nhau: agent EA cần gắn EA lên chart, agent
@@ -547,6 +567,14 @@ class Buoc(NamedTuple):
     lenh: tuple[tuple[str, str], ...] = ()
 
 
+# THỨ TỰ có chủ đích: gom theo NƠI LÀM, để người dùng mở MT5 đúng một lần thay vì ba lần.
+# PowerShell → MT5 (gắn EA, Algo, Toolbox, Market Watch) → dashboard (clicker, ánh xạ, bật copy)
+# → MT5 (thử demo). Bản đầu để `LD_KHAI_CLICKER` ở giữa khối MT5 nên bắt nhảy chỗ 5 lần.
+#
+# `LD_KHAI_CLICKER` xuống sau khối MT5 còn vì một lý do đúng đắn hơn cả việc gom nhóm: nó **tự suy
+# ra được** số tài khoản từ EA chạy trên cùng terminal (`ops.cau_hinh_clicker`), nên đặt nó SAU
+# bước gắn EA thì phần lớn trường hợp nó đã xanh sẵn, không ai phải gõ gì.
+#
 # `CHUA_CO_AGENT` / `CHUA_CO_CLIENT` đi kèm nhiều bước vì thiếu chúng thì phép kiểm thành **rỗng**:
 # chưa có clicker nào thì "mọi clicker đã khai xong" là đúng về logic và sai về sự thật — và một
 # bước báo Đã xong khi chưa ai làm gì là cách nhanh nhất để mất lòng tin vào cả danh sách.
@@ -561,16 +589,16 @@ BUOC_LAN_DAU: tuple[Buoc, ...] = (
     Buoc("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), NOI_MT5,
          "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_ld_gan_ea_bay", (HD_CAP_TOKEN_EA,),
          lenh=(("hd_lenh_liet_ke", "LIET_KE"),)),
+    Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
+         "hd_ld_algo_viec", "hd_ld_algo_kiem", "hd_ld_algo_bay"),
+    Buoc("LD_TOOLBOX", "hd_ld_toolbox", (), NOI_MT5,
+         "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "hd_ld_toolbox_bay"),
     Buoc("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
          ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK",
           "CLICKER_CHUA_ONLINE"), NOI_DASHBOARD,
          "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_ld_khai_clicker_bay", (HD_KHOI_AGENT,),
          form=(FORM_CLICKER,),
          lenh=(("hd_lenh_liet_ke", "LIET_KE"), ("hd_lenh_sua_agent", ""))),
-    Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
-         "hd_ld_algo_viec", "hd_ld_algo_kiem", "hd_ld_algo_bay"),
-    Buoc("LD_TOOLBOX", "hd_ld_toolbox", (), NOI_MT5,
-         "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "hd_ld_toolbox_bay"),
     Buoc("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), NOI_DASHBOARD,
          "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_ld_anh_xa_bay", (HD_KHOI_ANH_XA,),
          form=(FORM_ANH_XA,),

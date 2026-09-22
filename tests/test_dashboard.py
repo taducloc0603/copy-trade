@@ -1226,3 +1226,34 @@ def test_js_luon_map_symbol_ra_ten_truoc_khi_dung(project_root) -> None:
         dau = js.index(f"function {ten}(")
         than = js[dau:js.index("\n}\n", dau)]
         assert than.count("x.symbol") >= 2, f"{ten}: thieu mot lan map symbol ra ten"
+
+
+def test_cac_buoc_gom_theo_NOI_LAM_khong_bat_nhay_qua_lai(seeded_web: Database) -> None:
+    """Số lần đổi `noi` giữa hai bước liên tiếp phải ≤ 3.
+
+    Mỗi lần đổi là một lần người vận hành phải rời cửa sổ đang làm: đóng dashboard mở MT5, rồi
+    ngược lại. Bản đầu đổi **5 lần** vì bước khai clicker (dashboard) nằm giữa khối MT5 — và không
+    ai đếm được điều đó khi đọc một danh sách chín dòng.
+
+    Khoá **tính chất**, không khoá một thứ tự cụ thể: xếp lại thoải mái, miễn đừng làm nát nhóm.
+    """
+    noi = [b.noi for b in views.BUOC_LAN_DAU]
+    doi = sum(1 for a, b in zip(noi, noi[1:], strict=False) if a != b)
+    assert doi <= 3, f"cac buoc bat nhay cho {doi} lan: {noi}"
+
+
+def test_viec_con_khong_noi_sai_NOI_LAM(seeded_web: Database) -> None:
+    """Việc con của một bước `noi = DASHBOARD` không được mở đầu bằng "Trong MT5".
+
+    Đây là cách `LD_ANH_XA` khai sai mà không ai thấy: nó khai `noi = DASHBOARD` nhưng việc con
+    đầu tiên là "Trong MT5 của Client: mở Market Watch". Một bước nói làm ở một nơi rồi bắt sang
+    nơi khác chính là thứ làm số lần nhảy chỗ đếm ra sai.
+    """
+    from bridge.labels_vi import UI
+    cam = {"DASHBOARD": ("trong mt5", "trong mỗi terminal", "trong terminal"),
+           "MT5": ("sang tab cấu hình", "tab cấu hình >")}
+    for b in views.BUOC_LAN_DAU + views.BUOC_SAU_UPDATE:
+        for viec in UI[b.khoa_viec]:
+            dau = viec.lower()[:30]
+            for mau in cam.get(b.noi, ()):
+                assert mau not in dau, f"{b.ma} (noi={b.noi}) co viec con bat sang cho khac: {viec[:60]}"

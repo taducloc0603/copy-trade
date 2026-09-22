@@ -38,6 +38,10 @@ param(
 )
 
 Set-StrictMode -Version Latest
+
+# `thu_muc_du_lieu_mt5` dung chung voi bien-dich-ea.ps1: mot ben CHEP .ex5 vao, mot ben XOA .ex5
+# ra. Hai ban quet khac nhau la co file chep vao mot cho ma lan go khong dung toi.
+. (Join-Path $PSScriptRoot "chung-mt5.ps1")
 # PowerShell 5.1: voi 'Stop', MOT DONG stderr bat ky tu mot exe bi boc thanh NativeCommandError va
 # nem ra NGAY. Moi lenh native o day duoc kiem tuong minh.
 $ErrorActionPreference = 'Continue'
@@ -93,21 +97,6 @@ function tien_trinh_wrapper() {
 
 function tac_vu_cua_tool() {
     return @(Get-ScheduledTask -TaskPath $DuongDanTacVu -ErrorAction SilentlyContinue)
-}
-
-function thu_muc_du_lieu_mt5() {
-    # Moi terminal MT5 mot thu muc du lieu rieng duoi %APPDATA%\MetaQuotes\Terminal\<hash>. Ban
-    # portable thi du lieu nam ngay trong thu muc cai, nen quet ca hai cho.
-    $goc = @(Join-Path $env:APPDATA "MetaQuotes\Terminal")
-    $goc += @("C:\Program Files", "C:\Program Files (x86)")
-    $ket = @()
-    foreach ($g in $goc) {
-        if (-not (Test-Path $g)) { continue }
-        $ket += @(Get-ChildItem $g -Directory -ErrorAction SilentlyContinue |
-                  Where-Object { Test-Path (Join-Path $_.FullName "MQL5") } |
-                  ForEach-Object { $_.FullName })
-    }
-    return $ket
 }
 
 function file_ea_cua_tool() {

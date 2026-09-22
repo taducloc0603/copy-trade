@@ -85,9 +85,10 @@ LOI_CAU_HINH = {
     "KHONG_CO_ANH_XA": "Không có ánh xạ cho {master_symbol}",
     "KHONG_CO_FILE_CONFIG": "Bridge không nạp config.toml nào nên không có gì để sửa.",
     "KHONG_CO_GI_DOI": "Không có giá trị nào được đổi.",
-    "TIEU_DE_KHONG_CO_SO_TK": ("Tiêu đề {tieu_de} không chứa số tài khoản {login}. "
-                               "Cửa sổ MT5 mở đầu bằng số tài khoản, và đó là thứ clicker "
-                               "đối chiếu trước khi bấm."),
+    "TIEU_DE_KHONG_CO_SO_TK": ("Tiêu đề {tieu_de} phải MỞ ĐẦU bằng số tài khoản {login}. "
+                               "Cửa sổ MT5 luôn mở đầu bằng số tài khoản, và clicker đọc đúng "
+                               "chữ đầu tiên đó để đối chiếu trước mỗi cú bấm — nên mọi ký tự "
+                               "đứng trước nó làm tiêu đề không khớp cửa sổ nào."),
     "KHOA_NGOAI_DANH_SACH": "Khoá {khoa} không sửa được trên dashboard.",
     "GIA_TRI_LA": "Giá trị không hợp lệ cho {khoa}.",
     "NGOAI_MIEN": "{khoa} phải trong khoảng {tu}…{den}, nhận được {gia_tri}.",
@@ -280,6 +281,11 @@ UI = {
     "can_lam_chua_co_agent": ("Chưa có agent nào. Khối Agent bên dưới → Thêm agent (Master, "
                               "Client, và một Clicker cho mỗi Client đi đường giao diện)."),
     "can_lam_chua_co_client": "Chưa có Client nào. Khối Thêm Client bên dưới.",
+    "can_lam_clicker_trung_so": ("{agent} cùng suy ra số tài khoản {login}, nên tiêu đề cửa "
+                                "sổ của chúng giống hệt nhau và khớp cả hai terminal — "
+                                "clicker sẽ từ chối lái. Khai tay tiêu đề cho từng cái, "
+                                "thêm phần thật sự có trên thanh tiêu đề của đúng cửa sổ "
+                                "đó (ví dụ tên sàn) vào sau số tài khoản."),
     "can_lam_clicker_chua_khai": ("Clicker {agent_id} chưa khai số tài khoản hoặc tiêu đề cửa sổ "
                                   "terminal. Khối Agent bên dưới. Chưa khai thì clicker thoát và "
                                   "thử lại mỗi 60 giây — không bấm được lệnh nào."),
@@ -412,23 +418,71 @@ UI = {
     "hd_kiem_tu_tich": "Kiểm lúc {gio}: bước này Bridge không tự thấy được, bạn tự tích.",
 
     # -- Cài đặt lần đầu -----------------------------------------------------------------------
-    "hd_ld_bien_dich": "Biên dịch hai EA thành .ex5 rồi chép vào MT5",
+    "hd_ld_bien_dich": "Biên dịch hai EA và chép vào MT5 — một nút",
     "hd_ld_bien_dich_viec": (
-        "Chạy lệnh dưới đây một lần cho CopyBridgeMaster.mq5.",
-        "Chạy lại, đổi Master thành Client, để biên dịch CopyBridgeClient.mq5.",
-        "Mở logs\\compile.log và xem dòng cuối: phải là 0 errors.",
-        "Trong MT5 của Master: File > Open Data Folder > MQL5 > Experts. Chép "
-        "ea\\CopyBridgeMaster.ex5 vào đó.",
-        "Làm lại cho terminal Client với CopyBridgeClient.ex5.",
-        "Trong mỗi MT5: Navigator (Ctrl+N) > chuột phải Expert Advisors > Refresh. EA phải hiện "
-        "ra trong danh sách.",
+        "Bấm Chạy: biên dịch hai EA ở dưới. Nó biên dịch cả hai file và tự chép .ex5 vào MQL5\\"
+        "Experts của MỌI terminal MT5 tìm thấy trên máy.",
+        "Đọc dòng cuối của kết quả: nó nói đã chép vào bao nhiêu thư mục. Báo 0 thư mục nghĩa là "
+        "chưa cài MT5, hoặc cài ở chỗ lạ — khi đó chép tay theo đường dẫn nó in ra.",
+        "Trong mỗi MT5: Ctrl+N rồi chuột phải Expert Advisors > Refresh. EA phải hiện ra.",
     ),
-    "hd_ld_bien_dich_kiem": ("Navigator của cả hai terminal đều thấy EA của mình — "
-                            "CopyBridgeMaster ở terminal Master, CopyBridgeClient ở Client."),
-    "hd_ld_bien_dich_bay": ("Mỗi terminal MT5 có một thư mục dữ liệu RIÊNG. Chép .ex5 vào một "
-                           "terminal rồi tưởng cả hai đã có là lỗi hay gặp nhất — luôn vào File > "
-                           "Open Data Folder của CHÍNH terminal đó, đừng đoán đường dẫn."),
+    "hd_ld_bien_dich_kiem": ("Navigator của cả hai terminal đều thấy CopyBridgeMaster và "
+                            "CopyBridgeClient."),
+    "hd_ld_bien_dich_bay": ("Chép cả hai EA vào cả hai terminal là cố ý, không phải nhầm: EA chỉ "
+                           "chạy khi được kéo lên chart, nên file thừa không làm gì cả. Đổi lại "
+                           "bạn không phải nhớ file nào vào terminal nào — và đó từng là lỗi hay "
+                           "gặp nhất ở bước này."),
 
+    "hd_ld_khai_clicker": "Kiểm clicker — thường không phải làm gì",
+    "hd_ld_khai_clicker_viec": (
+        "Nhìn phần Đang còn thiếu ngay trên: không có dòng nào về clicker thì bước này XONG, bỏ "
+        "qua phần dưới. Bridge tự suy số tài khoản của clicker từ EA chạy trên cùng terminal, và "
+        "lấy chính số đó làm tiêu đề cửa sổ.",
+        "Còn báo đỏ thì chờ tới 70 giây rồi bấm Kiểm lại — clicker ngủ 60 giây giữa hai lần thử.",
+        "Vẫn đỏ thì khai tay ở form bên dưới: chép nguyên văn thanh tiêu đề cửa sổ MT5 tương ứng.",
+    ),
+    "hd_ld_khai_clicker_kiem": ("AG-CLICKER và AG-CLICKER-MASTER đều ONLINE, và phần Đang còn "
+                               "thiếu không còn dòng nào về clicker."),
+    "hd_ld_khai_clicker_bay": ("Chỉ khai tay khi trang báo đỏ. Khai tay là ĐÈ lên giá trị Bridge "
+                              "tự suy, nên khai một số khác số EA báo là clicker lái nhầm "
+                              "terminal — trang sẽ nêu cả hai con số ở mức CHẶN. Và tiêu đề phải "
+                              "MỞ ĐẦU bằng số tài khoản: đó là thứ clicker đối chiếu với cửa sổ "
+                              "thật trước mỗi cú bấm."),
+
+    "hd_ld_toolbox": "Mở Toolbox ở tab Trade, và kéo symbol vào Market Watch",
+    "hd_ld_toolbox_viec": (
+        "Trong mỗi terminal: Ctrl+T để mở Toolbox, chọn tab Trade (không phải History hay "
+        "Journal), rồi để nguyên như vậy.",
+        "Trong terminal Client: Ctrl+M mở Market Watch, kéo vào đó mọi symbol bạn sẽ copy.",
+        "Làm luôn bây giờ, khi đang ở trong MT5 — bước khai ánh xạ ở phần sau cần danh sách này.",
+    ),
+    "hd_ld_toolbox_kiem": ("Cả hai terminal thấy danh sách vị thế ở nửa dưới, và Market Watch của "
+                          "Client có đủ symbol."),
+    "hd_ld_toolbox_bay": ("Clicker đọc danh sách vị thế từ đúng tab Trade để đóng lệnh; đóng "
+                         "Toolbox là không đóng được lệnh qua giao diện nữa, và triệu chứng chỉ "
+                         "hiện ra lúc cần đóng, tức lúc đắt nhất. Còn Market Watch: Bridge chỉ "
+                         "thấy symbol nào đã có trong đó."),
+
+    "hd_ld_anh_xa": "Khai ánh xạ symbol cho từng Client",
+    "hd_ld_anh_xa_viec": (
+        "Chọn symbol bên Master, rồi symbol tương ứng bên Client, ở form bên dưới. Trang đã đề "
+        "xuất sẵn cặp khớp nếu tìm được.",
+        "Lưu, rồi làm tiếp cho từng symbol bạn định copy.",
+    ),
+    "hd_ld_anh_xa_kiem": "Khối Ánh xạ symbol có ít nhất một dòng đang bật cho mỗi Client.",
+    "hd_ld_anh_xa_bay": ("Thiếu ánh xạ thì MỌI lệnh của Master bị bỏ qua TRONG IM LẶNG: không "
+                        "lỗi, không cảnh báo, chỉ là không có gì xảy ra. Đây là lỗi tốn thời gian "
+                        "nhất để tự tìm ra. Nếu ô symbol hiện ra là ô gõ tay thay vì danh sách "
+                        "chọn thì EA của bên đó chưa bắt tay — quay lại bước gắn EA."),
+
+    "hd_ld_cau_hinh_copy": "Xem lại cấu hình copy (tuỳ chọn — mặc định đã an toàn)",
+    "hd_ld_cau_hinh_copy_viec": (
+        "Bấm Mở khối Client ở dưới. Ba giá trị đáng xem: chiều copy, hệ số volume, và Cho phép "
+        "Client đóng ngược Master.",
+        "Bấm Xem trước ở hệ số volume để thấy lệnh nào sẽ bị rớt vì khối lượng tối thiểu của sàn.",
+        "Đây là lựa chọn, không phải thứ còn thiếu — xem xong thì tự tích và đi tiếp.",
+    ),
+    "hd_ld_cau_hinh_copy_kiem": "Bạn đã xem và đồng ý ba giá trị trên cho từng Client.",
     "hd_ld_gan_ea": "Gắn EA lên chart và dán token, mỗi terminal đúng một chart",
     "hd_ld_gan_ea_viec": (
         "Bấm Cấp token cho AG-MASTER ở phần Làm ngay bên dưới. Token hiện ra trong một hộp "
@@ -449,23 +503,6 @@ UI = {
                         "MỘT chart. Và mỗi lần Cấp lại token là token cũ hết hiệu lực ngay — cấp "
                         "lại mà quên dán vào EA thì agent tắt luôn."),
 
-    "hd_ld_khai_clicker": "Khai số tài khoản và tiêu đề cửa sổ cho từng clicker",
-    "hd_ld_khai_clicker_viec": (
-        "Trong MT5 của Master, đọc thanh tiêu đề trên cùng của cửa sổ và chép nguyên văn. Nó "
-        "thường có dạng: <số tài khoản> - <tên broker> - ...",
-        "Bấm Mở khối Agent ở phần Làm ngay bên dưới, rồi ở dòng AG-CLICKER-MASTER: điền số tài "
-        "khoản và tiêu đề cửa sổ, rồi Lưu.",
-        "Làm lại cho AG-CLICKER với tiêu đề của terminal Client.",
-        "Chờ tới 70 giây rồi mới kết luận. Xem phần Bẫy hay gặp.",
-    ),
-    "hd_ld_khai_clicker_kiem": ("AG-CLICKER và AG-CLICKER-MASTER chuyển sang ONLINE trong khối "
-                               "Agent, và logs\\clicker-wrapper.log không còn dòng thoat 4 mới."),
-    "hd_ld_khai_clicker_bay": ("Tiêu đề PHẢI chứa số tài khoản: đó là thứ clicker đối chiếu với "
-                              "cửa sổ thật trước MỖI cú bấm, nên một tiêu đề chung như MetaTrader "
-                              "5 sẽ khớp cả terminal khác. Và khai xong KHÔNG có tác dụng tức "
-                              "thì: clicker ngủ 60 giây giữa hai lần thử, nên trang còn báo đỏ "
-                              "thêm khoảng một phút là bình thường."),
-
     "hd_ld_algo": "Bật Algo Trading trên mọi terminal MT5",
     "hd_ld_algo_viec": (
         "Trong mỗi terminal: bấm nút Algo Trading trên thanh công cụ, hoặc Ctrl+E.",
@@ -478,42 +515,6 @@ UI = {
                       "LƯỚI CUỐI: clicker hỏng thì đường đóng rơi về OrderSend của EA, và lúc ấy "
                       "Algo Trading là thứ duy nhất còn giữ cho vị thế đóng được. Kiểm lại sau "
                       "MỖI lần VPS khởi động lại hoặc MT5 tự cập nhật."),
-
-    "hd_ld_toolbox": "Mở Toolbox và để ở tab Trade trên mọi terminal",
-    "hd_ld_toolbox_viec": (
-        "Trong mỗi terminal: Ctrl+T để mở Toolbox.",
-        "Chọn tab Trade, không phải History hay Journal.",
-        "Để nguyên như vậy: đừng đóng, đừng chuyển sang tab khác.",
-    ),
-    "hd_ld_toolbox_kiem": "Cả hai terminal đều thấy danh sách vị thế ở nửa dưới cửa sổ.",
-    "hd_ld_toolbox_bay": ("Clicker đọc danh sách vị thế từ đúng tab này để đóng lệnh. Đóng Toolbox "
-                         "hoặc chuyển tab là không đóng được lệnh qua giao diện nữa — và triệu "
-                         "chứng chỉ hiện ra lúc cần đóng, tức lúc đắt nhất."),
-
-    "hd_ld_anh_xa": "Khai ánh xạ symbol cho từng Client",
-    "hd_ld_anh_xa_viec": (
-        "Trong MT5 của Client: mở Market Watch (Ctrl+M) và kéo vào đó symbol bạn sẽ copy. Bridge "
-        "chỉ thấy symbol nào đã có trong Market Watch.",
-        "Bấm Mở khối Ánh xạ symbol ở phần Làm ngay bên dưới.",
-        "Chọn symbol bên Master, rồi symbol tương ứng bên Client. Trang đã đề xuất sẵn cặp khớp "
-        "nếu tìm được — kiểm lại rồi Lưu.",
-        "Làm cho từng symbol bạn định copy.",
-    ),
-    "hd_ld_anh_xa_kiem": "Khối Ánh xạ symbol có ít nhất một dòng đang bật cho mỗi Client.",
-    "hd_ld_anh_xa_bay": ("Thiếu ánh xạ thì MỌI lệnh của Master bị bỏ qua TRONG IM LẶNG: không "
-                        "lỗi, không cảnh báo, chỉ là không có gì xảy ra. Đây là lỗi tốn thời gian "
-                        "nhất để tự tìm ra."),
-
-    "hd_ld_cau_hinh_copy": "Xem lại cấu hình copy của từng Client",
-    "hd_ld_cau_hinh_copy_viec": (
-        "Tab Cấu hình > khối Client. Với từng Client, xem ba giá trị dưới đây.",
-        "Chiều copy: SAME đi cùng chiều Master, REVERSE đi ngược.",
-        "Hệ số volume: 1.0 là copy đúng khối lượng Master. Bấm Xem trước để thấy lệnh nào bị rớt "
-        "vì khối lượng tối thiểu của sàn.",
-        "Cho phép Client đóng ngược Master: bật thì đóng lệnh ở Client sẽ đóng cả bên Master.",
-        "Đây là lựa chọn, không phải thứ còn thiếu — xem xong thì tự tích.",
-    ),
-    "hd_ld_cau_hinh_copy_kiem": "Bạn đã xem và đồng ý ba giá trị trên cho từng Client.",
 
     "hd_ld_bat_copy": "Bấm Bắt đầu copy",
     "hd_ld_bat_copy_viec": (

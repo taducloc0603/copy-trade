@@ -661,20 +661,24 @@ function khoiAnhXa(el) {
   const dsClient = (CAU_HINH.symbol_client || {});
   const veChon = (ds, hienTai) => oChon(hienTai,
     ds.map((s) => ({ gia_tri: s, nhan: s })));
-  const coDanhSach = dsMaster.length > 0;
-  const sMaster = coDanhSach ? veChon(dsMaster, null) : oChu("");
+  // O go tay la DUONG LUI khi chua co danh sach, va truoc day no hien ra tro tro khong mot chu
+  // giai thich -- nguoi dung tuong trang thieu tinh nang, trong khi that ra EA ben do chua bat
+  // tay. Noi thang ra, bang dung cau ma form trong tab Huong dan da dung.
+  const sMaster = dsMaster.length ? veChon(dsMaster, null) : oChu("");
   const sClient = oChu("");
 
   // O phia Client di theo Client dang chon; doi Client thi doi ca danh sach.
+  const luuY = nhan("", "canh-bao-nho");
   const veOClient = () => {
     const ds = dsClient[chonClient.value] || [];
     const moi = ds.length ? veChon(ds.map((x) => x.symbol), sClient.value) : oChu(sClient.value);
     sClient.replaceWith(moi);
+    luuY.textContent = (ds.length && dsMaster.length) ? "" : UI.hd_form_chua_co_symbol;
     return moi;
   };
 
   box.append(hang(UI.map_client, chonClient), hang(UI.map_master_symbol, sMaster),
-             hang(UI.map_client_symbol, sClient));
+             hang(UI.map_client_symbol, sClient), luuY);
   let oClient = veOClient();
   chonClient.onchange = () => { oClient = veOClient(); veDeXuat(); };
 
@@ -1237,10 +1241,28 @@ function nhomHuongDan(n, moSan) {
     hop.appendChild(nhan(UI.hd_het_viec, "ghi-chu"));
     return hop;
   }
-  const ds = document.createElement("ol");
-  ds.className = "ds-buoc";
-  for (const b of n.buoc) ds.appendChild(dongBuoc(b));
-  hop.appendChild(ds);
+  // Chia theo NOI LAM: mot <ol> cho moi chuoi buoc lien tiep cung cho, kem mot tieu de nho.
+  // Thu tu cac buoc da duoc gom theo noi (xem BUOC_LAN_DAU), nen ba khoi nay dung bang ba lan
+  // nguoi dung phai doi cua so. Thay truoc "sap toi minh phai mo MT5" la thu khong doc ra duoc tu
+  // mot danh sach chin dong khong nhom.
+  //
+  // Mot <ol start=...> cho moi khoi chu khong phai mot <li> phan cach: mot <li> van an mot so
+  // thu tu, va danh sach nhay so la danh sach trong nhu bi thieu.
+  const ten = { DASHBOARD: UI.hd_noi_dashboard, MT5: UI.hd_noi_mt5,
+                POWERSHELL: UI.hd_noi_powershell };
+  let ds = null;
+  let noiCu = null;
+  n.buoc.forEach((b, i) => {
+    if (b.noi !== noiCu) {
+      noiCu = b.noi;
+      hop.appendChild(nhan(UI.hd_nhan_noi + ": " + (ten[b.noi] || b.noi), "moc-noi"));
+      ds = document.createElement("ol");
+      ds.className = "ds-buoc";
+      ds.start = i + 1;
+      hop.appendChild(ds);
+    }
+    ds.appendChild(dongBuoc(b));
+  });
   return hop;
 }
 
