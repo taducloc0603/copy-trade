@@ -3652,3 +3652,34 @@ viec do tu truoc, cung khong xac thuc.
    dung `lenh=` thanh "got multiple values". Phai dua no xuong CUOI thu tu truong.
 
 930 test xanh (+3).
+
+## Form dien-roi-chay cho ba lenh can tham so (2026-09-22)
+
+Yeu cau: cho nao in cau lenh terminal thi phai co nut chay -- hoac tu mo terminal, hoac chay ngam va
+bao ket qua len UI.
+
+**Nua dau la viec khong lam duoc.** Bridge chay nhu mot Windows service qua NSSM, tuc o session 0;
+moi tien trinh con no sinh ra deu vo hinh voi nguoi dang ngoi truoc may. Chinh
+`scripts/tao-dich-vu.ps1:13` da ghi dieu do -- do la ly do clicker phai la Scheduled Task chu khong
+phai service. Noi thang thay vi thu roi that bai.
+
+**Nua sau da xong o D-41**, con lai ba cau lenh can tham so. Chung KHONG duoc vao `LENH_CHAY_DUOC`:
+mot tieu de cua so la chuoi tu do, cho no vao `argv` tren mot dashboard khong xac thuc la pha chinh
+bat bien cua D-41. Ba test dang khoa dieu do, va phai noi chung ra moi lam duoc -- dau hieu ro nhat
+rang huong di sai. Thay vao do: form nho ngay trong buoc, POST vao endpoint da co.
+
+**Hai loi bat duoc bang cach BAM THAT:**
+
+1. `[object Object]` o moi lua chon symbol. `symbol_cua_agent` tra ve list DICT, khoi Anh xa cua tab
+   Cau hinh da `.map(x => x.symbol)` nhung form moi thi quen. Gia tri gui len rong, may chu tra
+   "Thieu ten symbol" -- mot cau khong dan ve nguyen nhan chut nao.
+2. Vong cho cua chinh toi thoat sai: no doi `.ket-qua-chay` xuat hien, ma khoi do da co san tu lan
+   thu TRUOC (lan bi tu choi). Doc nham chu cu roi suyt ket luan la form khong cap nhat. Phai doi
+   theo LOP `xong`, khong phai theo su ton tai.
+
+**Mot test chi chot duoc mot nua.** `test_trang_huong_dan_va_trang_cau_hinh_dung_CHUNG_nguon_symbol`
+chot hinh dang phia Python, nhung dot bien bo `.map()` trong JS thi no van xanh -- payload dung, chi
+JS dung sai. Phai them mot test doc chinh `app.js`. Kiem hai chieu moi lo ra dieu do; neu chi viet
+test roi thay xanh thi da tuong la da phu.
+
+934 test xanh (+4).

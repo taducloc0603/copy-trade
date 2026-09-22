@@ -1153,3 +1153,76 @@ def test_doi_che_do_tu_ve_lai_chu_khong_cho_websocket(project_root) -> None:
     assert "if (!r.ok)" in than, "doiCheDo khong kiem ket qua POST"
     assert "alert(" in than, "doiCheDo that bai trong im lang"
     assert "/api/snapshot" in than, "doiCheDo khong tu ve lai, van cho WebSocket"
+
+
+def test_moi_form_cua_buoc_deu_duoc_JS_xu_ly(project_root, seeded_web: Database) -> None:
+    """Mã form khai trong `views.Buoc.form` phải có nhánh vẽ trong `app.js`.
+
+    Cùng một kiểu nối như `hanh_dong`: hai bên nối nhau bằng một **chuỗi**, nên gõ sai hay đổi tên
+    một bên là form không hiện ra — và không có lỗi nào báo, chỉ là một bước trông như chưa làm gì.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    ma = {f for b in views.BUOC_LAN_DAU + views.BUOC_SAU_UPDATE for f in b.form}
+    assert ma, "khong buoc nao co form"
+    for f in sorted(ma):
+        assert f'"{f}"' in js, f"app.js khong ve form {f}"
+
+
+def test_form_trong_buoc_khong_di_qua_api_chay(project_root) -> None:
+    """Form POST vào endpoint đã có, **không** qua `/api/chay`.
+
+    Đây là ranh giới của D-41 và nó phải nhìn thấy được trong mã: `/api/chay` chỉ nhận một MÃ, còn
+    form thì gửi giá trị người dùng gõ. Cho giá trị ấy đi vào đường chạy lệnh là mở một lối để một
+    chuỗi tự do đi tới `argv`, trên một dashboard không có xác thực (D-39).
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    for ten, duong in (("formClicker", "/terminal"), ("formAnhXa", "/api/symbol_map")):
+        dau = js.index(f"function {ten}(")
+        than = js[dau:js.index("\n}\n", dau)]
+        assert duong in than, f"{ten} khong goi {duong}"
+        assert "/api/chay" not in than, f"{ten} di qua /api/chay -- xem D-41"
+
+
+def test_trang_huong_dan_va_trang_cau_hinh_dung_CHUNG_nguon_symbol(seeded_web: Database) -> None:
+    """Hai trang phải lấy danh sách symbol từ cùng một nguồn, không tính lại theo cách khác.
+
+    Lỗi bắt được khi bấm thật: `symbol_cua_agent` trả về list **dict** (`{symbol, digits, ...}`),
+    khối Ánh xạ của tab Cấu hình đã `.map(x => x.symbol)` nhưng form mới thì quên — mọi option
+    thành `[object Object]` và giá trị gửi lên rỗng. Test này chốt cái hình dạng đó lại.
+    """
+    seeded_web.replace_symbol_specs(MASTER_AGENT, [
+        {"symbol": "XAUUSD", "digits": 2, "point": 0.01, "volume_min": 0.01,
+         "volume_max": 50.0, "volume_step": 0.01, "contract_size": 100.0}])
+    hd = views.trang_huong_dan(seeded_web)
+    ch = views.trang_cau_hinh(seeded_web)
+    assert hd["symbol_master"] == ch["symbol_master"]
+    assert hd["symbol_client"] == ch["symbol_client"]
+    assert hd["de_xuat_anh_xa"] == ch["de_xuat_anh_xa"]
+    # Va hinh dang la list dict co khoa `symbol` -- JS PHAI map, khong dung thang.
+    assert hd["symbol_master"] and isinstance(hd["symbol_master"][0], dict)
+    assert "symbol" in hd["symbol_master"][0]
+
+
+def test_js_luon_map_symbol_ra_ten_truoc_khi_dung(project_root) -> None:
+    """Mọi chỗ JS đọc `symbol_master` / `symbol_client` đều phải `.map(x => x.symbol)`.
+
+    Chốt riêng ở đây vì test hình dạng phía Python **không** bắt được lỗi này: payload vẫn đúng,
+    chỉ có JS dùng sai. Triệu chứng là mọi lựa chọn thành `[object Object]` và giá trị gửi lên
+    rỗng — rồi máy chủ trả "Thiếu tên symbol", một câu không dẫn về đây chút nào.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    for dong in js.splitlines():
+        cau = dong.strip()
+        if cau.startswith("//") or ("symbol_master" not in cau and "symbol_client" not in cau):
+            continue
+        # Gán cả dict `symbol_client` rồi map ở nơi tra cứu thì hợp lệ: chỉ chỗ biến nó thành một
+        # DANH SÁCH TÊN mới bắt buộc map. Nhận ra bằng `[...]` ở cuối — một list symbol.
+        if "symbol_client ||" in cau and "{}" in cau:
+            continue
+        assert "x.symbol" in cau, f"doc symbol ma khong map ra ten: {cau[:80]}"
+
+    # Va moi cho tra cuu ra mot danh sach roi dung lam lua chon cung phai map.
+    for ten in ("khoiAnhXa", "formAnhXa"):
+        dau = js.index(f"function {ten}(")
+        than = js[dau:js.index("\n}\n", dau)]
+        assert than.count("x.symbol") >= 2, f"{ten}: thieu mot lan map symbol ra ten"

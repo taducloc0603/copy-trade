@@ -374,6 +374,18 @@ UI = {
     # không trả lời được câu hỏi người dùng đang có trong đầu: "tôi vừa làm xong, đã ăn chưa?"
     "hd_kiem_lai": "Kiểm lại",
 
+    # Form điền-rồi-chạy ngay trong bước. Ba câu lệnh cần tham số của riêng người vận hành, và
+    # trước đây trang chỉ nói "phải tự gõ" — đúng chỗ một người không phải dân kỹ thuật dừng lại.
+    "hd_form_clicker": "Hoặc khai ngay tại đây",
+    "hd_form_luu_clicker": "Lưu cho clicker này",
+    "hd_form_anh_xa": "Hoặc khai ánh xạ ngay tại đây",
+    "hd_form_luu_anh_xa": "Lưu ánh xạ",
+    "hd_form_xong": "Đã lưu. Bước này sẽ tự chuyển sang Đã xong khi hệ thống thấy kết quả.",
+    "hd_form_chua_co": "Chưa có clicker nào để khai.",
+    "hd_form_chua_co_symbol": ("Chưa đọc được danh sách symbol. Cần EA của Master và Client đang "
+                               "chạy, và symbol đã kéo vào Market Watch."),
+    "agent_id_nhan": "Clicker",
+
     # Nút Chạy: người vận hành hệ thống này không phải dân kỹ thuật. Mở PowerShell, đứng đúng thư
     # mục, dán đúng dòng, rồi tự đọc output là BỐN chỗ hỏng được — và cả bốn đều im lặng.
     "hd_chay": "Chạy: {ten}",

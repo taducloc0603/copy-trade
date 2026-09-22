@@ -169,6 +169,16 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 
 /* Nut Chay va ket qua cua no. Ket qua phai doc duoc boi nguoi KHONG doc log bao gio: mot dong ket
    luan bang tieng Viet truoc, output tho de ben duoi cho ai can. */
+/* Form dien-roi-chay ngay trong buoc. Vien trai de no khong trong giong mot phan cua danh sach
+   viec con -- no la cho THAO TAC, khong phai cho doc. */
+.buoc-form {
+  margin: 8px 0; padding: 8px 10px; border-left: 3px solid var(--lam);
+  background: var(--nen); border-radius: 0 6px 6px 0;
+}
+.buoc-form .hang-cau-hinh { margin: 4px 0; }
+.buoc-form input, .buoc-form select { font-size: 12px; }
+.buoc-form button { font-size: 12px; padding: 4px 10px; margin-top: 6px; }
+
 .mot-lenh { margin: 6px 0 10px; }
 .mot-lenh button { font-size: 12px; padding: 4px 10px; margin-top: 4px; }
 .lenh-tu-go { font-size: 11px; color: var(--mo); margin-top: 3px; }

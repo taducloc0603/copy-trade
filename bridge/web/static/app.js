@@ -1070,6 +1070,114 @@ function veMotLenh(l) {
   return hop;
 }
 
+// Form dien-roi-chay ngay trong buoc, cho nhung viec can THAM SO cua rieng nguoi van hanh.
+//
+// Chung KHONG di qua /api/chay: trinh duyet gui MA chu khong gui tham so (D-41). Form nay POST vao
+// dung endpoint ma tab Cau hinh van dung -- da kiem rang buoc day du (vi du /terminal tu choi tieu
+// de khong chua so tai khoan). Khong sinh tien trinh, khong argv, khong be mat tan cong moi.
+//
+// Cung KHONG nhung lai ca khoi cua tab Cau hinh vao day: hai ban cua cung mot form la hai ban se
+// lech nhau. Chi lay dung phan can cho buoc nay.
+function ketQuaForm(hop, r, chuXong) {
+  const cu = hop.querySelector(".ket-qua-chay");
+  if (cu) cu.remove();
+  const kq = document.createElement("div");
+  kq.className = "ket-qua-chay";
+  kq.appendChild(nhan(r.ok ? chuXong : (r.data.message || r.data.error || UI.loi_khong_ro),
+                      "ket-qua-chay-dong " + (r.ok ? "xong" : "loi")));
+  hop.appendChild(kq);
+}
+
+function formClicker() {
+  const hop = document.createElement("div");
+  hop.className = "buoc-form";
+  hop.appendChild(nhan(UI.hd_form_clicker, "nhan-nho"));
+  const ds = HUONG_DAN.agent_clicker || [];
+  if (!ds.length) { hop.appendChild(nhan(UI.hd_form_chua_co, "ghi-chu")); return hop; }
+
+  const chon = oChon(ds[0].agent_id, ds.map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id })));
+  const oLogin = oSo(ds[0].login || null, "1");
+  const oTieuDe = oChu(ds[0].tieu_de || "");
+  // Doi clicker thi dien lai gia tri DANG CO cua clicker do: bo trong o day se trong nhu "chua
+  // khai", ma that ra no da khai roi.
+  chon.onchange = () => {
+    const a = ds.find((x) => x.agent_id === chon.value) || {};
+    oLogin.value = a.login || "";
+    oTieuDe.value = a.tieu_de || "";
+  };
+  hop.append(hang(UI.agent_id_nhan, chon), hang(UI.agent_login, oLogin),
+             hang(UI.agent_terminal, oTieuDe), nhan(UI.agent_terminal_hint, "canh-bao-nho"));
+
+  const n = nut(UI.hd_form_luu_clicker, "chinh");
+  n.onclick = () => bamCho(n, async () => {
+    const r = await goi("/api/agent/" + encodeURIComponent(chon.value) + "/terminal", {
+      method: "POST",
+      body: JSON.stringify({ login: parseInt(oLogin.value, 10) || null,
+                             terminal_title: oTieuDe.value }) });
+    ketQuaForm(hop, r, UI.hd_form_xong);
+    if (r.ok) await taiHuongDan();
+  });
+  hop.appendChild(n);
+  return hop;
+}
+
+function formAnhXa() {
+  const hop = document.createElement("div");
+  hop.className = "buoc-form";
+  hop.appendChild(nhan(UI.hd_form_anh_xa, "nhan-nho"));
+  const dsClient = HUONG_DAN.client || [];
+  const sMaster = (HUONG_DAN.symbol_master || []).map((x) => x.symbol);
+  if (!dsClient.length || !sMaster.length) {
+    hop.appendChild(nhan(UI.hd_form_chua_co_symbol, "ghi-chu"));
+    return hop;
+  }
+  const chonClient = oChon(dsClient[0], dsClient.map((c) => ({ gia_tri: c, nhan: c })));
+  const chonMaster = oChon("", sMaster.map((x) => ({ gia_tri: x, nhan: x })));
+  const chonClientSym = oChon("", []);
+
+  const veSymClient = () => {
+    const ds = ((HUONG_DAN.symbol_client || {})[chonClient.value] || []).map((x) => x.symbol);
+    chonClientSym.textContent = "";
+    for (const x of ds) {
+      const o = document.createElement("option");
+      o.value = x;
+      o.textContent = x;
+      chonClientSym.appendChild(o);
+    }
+    // De xuat san cap khop, neu Bridge tim duoc. Nguoi dung van doi duoc -- de xuat chu khong chon ho.
+    const dx = (HUONG_DAN.de_xuat_anh_xa || {})[chonClient.value] || [];
+    const khop = dx.find((d) => d.master_symbol === chonMaster.value);
+    if (khop) chonClientSym.value = khop.client_symbol;
+  };
+  chonClient.onchange = veSymClient;
+  chonMaster.onchange = veSymClient;
+  veSymClient();
+
+  hop.append(hang(UI.map_client, chonClient), hang(UI.map_master_symbol, chonMaster),
+             hang(UI.map_client_symbol, chonClientSym));
+  const n = nut(UI.hd_form_luu_anh_xa, "chinh");
+  n.onclick = () => bamCho(n, async () => {
+    const r = await goi("/api/symbol_map", {
+      method: "POST",
+      body: JSON.stringify({ client_id: chonClient.value, master_symbol: chonMaster.value,
+                             client_symbol: chonClientSym.value }) });
+    ketQuaForm(hop, r, UI.hd_form_xong);
+    if (r.ok) await taiHuongDan();
+  });
+  hop.appendChild(n);
+  return hop;
+}
+
+function veForm(b) {
+  const ve = { "FORM_CLICKER": formClicker, "FORM_ANH_XA": formAnhXa };
+  const ra = [];
+  for (const ma of (b.form || [])) {
+    const f = ve[ma];
+    if (f) ra.push(f());
+  }
+  return ra;
+}
+
 // Nut "Kiem lai" cua mot buoc. Trang van tu cap nhat theo WebSocket, nhung "tu cap nhat luc nao
 // do" khong tra loi duoc cau hoi nguoi dung dang co trong dau: toi vua lam xong, da an chua?
 function veKiemLai(b) {
@@ -1105,6 +1213,7 @@ function chiTietBuoc(b) {
 
   const nutLam = veHanhDong(b);
   if (nutLam) hop.appendChild(nutLam);
+  for (const f of veForm(b)) hop.appendChild(f);
   if (b.kiem) hop.appendChild(nhan(UI.hd_nhan_kiem + ": " + b.kiem, "buoc-kiem"));
   if (b.bay) hop.appendChild(nhan(UI.hd_nhan_bay + ": " + b.bay, "buoc-bay"));
   if (b.lenh && b.lenh.length) {

@@ -486,6 +486,18 @@ HD_KHOI_ANH_XA = "KHOI_ANH_XA"
 HD_KHOI_CLIENT = "KHOI_CLIENT"
 HD_KHOI_FILE_CONFIG = "KHOI_FILE_CONFIG"
 
+#: Form nhỏ ngay trong bước, cho những câu lệnh cần **tham số của riêng người vận hành**.
+#:
+#: Chúng KHÔNG đi qua `bridge.web.lenh.LENH_CHAY_DUOC`, và đó là chủ đích: D-41 dựng trên đúng một
+#: bất biến — trình duyệt gửi MÃ, không bao giờ gửi tham số. Một tiêu đề cửa sổ là chuỗi tự do; cho
+#: nó vào `argv` là phá chính bất biến ấy, trên một dashboard không có xác thực (D-39).
+#:
+#: Thay vào đó form POST vào **endpoint đã có** — cùng đường mà tab Cấu hình vẫn dùng, đã kiểm ràng
+#: buộc đầy đủ (ví dụ `/api/agent/{id}/terminal` từ chối tiêu đề không chứa số tài khoản). Không
+#: sinh tiến trình, không argv, không bề mặt tấn công mới.
+FORM_CLICKER = "FORM_CLICKER"
+FORM_ANH_XA = "FORM_ANH_XA"
+
 #: Việc của một bước làm Ở ĐÂU. Ba nơi này đòi ba thứ khác nhau của người vận hành — đổi cửa sổ,
 #: đổi cách gõ, đổi cả tâm thế — nên nói trước là tiết kiệm được một lần mò.
 NOI_DASHBOARD = "DASHBOARD"
@@ -521,6 +533,8 @@ class Buoc(NamedTuple):
     khoa_bay: str = ""
     #: Các hành động làm ngay trong bước. Rỗng = bước này không có gì bấm được.
     hanh_dong: tuple[str, ...] = ()
+    #: Các form điền-rồi-chạy ngay trong bước, cho việc cần tham số. Xem `FORM_*` ở trên.
+    form: tuple[str, ...] = ()
     #: Các câu lệnh của bước, mỗi cái là `(nhãn câu lệnh, mã chạy được)`.
     #:
     #: `mã chạy được` rỗng nghĩa là **phải tự gõ**: lệnh cần tham số mà chỉ người vận hành biết
@@ -551,6 +565,7 @@ BUOC_LAN_DAU: tuple[Buoc, ...] = (
          ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK",
           "CLICKER_CHUA_ONLINE"), NOI_DASHBOARD,
          "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_ld_khai_clicker_bay", (HD_KHOI_AGENT,),
+         form=(FORM_CLICKER,),
          lenh=(("hd_lenh_liet_ke", "LIET_KE"), ("hd_lenh_sua_agent", ""))),
     Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
          "hd_ld_algo_viec", "hd_ld_algo_kiem", "hd_ld_algo_bay"),
@@ -558,6 +573,7 @@ BUOC_LAN_DAU: tuple[Buoc, ...] = (
          "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "hd_ld_toolbox_bay"),
     Buoc("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), NOI_DASHBOARD,
          "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_ld_anh_xa_bay", (HD_KHOI_ANH_XA,),
+         form=(FORM_ANH_XA,),
          lenh=(("hd_lenh_anh_xa", ""),)),
     Buoc("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), NOI_DASHBOARD,
          "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "", (HD_KHOI_CLIENT,),
@@ -629,6 +645,7 @@ def _mot_buoc(b: Buoc, thieu: list[dict[str, Any]], da_tich: set[str]) -> dict[s
         "da_tich": b.ma in da_tich,
         "thieu": cua_buoc,
         "hanh_dong": list(b.hanh_dong),
+        "form": list(b.form),
         # `tu_kiem` = Bridge tự biết bước này xong chưa. Giao diện dùng nó để quyết định hiện dấu
         # tích hay hiện ô cho người dùng tự tích — JS không được tự suy ra điều đó.
         "tu_kiem": bool(b.ma_kiem),
@@ -694,6 +711,22 @@ def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
         "agent_ea": [str(r["agent_id"]) for r in db.query_all(
             "SELECT agent_id FROM agent WHERE role IN ('MASTER', 'CLIENT') AND enabled = 1 "
             "ORDER BY role, agent_id")],
+        # Du lieu cho cac form. Cung nguon voi trang Cau hinh, khong tinh lai theo cach khac.
+        "agent_clicker": [
+            {"agent_id": str(r["agent_id"]),
+             **{k: cau_hinh_clicker(db, str(r["agent_id"]))[k] for k in ("login", "tieu_de")}}
+            for r in db.query_all(
+                "SELECT agent_id FROM agent WHERE role = 'CLICKER' AND enabled = 1 "
+                "ORDER BY agent_id")],
+        "client": [str(c["client_id"]) for c in db.query_all(
+            "SELECT client_id FROM client_account WHERE enabled = 1 ORDER BY client_id")],
+        "symbol_master": symbol_cua_agent(db, _agent_master(db)),
+        "symbol_client": {str(c["client_id"]): symbol_cua_agent(db, str(c["agent_id"]))
+                          for c in db.query_all(
+                              "SELECT client_id, agent_id FROM client_account WHERE enabled = 1")},
+        "de_xuat_anh_xa": {str(c["client_id"]): de_xuat_anh_xa(db, str(c["client_id"]))
+                           for c in db.query_all(
+                               "SELECT client_id FROM client_account WHERE enabled = 1")},
         "nhom": [
             {"ma": NHOM_LAN_DAU, "ten": UI["hd_nhom_lan_dau"],
              "chu": UI["hd_nhom_lan_dau_chu"], "buoc": lan_dau},

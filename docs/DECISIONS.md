@@ -875,3 +875,24 @@ của dịch vụ thì không trả lời được.
 **Mọi nút bất đồng bộ đều khoá lại và nói "Đang chạy…".** Không có nó thì người dùng bấm một nút mất
 vài giây, không thấy gì, rồi bấm lại — và với nút Cấp token, bấm lại là một hành động **thật**:
 token vừa cấp chết ngay.
+
+Bổ sung cho D-41 (2026-09-22) — **lệnh cần tham số đi qua endpoint, không qua danh sách trắng.**
+
+Ba câu lệnh trên tab Hướng dẫn cần giá trị chỉ người vận hành biết: `sua-agent --login --terminal-title`,
+`anh-xa-symbol`, `cau-hinh-client`. Trang trước đây chỉ nói "phải tự gõ" — đúng chỗ một người không
+phải dân kỹ thuật dừng lại.
+
+Cho chúng vào `LENH_CHAY_DUOC` là **phá chính bất biến của D-41**: một tiêu đề cửa sổ là chuỗi tự
+do, cho nó đi vào `argv` trên một dashboard không có xác thực (D-39) là mở lại đúng cánh cửa vừa
+đóng. Ba test đang khoá điều này, và phải nới chúng ra mới làm được — dấu hiệu rõ nhất rằng hướng đi
+sai.
+
+Thay vào đó: **form nhỏ ngay trong bước, POST vào endpoint đã có** (`/api/agent/{id}/terminal`,
+`/api/symbol_map`). Cùng đường mà tab Cấu hình vẫn dùng, đã kiểm ràng buộc đầy đủ — tiêu đề không
+chứa số tài khoản vẫn bị từ chối, bằng đúng câu tiếng Việt cũ. Không sinh tiến trình, không `argv`,
+không bề mặt tấn công mới.
+
+**Và mở terminal thật là việc không làm được, không phải việc khó.** Bridge chạy như một Windows
+service qua NSSM, tức ở **session 0**; mọi tiến trình con nó sinh ra đều vô hình với người đang ngồi
+trước máy. Chính `scripts/tao-dich-vu.ps1:13` đã ghi điều đó — đó là lý do clicker phải là Scheduled
+Task chứ không phải service. Thêm `CREATE_NEW_CONSOLE` vào cũng không đổi được gì.
