@@ -6,6 +6,8 @@ phải **kiểm chứng được**. Một bản sao lưu chưa từng khôi ph�
 
 from __future__ import annotations
 
+import contextlib
+import re
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -1001,3 +1003,258 @@ def ghi_moc_cap_nhat(db: Database, ea_doi: bool, tu_commit: str = "") -> dict[st
     log.warning("Ghi moc cap nhat %s (ea_doi=%s, tu %s), da xoa o tich cua huong dan",
                 moc, ea_doi, tu_commit or "(khong ro)")
     return {"moc_cap_nhat": moc, "ea_doi": ea_doi}
+
+
+# =============================================================================================
+# Cấu hình của một clicker: suy từ chính EA đang chạy trên terminal đó
+# =============================================================================================
+#
+# Clicker của `CL-01` lái **đúng cái terminal** mà EA của `CL-01` đang chạy — đó là topology duy
+# nhất hệ thống này hỗ trợ (một terminal = một EA + một clicker). Mà EA thì tự khai số tài khoản ở
+# **mỗi lần bắt tay**. Nên bắt người vận hành gõ lại con số ấy là hỏi một thứ hệ thống đã biết, và
+# còn biết chính xác hơn: con số của EA đến từ terminal đang đăng nhập tài khoản đó, con số gõ tay
+# đến từ trí nhớ.
+#
+# Ba điều cố ý:
+#
+# 1. **Tính lúc đọc, không ghi vào DB.** Ghi xuống thì một giá trị không ai gõ sẽ trông như đã gõ,
+#    và lần sau terminal đăng nhập sang tài khoản khác thì DB nói sai mà không ai biết.
+# 2. **Khai tay vẫn thắng.** Có người đã gõ thì dùng cái đã gõ (`nguon = "KHAI"`). Đè lên lựa chọn
+#    của người vận hành là thứ không được phép làm im lặng.
+# 3. **Lệch thì không tự chọn hộ.** `viec_can_lam` nêu cả hai con số và để người quyết — lệch nghĩa
+#    là clicker đang lái nhầm terminal, hoặc terminal vừa đổi tài khoản. Cả hai đều đắt.
+#
+# Hàng rào cũ không đổi: clicker vẫn đối chiếu số Bridge giao với số đọc từ **cửa sổ thật** ở mỗi
+# cú bấm (D-32). Suy từ EA chỉ làm nguồn của con số ấy đáng tin hơn.
+
+#: Tiêu đề cửa sổ mặc định = chính số tài khoản.
+#:
+#: Không phải phỏng đoán: `clicker/ui/probe.py::account_login_from_title` đọc số tài khoản từ
+#: **đầu** tiêu đề cửa sổ MT5, nên `str(login)` luôn là một mẩu khớp hợp lệ, và là mẩu hẹp nhất.
+def _tieu_de_mac_dinh(login: int) -> str:
+    return str(login) if login else ""
+
+
+def agent_cung_terminal(db: Database, agent_id: str) -> str | None:
+    """Agent EA chạy trên **cùng terminal** với clicker này, hoặc `None` nếu clicker chưa được gán.
+
+    Hai đường gán, và chỉ hai: clicker của một Client (`client_account.clicker_agent_id`) và clicker
+    lái terminal Master (`system_config.master_clicker_agent_id`).
+    """
+    dong = db.query_one(
+        "SELECT agent_id FROM client_account WHERE clicker_agent_id = ? LIMIT 1", (agent_id,))
+    if dong is not None:
+        return str(dong["agent_id"])
+    if (db.get_config("master_clicker_agent_id", "") or "").strip() == agent_id:
+        master = db.query_one("SELECT agent_id FROM agent WHERE role = 'MASTER' LIMIT 1")
+        if master is not None:
+            return str(master["agent_id"])
+    return None
+
+
+def cau_hinh_clicker(db: Database, agent_id: str) -> dict[str, Any]:
+    """Số tài khoản và tiêu đề cửa sổ mà clicker này phải dùng, kèm **nguồn** của chúng.
+
+    Trả về `{login, tieu_de, nguon, tu_agent, login_suy}`:
+
+    * `nguon = "KHAI"` — có người khai tay, dùng cái đó.
+    * `nguon = "SUY"`  — suy từ EA cùng terminal.
+    * `nguon = "CHUA_CO"` — chưa gán clicker cho ai, hoặc EA kia chưa bao giờ nối.
+
+    `login_suy` luôn là con số suy được (0 nếu không suy được), để chỗ gọi so với `login` mà phát
+    hiện lệch — hàm này **không** tự quyết khi lệch.
+    """
+    agent = db.get_agent(agent_id)
+    if agent is None or agent["role"] != "CLICKER":
+        raise LoiCauHinh("SAI_ROLE", agent_id=agent_id, can="CLICKER")
+
+    tu_agent = agent_cung_terminal(db, agent_id)
+    ea = db.get_agent(tu_agent) if tu_agent else None
+    login_suy = int(ea["account_login"] or 0) if ea is not None else 0
+
+    khai_login = int(agent["account_login"] or 0)
+    khai_tieu_de = (agent["terminal_title"] or "").strip()
+    if khai_login or khai_tieu_de:
+        return {"login": khai_login or login_suy,
+                "tieu_de": khai_tieu_de or _tieu_de_mac_dinh(khai_login or login_suy),
+                "nguon": "KHAI", "tu_agent": tu_agent, "login_suy": login_suy}
+    if login_suy:
+        return {"login": login_suy, "tieu_de": _tieu_de_mac_dinh(login_suy),
+                "nguon": "SUY", "tu_agent": tu_agent, "login_suy": login_suy}
+    return {"login": 0, "tieu_de": "", "nguon": "CHUA_CO", "tu_agent": tu_agent, "login_suy": 0}
+
+
+# =============================================================================================
+# Đề xuất ánh xạ symbol
+# =============================================================================================
+#
+# `symbol_spec` đã chứa **toàn bộ Market Watch** của cả Master lẫn từng Client, do EA đẩy lên sau
+# mỗi lần bắt tay và mỗi 6 giờ. Nên hai ô gõ tay tên symbol là hỏi một thứ hệ thống đã biết — và
+# gõ tay ở đây hỏng theo kiểu tệ nhất: sai một ký tự thì không có lỗi nào cả, chỉ là **mọi lệnh
+# Master bị bỏ qua trong im lặng**.
+#
+# Đề xuất chứ **không tự tạo**: chọn sai symbol không báo lỗi, nó chỉ copy sang một thị trường
+# khác. Việc đó phải có người bấm.
+
+def symbol_cua_agent(db: Database, agent_id: str | None) -> list[dict[str, Any]]:
+    """Danh sách symbol một agent đã đẩy lên, kèm thông số đủ để phân biệt bản micro."""
+    if not agent_id:
+        return []
+    return [{"symbol": r["symbol"], "digits": r["digits"], "contract_size": r["contract_size"],
+             "volume_min": r["volume_min"], "volume_step": r["volume_step"]}
+            for r in db.query_all(
+                "SELECT symbol, digits, contract_size, volume_min, volume_step "
+                "FROM symbol_spec WHERE agent_id = ? ORDER BY symbol", (agent_id,))]
+
+
+def _diem_ung_vien(master: dict[str, Any], client: dict[str, Any]) -> tuple[int, int]:
+    """Điểm của một ứng viên: càng nhỏ càng khớp. `(hạng tên, phạt khác thông số)`.
+
+    Hạng tên: 0 trùng hẳn, 1 tên Client nối thêm hậu tố (`XAUUSD` → `XAUUSDm`, `XAUUSD.s`),
+    2 ngược lại, 3 không liên quan.
+    """
+    m, c = master["symbol"].upper(), client["symbol"].upper()
+    if m == c:
+        hang = 0
+    elif c.startswith(m):
+        hang = 1
+    elif m.startswith(c):
+        hang = 2
+    else:
+        hang = 3
+    # `digits` và `contract_size` là thứ phân biệt XAUUSD với bản micro. Khác nhau không loại bỏ
+    # ứng viên — nhiều sàn khai khác nhau hợp lệ — nhưng đẩy nó xuống sau.
+    phat = int(master["digits"] != client["digits"]) + \
+           int((master["contract_size"] or 0) != (client["contract_size"] or 0))
+    return hang, phat
+
+
+def de_xuat_anh_xa(db: Database, client_id: str) -> list[dict[str, Any]]:
+    """Cặp symbol đề xuất cho một Client: mỗi symbol Master một ứng viên tốt nhất.
+
+    Bỏ qua symbol đã có ánh xạ. Không có ứng viên nào đủ gần thì **không đề xuất** — một đề xuất
+    sai còn tệ hơn không có, vì nó được bấm mà không ai đọc kỹ.
+    """
+    client = db.get_client_account(client_id)
+    if client is None:
+        return []
+    master = db.query_one("SELECT agent_id FROM agent WHERE role = 'MASTER' LIMIT 1")
+    ds_master = symbol_cua_agent(db, master["agent_id"] if master else None)
+    ds_client = symbol_cua_agent(db, client["agent_id"])
+    if not ds_master or not ds_client:
+        return []
+
+    da_co = {r["master_symbol"] for r in db.query_all(
+        "SELECT master_symbol FROM symbol_map WHERE client_id = ?", (client_id,))}
+
+    ket: list[dict[str, Any]] = []
+    for m in ds_master:
+        if m["symbol"] in da_co:
+            continue
+        ung_vien = [(( *_diem_ung_vien(m, c),), c) for c in ds_client]
+        ung_vien = [(d, c) for d, c in ung_vien if d[0] < 3]
+        if not ung_vien:
+            continue
+        ung_vien.sort(key=lambda x: (x[0], len(x[1]["symbol"])))
+        (hang, phat), c = ung_vien[0]
+        ket.append({"master_symbol": m["symbol"], "client_symbol": c["symbol"],
+                    "chac_chan": hang == 0 and phat == 0})
+    return ket
+
+
+# =============================================================================================
+# Thêm một Client: một lệnh, sinh đủ mọi thứ đi kèm
+# =============================================================================================
+#
+# Thêm `CL-02` trước đây là **năm** việc rời nhau, làm đúng thứ tự mới chạy: tạo agent CLIENT, tạo
+# agent CLICKER, khai token clicker vào `config.toml`, tạo dòng `client_account`, rồi đăng ký tác
+# vụ trên VPS. Bốn việc đầu đều là suy ra được từ một con số — số thứ tự của Client — nên bắt gõ
+# tên cho từng thứ chỉ tạo cơ hội đặt lệch nhau (`AG-CLIENT2` với mục `[clicker_cl_02]`).
+#
+# Việc thứ năm **không tự động hoá được từ trình duyệt**: đăng ký Scheduled Task cần quyền
+# Administrator trên VPS. Nên hàm này trả về đúng câu lệnh đó để người dùng dán chạy.
+
+#: Magic mặc định cho agent tạo từ dashboard.
+#:
+#: EA **ghi đè** giá trị này ở lần bắt tay đầu tiên (`server.py` lấy `hello.magic`), và không chỗ
+#: nào trong Bridge so magic giữa các agent — nó chỉ được đóng dấu lên lệnh đi đường EA rồi chính
+#: EA đó kiểm lại. Hỏi người dùng con số này không mua được gì.
+MAGIC_MAC_DINH = 770001
+
+
+def ma_client_ke_tiep(da_co: list[str]) -> str:
+    """Mã client tiếp theo theo đúng dãy `CL-01`, `CL-02`, …
+
+    Gợi ý chứ không ép: ô vẫn sửa được. Nhưng để trống rồi bắt người ta tự nghĩ ra mã là cách chắc
+    chắn có ngày xuất hiện `CL2`, `cl-02` và `CL-2` trong cùng một bảng — mà mã này đi vào mọi lệnh
+    `bridge.admin`, tên agent, tên mục clicker và tên Scheduled Task về sau.
+    """
+    so = {int(m.group(1)) for m in (re.fullmatch(r"CL-(\d+)", str(c)) for c in da_co) if m}
+    return f"CL-{(max(so) + 1) if so else 1:02d}"
+
+
+def ten_theo_client(client_id: str) -> dict[str, str]:
+    """Mọi cái tên đi kèm một Client, sinh từ chính mã của nó.
+
+    `CL-02` → agent `AG-CL02`, clicker `AG-CLICKER-CL02`, mục `[clicker_cl02]` trong `config.toml`,
+    tác vụ `ClickerCl02`, log `clicker_cl02.log`. Một quy tắc, một chỗ — để cái tên trong database,
+    trong `config.toml` và trong Task Scheduler không bao giờ lệch nhau.
+    """
+    gon = client_id.replace("-", "").upper()          # CL-02 -> CL02
+    muc = f"clicker_{gon.lower()}"                    # clicker_cl02
+    return {
+        "agent": f"AG-{gon}",
+        "clicker": f"AG-CLICKER-{gon}",
+        "muc_clicker": muc,
+        "tac_vu": "Clicker" + "".join(p.capitalize() for p in muc.split("_")[1:]),
+        "log": f"{muc}.log",
+    }
+
+
+def tao_client_moi(db: Database) -> dict[str, Any]:
+    """Tạo một Client mới cùng hai agent của nó. Trả về **cả hai token** (hiện đúng một lần).
+
+    **Chỉ chạm database.** Việc ghi `config.toml` nằm ở chỗ gọi, vì hai lý do khác nhau và cả hai
+    đều thật: `sua_config_toml` đọc/ghi file và gọi `icacls` nên phải chạy ở luồng khác để không
+    giữ vòng sự kiện của Bridge; mà `sqlite3` thì **chỉ dùng được trong đúng luồng đã tạo kết nối**.
+    Gộp hai thứ vào một hàm rồi bọc trong `asyncio.to_thread` là cách chắc chắn nhận
+    `SQLite objects created in a thread can only be used in that same thread` — đã gặp thật.
+
+    Chỗ gọi phải dọn bằng `huy_client_moi` nếu bước ghi file hỏng: một Client có agent mà không có
+    token clicker trong `config.toml` là thứ chỉ lộ ra lúc clicker không khởi động được.
+    """
+    da_co = [str(r["client_id"]) for r in db.query_all("SELECT client_id FROM client_account")]
+    client_id = ma_client_ke_tiep(da_co)
+    ten = ten_theo_client(client_id)
+
+    for ma in (ten["agent"], ten["clicker"]):
+        if db.get_agent(ma) is not None:
+            raise LoiCauHinh("AGENT_DA_TON_TAI", agent_id=ma)
+
+    da_tao: list[str] = []
+    try:
+        token_ea = tao_agent(db, ten["agent"], "CLIENT", MAGIC_MAC_DINH, None)
+        da_tao.append(ten["agent"])
+        token_clicker = tao_agent(db, ten["clicker"], "CLICKER", MAGIC_MAC_DINH, None)
+        da_tao.append(ten["clicker"])
+        tao_client(db, client_id, ten["agent"], ten["clicker"], open_route="UI")
+    except Exception:
+        huy_client_moi(db, client_id, da_tao)
+        raise
+
+    log.warning("Da tao %s (%s, %s)", client_id, ten["agent"], ten["clicker"])
+    # `token_clicker` đi thẳng vào `config.toml` ở chỗ gọi và **không bao giờ** ra tới trình duyệt:
+    # clicker đọc nó từ file, còn một token đi qua JSON là một token nằm trong cache trình duyệt.
+    return {"client_id": client_id, "token_ea": token_ea, "token_clicker": token_clicker, **ten}
+
+
+def huy_client_moi(db: Database, client_id: str, agent_ids: list[str]) -> None:
+    """Dọn một lần tạo Client hỏng giữa chừng.
+
+    Nửa vời ở đây nghĩa là lần bấm sau đâm vào "agent đã tồn tại" mà không ai hiểu vì sao — và mã
+    Client kế tiếp thì đã bị một dòng rác chiếm mất.
+    """
+    with contextlib.suppress(Exception), db.transaction() as conn:
+        conn.execute("DELETE FROM client_account WHERE client_id = ?", (client_id,))
+        for ma in agent_ids:
+            conn.execute("DELETE FROM agent WHERE agent_id = ?", (ma,))

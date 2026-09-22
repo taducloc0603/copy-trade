@@ -23,12 +23,15 @@ from bridge.ops import (
     LoiCauHinh,
     bao_tri_hang_ngay,
     cap_token,
+    cau_hinh_clicker,
     dat_duong_dong_master,
     dat_lai_lich_su,
     dat_lai_toan_bo,
     dat_terminal_clicker,
+    de_xuat_anh_xa,
     don_ban_cu,
     don_log_cu,
+    huy_client_moi,
     khai_anh_xa,
     khoi_phuc_thu,
     kiem_chung_ban_sao_luu,
@@ -38,7 +41,9 @@ from bridge.ops import (
     sua_khoa_he_thong,
     tao_agent,
     tao_client,
+    tao_client_moi,
     tat_anh_xa,
+    ten_theo_client,
     thu_hoi_token,
     xoa_anh_xa,
     xoa_client,
@@ -1333,3 +1338,111 @@ def test_dat_lai_bi_tu_choi_khi_con_lenh_chua_xong(seeded: Database, db_path: Pa
     with pytest.raises(LoiCauHinh) as loi:
         dat_lai_lich_su(seeded, db_path)
     assert loi.value.ma == "DAT_LAI_CON_LENH_BAY"
+
+
+# -- suy cau hinh clicker tu EA cung terminal ---------------------------------------------------
+
+def test_cau_hinh_clicker_suy_tu_EA_cua_chinh_terminal_do(seeded: Database) -> None:
+    """Clicker của `CL-01` lái đúng terminal mà EA của `CL-01` đang chạy — nên số tài khoản của nó
+    là số EA đã tự khai, không phải một con số ai đó nhớ lại."""
+    seeded.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=0)
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id="AG-CLICKER-X")
+
+    kq = cau_hinh_clicker(seeded, "AG-CLICKER-X")
+    assert kq["nguon"] == "SUY"
+    assert kq["login"] == seeded.get_agent(CLIENT_AGENT)["account_login"]
+    # Tiêu đề mặc định = chính số tài khoản: clicker đọc số từ ĐẦU tiêu đề cửa sổ MT5, nên đây là
+    # mẩu khớp hẹp nhất còn đúng.
+    assert kq["tieu_de"] == str(kq["login"])
+    assert kq["tu_agent"] == CLIENT_AGENT
+
+
+def test_cau_hinh_clicker_khai_tay_thang_gia_tri_suy(seeded: Database) -> None:
+    """Đè lên lựa chọn của người vận hành là thứ không được phép làm im lặng."""
+    seeded.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=0)
+    seeded.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                 clicker_agent_id="AG-CLICKER-X")
+    dat_terminal_clicker(seeded, "AG-CLICKER-X", 999111, "999111 - San khac")
+
+    kq = cau_hinh_clicker(seeded, "AG-CLICKER-X")
+    assert kq["nguon"] == "KHAI"
+    assert kq["login"] == 999111
+    # Và con số suy được vẫn đi kèm, để chỗ gọi phát hiện lệch.
+    assert kq["login_suy"] == seeded.get_agent(CLIENT_AGENT)["account_login"]
+
+
+def test_cau_hinh_clicker_chua_gan_cho_ai_thi_khong_doan(seeded: Database) -> None:
+    seeded.upsert_agent("AG-CLICKER-ROI", role="CLICKER", token_hash="h", magic_number=0)
+    assert cau_hinh_clicker(seeded, "AG-CLICKER-ROI")["nguon"] == "CHUA_CO"
+
+
+# -- de xuat anh xa symbol ----------------------------------------------------------------------
+
+def _spec(s: str, digits: int = 2, contract: float = 100.0) -> dict[str, object]:
+    return {"symbol": s, "digits": digits, "point": 0.01, "volume_min": 0.01,
+            "volume_max": 50.0, "volume_step": 0.01, "contract_size": contract}
+
+
+def test_de_xuat_anh_xa_chon_dung_ban_cua_san_Client(seeded: Database) -> None:
+    """Gõ tay tên symbol hỏng theo kiểu tệ nhất: sai một ký tự thì mọi lệnh Master bị bỏ qua
+    trong im lặng. Hệ thống có sẵn danh sách hai bên, nên nó đề xuất."""
+    seeded.replace_symbol_specs(MASTER_AGENT, [_spec("XAUUSD"), _spec("EURUSD", 5, 100000.0)])
+    seeded.replace_symbol_specs(CLIENT_AGENT, [_spec("XAUUSDm"), _spec("EURUSD", 5, 100000.0),
+                                               _spec("XAGUSD")])
+
+    ds = {d["master_symbol"]: d for d in de_xuat_anh_xa(seeded, CLIENT_ID)}
+    assert ds["XAUUSD"]["client_symbol"] == "XAUUSDm"
+    assert ds["XAUUSD"]["chac_chan"] is False      # ten khac nhau -> bat nguoi doc nhin lai
+    assert ds["EURUSD"]["client_symbol"] == "EURUSD"
+    assert ds["EURUSD"]["chac_chan"] is True
+
+
+def test_de_xuat_anh_xa_im_lang_khi_khong_co_ung_vien(seeded: Database) -> None:
+    """Một đề xuất sai còn tệ hơn không có: nó được bấm mà không ai đọc kỹ."""
+    seeded.replace_symbol_specs(MASTER_AGENT, [_spec("BTCUSD")])
+    seeded.replace_symbol_specs(CLIENT_AGENT, [_spec("XAGUSD")])
+    assert de_xuat_anh_xa(seeded, CLIENT_ID) == []
+
+
+def test_de_xuat_anh_xa_bo_qua_symbol_da_co(seeded: Database) -> None:
+    seeded.replace_symbol_specs(MASTER_AGENT, [_spec("XAUUSD")])
+    seeded.replace_symbol_specs(CLIENT_AGENT, [_spec("XAUUSDm")])
+    assert len(de_xuat_anh_xa(seeded, CLIENT_ID)) == 1
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
+    assert de_xuat_anh_xa(seeded, CLIENT_ID) == []
+
+
+# -- them Client bang mot nut -------------------------------------------------------------------
+
+def test_ten_theo_client_mot_quy_tac_cho_moi_cai_ten(db: Database) -> None:
+    """Một quy tắc, một chỗ — để tên trong database, trong config.toml và trong Task Scheduler
+    không bao giờ lệch nhau."""
+    assert ten_theo_client("CL-02") == {
+        "agent": "AG-CL02", "clicker": "AG-CLICKER-CL02", "muc_clicker": "clicker_cl02",
+        "tac_vu": "ClickerCl02", "log": "clicker_cl02.log"}
+
+
+def test_tao_client_moi_tao_du_ba_ban_ghi_va_dem_tiep(db: Database) -> None:
+    kq = tao_client_moi(db)
+    assert kq["client_id"] == "CL-01"
+    assert db.get_client_account("CL-01")["clicker_agent_id"] == "AG-CLICKER-CL01"
+    assert db.get_agent("AG-CL01")["role"] == "CLIENT"
+    assert db.get_agent("AG-CLICKER-CL01")["role"] == "CLICKER"
+    # Đường mở/đóng đi giao diện: đó là lý do cả phase 6b lẫn phase 11 tồn tại.
+    assert db.get_client_account("CL-01")["open_route"] == "UI"
+    assert len(kq["token_ea"]) >= 32 and len(kq["token_clicker"]) >= 32
+    assert kq["token_ea"] != kq["token_clicker"]
+
+    assert tao_client_moi(db)["client_id"] == "CL-02"
+
+
+def test_huy_client_moi_khong_de_lai_gi(db: Database) -> None:
+    """Nửa vời nghĩa là lần bấm sau đâm vào "agent đã tồn tại" mà không ai hiểu vì sao."""
+    kq = tao_client_moi(db)
+    huy_client_moi(db, kq["client_id"], [kq["agent"], kq["clicker"]])
+    assert db.get_client_account("CL-01") is None
+    assert db.get_agent("AG-CL01") is None
+    assert db.get_agent("AG-CLICKER-CL01") is None
+    # Và mã kế tiếp quay về CL-01, không bỏ trống một số.
+    assert tao_client_moi(db)["client_id"] == "CL-01"

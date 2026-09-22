@@ -3292,3 +3292,48 @@ buoc mo trinh duyet o cuoi, khong duoc phep lam hong mot lan cap nhat da xong. B
 `tro-ly.ps1 -ChiMoDashboard` tren mot thu muc trong.
 
 927 test xanh (+12), ruff sach.
+
+## Trang Cau hinh: chi hoi nhung gi he thong khong the tu biet (2026-09-22)
+
+Ra soat toan bo o nhap cho mot con so: de di tu "cai xong" toi "copy duoc lenh" voi 1 Master +
+1 Client phai go BAY o -- bon o cho hai clicker, ba o cho anh xa symbol. Trong 15 o cua ca trang,
+MUOI MOT o suy duoc tu du lieu Bridge da co.
+
+Ba thu nay tu suy:
+- So tai khoan cua clicker: clicker cua CL-01 lai dung terminal ma EA cua CL-01 dang chay, va EA
+  TU KHAI so tai khoan o moi lan bat tay. Tinh luc doc, khong ghi vao DB -- ghi xuong thi mot gia
+  tri khong ai go se trong nhu da go, va lan sau terminal doi tai khoan thi DB noi sai.
+- Tieu de cua so = chinh so tai khoan. Khong phai phong doan: probe doc so tu DAU tieu de cua so
+  MT5, nen str(login) luon la mau khop hop le va hep nhat.
+- Moi cai ten di kem mot Client (AG-CL02, AG-CLICKER-CL02, [clicker_cl02], ClickerCl02, log) sinh
+  tu MOT quy tac, nen ten trong DB, trong config.toml va trong Task Scheduler khong the lech nhau.
+
+Khai tay van thang, va lech thi khong tu chon ho: neu con so khai tay khac con so EA bao thi
+"Can lam" neu CA HAI o muc CHAN. Lech nghia la clicker dang lai nham terminal hoac terminal vua
+doi tai khoan -- ca hai deu dat.
+
+Anh xa symbol: hai danh sach that tu symbol_spec + de xuat (XAUUSD -> XAUUSDm, xep hang theo ten
+roi so digits/contract_size). KHONG tu tao: chon sai symbol khong bao loi, no chi lang le copy
+sang mot thi truong khac.
+
+Them Client: mot nut tao ca hai agent + dong client + ghi token clicker thang vao config.toml.
+Con dung hai viec, ca hai NGOAI trinh duyet (dan token vao EA, dang ky Scheduled Task), nen trang
+in san token mot lan va dung cau lenh.
+
+Ba cho sai sua kem: CHUA_DAT_MAT_KHAU tu Luu y len CHAN (mat khau trong thi moi endpoint ghi tra
+403, ke ca /api/file_config -- khong dat noi mat khau tu chinh trang do); magic bien khoi duong
+tao agent (EA ghi de no o lan bat tay dau); va Khoa he thong + config.toml + Dat lai gom vao muc
+Nang cao dong san.
+
+**Hai lo chi lo ra khi BAM THAT, ca hai trong code viet cung ngay:**
+
+1. Boc ham cham database trong asyncio.to_thread -> "SQLite objects created in a thread can only
+   be used in that same thread". Chep mau tu /api/file_config, nhung cai do chi cham FILE. Nay
+   phan DB chay tren vong su kien, chi phan ghi file day sang luong khac.
+2. Ve khoi token TRUOC khi goi taiCauHinh(), ma ham do dung lai ca tab -- token hien dung mot lan
+   roi bi chinh minh xoa sau mot nhip. Bat duoc bang Playwright; doc code khong thay.
+
+Va mot lo nho cung loai: alert(r.data.message || r.data.error || "") ra mot hop thoai RONG khi loi
+500 tra ve text/plain. Mot alert rong la bao cao loi te nhat co the.
+
+953 test xanh (+15), ruff sach.

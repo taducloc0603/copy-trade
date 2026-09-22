@@ -398,6 +398,11 @@ class BridgeServer:
         Clicker nhận thêm **số tài khoản và tiêu đề cửa sổ terminal** của chính nó. Đây là cách
         hai giá trị ấy rời khỏi `config.toml`: người vận hành khai chúng trên dashboard, clicker
         đọc lại ở lần bắt tay kế tiếp. EA không dùng hai khoá này và bỏ qua khoá lạ.
+
+        Chưa ai khai thì **suy từ EA chạy trên chính terminal đó** (`ops.cau_hinh_clicker`): clicker
+        của `CL-01` lái đúng cái terminal mà EA của `CL-01` đang chạy, và EA tự khai số tài khoản ở
+        mỗi lần bắt tay. Nhờ vậy một bản cài mới không cần ai gõ gì thì clicker vẫn chạy được ngay
+        sau khi EA lên — trước đây nó thoát mã 4 và thử lại mỗi 60 giây cho tới khi có người khai.
         """
         cau_hinh: dict[str, Any] = {
             "heartbeat_interval_ms": self.db.get_config_int(
@@ -406,8 +411,13 @@ class BridgeServer:
             "heartbeat_timeout_ms": self._heartbeat_timeout_ms(),
         }
         if agent is not None and agent["role"] == "CLICKER":
-            cau_hinh["account_login"] = agent["account_login"] or 0
-            cau_hinh["terminal_title"] = agent["terminal_title"] or ""
+            # Import tại chỗ: `ops` import `db.repo`, còn `server` được `ops` dùng gián tiếp qua
+            # dispatcher — import ở đầu file tạo một vòng.
+            from bridge.ops import cau_hinh_clicker
+
+            suy = cau_hinh_clicker(self.db, agent["agent_id"])
+            cau_hinh["account_login"] = suy["login"]
+            cau_hinh["terminal_title"] = suy["tieu_de"]
         return cau_hinh
 
     def dong_ket_noi(self, agent_id: str, ly_do: str) -> bool:

@@ -11,7 +11,6 @@ không chứa nhãn nào, nên thêm một ngôn ngữ hay đổi cách gọi m�
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from bridge.clock import parse_iso
@@ -27,7 +26,14 @@ from bridge.labels_vi import (
     UI,
     label,
 )
-from bridge.ops import KHOA_SUA_DUOC, doc_tich_huong_dan
+from bridge.ops import (
+    KHOA_SUA_DUOC,
+    cau_hinh_clicker,
+    de_xuat_anh_xa,
+    doc_tich_huong_dan,
+    ma_client_ke_tiep,
+    symbol_cua_agent,
+)
 
 #: Thứ tự nghiêm trọng của trạng thái cặp. Số nhỏ lên trước.
 #:
@@ -360,8 +366,20 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
     for a in agents:
         if a["role"] != "CLICKER" or not a["enabled"]:
             continue
-        login = a["account_login"] or 0
-        tieu_de = (a["terminal_title"] or "").strip()
+        # Xét giá trị **có hiệu lực**, không phải cột trong DB: chưa ai khai thì Bridge suy từ EA
+        # chạy trên chính terminal đó và gửi giá trị suy được xuống clicker. Bắt "chưa khai" ở đây
+        # trong khi clicker vẫn chạy được là báo một việc không có thật.
+        hieu_luc = cau_hinh_clicker(db, a["agent_id"])
+        login = hieu_luc["login"]
+        tieu_de = hieu_luc["tieu_de"]
+        # Khai tay một đằng, EA báo một nẻo: clicker đang lái nhầm terminal, hoặc terminal vừa
+        # đăng nhập sang tài khoản khác. Không tự chọn hộ — nêu cả hai con số.
+        if (hieu_luc["nguon"] == "KHAI" and hieu_luc["login_suy"]
+                and hieu_luc["login_suy"] != login):
+            them(MUC_CHAN, "CLICKER_LECH_SO_TK",
+                 UI["can_lam_clicker_lech"].format(
+                     agent_id=a["agent_id"], khai=login, suy=hieu_luc["login_suy"],
+                     tu_agent=hieu_luc["tu_agent"] or "?"))
         if not login or not tieu_de:
             them(MUC_CHAN, "CLICKER_CHUA_KHAI",
                  UI["can_lam_clicker_chua_khai"].format(agent_id=a["agent_id"]))
@@ -417,7 +435,10 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
     if config is not None:
         mat_khau = str((getattr(config, "security", None) or {}).get("dashboard_password") or "")
         if not mat_khau.strip():
-            them(MUC_LUU_Y, "CHUA_DAT_MAT_KHAU", UI["can_lam_chua_dat_mat_khau"])
+            # CHẶN, không phải lưu ý: mật khẩu trống thì **mọi** endpoint ghi trả 403 — kể cả
+            # `/api/file_config`, tức không đặt nổi mật khẩu từ chính trang này. Phải sửa
+            # `config.toml` trên VPS rồi khởi động lại dịch vụ.
+            them(MUC_CHAN, "CHUA_DAT_MAT_KHAU", UI["can_lam_chua_dat_mat_khau"])
 
     # -- cuối cùng: bật copy -------------------------------------------------------------------
     run_mode = db.get_config("run_mode", "PAUSED") or "PAUSED"
@@ -562,6 +583,11 @@ def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
     }
 
 
+def _agent_master(db: Database) -> str | None:
+    dong = db.query_one("SELECT agent_id FROM agent WHERE role = 'MASTER' LIMIT 1")
+    return str(dong["agent_id"]) if dong is not None else None
+
+
 def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
     """Mọi thứ trang Cấu hình cần, trong một lượt đọc.
 
@@ -586,7 +612,13 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
              "chon": list(a) if kieu == "enum" else None}
             for khoa, (kieu, a, b) in KHOA_SUA_DUOC.items()
         ],
-        "ma_client_goi_y": _ma_client_ke_tiep([c["client_id"] for c in clients]),
+        "ma_client_goi_y": ma_client_ke_tiep([c["client_id"] for c in clients]),
+        # Danh sách symbol thật của hai bên, để hai ô gõ tay thành hai danh sách chọn. Gõ tay ở đây
+        # hỏng theo kiểu tệ nhất: sai một ký tự thì không có lỗi nào, chỉ là mọi lệnh Master bị bỏ
+        # qua trong im lặng.
+        "symbol_master": symbol_cua_agent(db, _agent_master(db)),
+        "symbol_client": {c["client_id"]: symbol_cua_agent(db, c["agent_id"]) for c in clients},
+        "de_xuat_anh_xa": {c["client_id"]: de_xuat_anh_xa(db, c["client_id"]) for c in clients},
         "file_config": _mo_ta_file_config(config),
         # Theo TỪNG Client, không phải một bảng dùng chung. Bản cũ lấy `clients[0]`, nên với
         # hai Client khác hệ số thì khối CL-02 hiển thị con số của CL-01 — một bảng xem trước
@@ -596,17 +628,6 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
         # "còn thiếu gì" **trước** khi cuộn qua tám khối cấu hình.
         "can_lam": viec_can_lam(db, config),
     }
-
-
-def _ma_client_ke_tiep(da_co: list[str]) -> str:
-    """Mã client tiếp theo theo đúng dãy `CL-01`, `CL-02`, …
-
-    Gợi ý chứ không ép: ô vẫn sửa được. Nhưng để trống rồi bắt người ta tự nghĩ ra mã là cách
-    chắc chắn có ngày xuất hiện `CL2`, `cl-02` và `CL-2` trong cùng một bảng — mà mã này đi vào
-    mọi lệnh `bridge.admin` về sau.
-    """
-    so = {int(m.group(1)) for m in (re.fullmatch(r"CL-(\d+)", str(c)) for c in da_co) if m}
-    return f"CL-{(max(so) + 1) if so else 1:02d}"
 
 
 def _mo_ta_agent_cau_hinh(row: Any) -> dict[str, Any]:

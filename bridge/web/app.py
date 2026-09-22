@@ -37,11 +37,13 @@ from bridge.ops import (
     dat_lai_toan_bo,
     dat_terminal_clicker,
     dat_tich_huong_dan,
+    huy_client_moi,
     khai_anh_xa,
     sua_client,
     sua_khoa_he_thong,
     tao_agent,
     tao_client,
+    tao_client_moi,
     tat_anh_xa,
     xoa_anh_xa,
     xoa_client,
@@ -398,6 +400,47 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
             return _tra_loi(exc)
         log.info("Dashboard tao client %s", da["client_id"])
         return {"ok": True, "client": da}
+
+    @app.post("/api/client_moi")
+    async def api_client_moi(sid: str | None = Cookie(None)) -> Any:
+        """Tạo một Client mới cùng **tất cả** thứ đi kèm, không hỏi gì.
+
+        Mã Client, tên hai agent, tên mục clicker, tên Scheduled Task — tất cả suy từ một con số
+        (số thứ tự của Client), nên hỏi từng cái chỉ tạo cơ hội đặt lệch nhau. Việc duy nhất còn
+        lại cho người dùng là dán token vào EA và chạy một câu lệnh trên VPS: đăng ký Scheduled
+        Task cần quyền Administrator, trình duyệt không với tới.
+        """
+        if (loi := _chan(sid)) is not None:
+            return loi
+        if (loi := _chan_cap_token()) is not None:
+            return loi
+        try:
+            kq = tao_client_moi(dashboard.db)
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+
+        # Phần DB chạy ngay trên vòng sự kiện (sqlite cục bộ, vài mili giây). Phần ghi file thì
+        # KHÔNG: `sua_config_toml` gọi `icacls`, và một lần treo vài giây ở đây là heartbeat của
+        # agent trễ theo, agent rơi OFFLINE, D-25 ngừng copy lệnh.
+        #
+        # Và **không** gộp hai thứ vào một lần `to_thread`: `sqlite3` chỉ dùng được trong đúng
+        # luồng đã tạo kết nối, nên gộp là nhận `SQLite objects created in a thread...` — đã gặp
+        # thật ở lần bấm nút đầu tiên.
+        cfg = dashboard.config
+        token_clicker = kq.pop("token_clicker")
+        if cfg is not None:
+            try:
+                await asyncio.to_thread(
+                    sua_config_toml, Path(cfg.source_path),
+                    {f"{kq['muc_clicker']}.token": token_clicker}, Path(cfg.project_root))
+            except (ConfigError, OSError) as exc:
+                huy_client_moi(dashboard.db, kq["client_id"], [kq["agent"], kq["clicker"]])
+                return JSONResponse({"error": "KHONG_GHI_DUOC_FILE", "message": str(exc)},
+                                    status_code=500)
+        # Câu lệnh đăng ký tác vụ: in ra đúng dạng dán chạy được, không bắt người dùng tự ghép.
+        kq["lenh_tac_vu"] = (f".\\scripts\\tao-dich-vu.ps1 -ChiTacVuClicker "
+                             f"-TacVuClicker {kq['muc_clicker']}")
+        return {"ok": True, **kq}
 
     @app.post("/api/client/{client_id}/delete")
     async def api_xoa_client(client_id: str, sid: str | None = Cookie(None)) -> Any:

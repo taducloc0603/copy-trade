@@ -715,3 +715,58 @@ Hai bẫy giao diện, cả hai chỉ lộ ra khi chạy thật chứ không khi
 **đang mở** thì trình duyệt **không** tải lại trang (nên phải nghe `hashchange`, nếu không thì mở
 `/#huong-dan` lúc dashboard đã mở sẵn chẳng làm gì cả); và tab mới **phải** được thêm vào bảng nhãn
 trong `veNutDieuKhien`, nếu không nó hiện chữ `undefined` và bị vẽ lại như vậy mỗi giây.
+
+
+### D-38 — Trang Cấu hình chỉ hỏi những gì hệ thống không thể tự biết
+
+Rà soát toàn bộ ô nhập cho một con số: để đi từ "cài xong" tới "copy được lệnh" với 1 Master +
+1 Client, người dùng phải gõ **7 ô** — bốn ô cho hai clicker, ba ô cho ánh xạ symbol. Trong 15 ô của
+cả trang, **11 ô suy được** từ dữ liệu Bridge đã có.
+
+**Ba thứ nay tự suy, và vì sao suy được:**
+
+* **Số tài khoản của clicker.** Clicker của `CL-01` lái đúng cái terminal mà EA của `CL-01` đang
+  chạy — đó là topology duy nhất hệ thống hỗ trợ — và EA **tự khai** số tài khoản ở mỗi lần bắt
+  tay. `ops.cau_hinh_clicker` đi theo liên kết `client_account.clicker_agent_id` (hoặc
+  `master_clicker_agent_id`) để lấy con số ấy. Nó **tính lúc đọc, không ghi vào DB**: ghi xuống thì
+  một giá trị không ai gõ sẽ trông như đã gõ, và lần sau terminal đăng nhập sang tài khoản khác thì
+  DB nói sai mà không ai biết.
+* **Tiêu đề cửa sổ** mặc định là chính số tài khoản. Không phải phỏng đoán:
+  `clicker/ui/probe.py::account_login_from_title` đọc số từ **đầu** tiêu đề cửa sổ MT5, nên
+  `str(login)` luôn là mẩu khớp hợp lệ và hẹp nhất.
+* **Mọi cái tên đi kèm một Client** — `AG-CL02`, `AG-CLICKER-CL02`, `[clicker_cl02]`, `ClickerCl02`,
+  `clicker_cl02.log` — sinh từ một quy tắc duy nhất (`ops.ten_theo_client`), nên tên trong database,
+  trong `config.toml` và trong Task Scheduler không bao giờ lệch nhau.
+
+**Khai tay vẫn thắng**, và **lệch thì không tự chọn hộ**: có người đã gõ thì dùng cái đã gõ; nếu con
+số ấy khác con số EA báo thì `viec_can_lam` nêu **cả hai** ở mức CHẶN. Lệch nghĩa là clicker đang lái
+nhầm terminal, hoặc terminal vừa đăng nhập sang tài khoản khác — cả hai đều đắt, và cả hai đều phải
+do người quyết. Hàng rào cũ không đổi: clicker vẫn đối chiếu số Bridge giao với số đọc từ **cửa sổ
+thật** ở mỗi cú bấm (D-32); suy từ EA chỉ làm nguồn của con số ấy đáng tin hơn.
+
+**Ánh xạ symbol: đề xuất, không tự tạo.** `symbol_spec` đã chứa toàn bộ Market Watch của cả hai bên,
+nên hai ô gõ tay thành hai danh sách thật kèm đề xuất (`XAUUSD → XAUUSDm`, xếp hạng theo tên rồi so
+thêm `digits` và `contract_size` — thứ phân biệt bản micro). Nhưng **không tự tạo**: chọn sai symbol
+không báo lỗi, nó chỉ lặng lẽ copy sang một thị trường khác. Việc đó phải có người bấm.
+
+**Thêm Client là một nút.** Trước đây là năm việc rời nhau, làm đúng thứ tự mới chạy. Nay một lần
+bấm tạo agent EA, agent clicker, dòng `client_account` route UI, và ghi token clicker thẳng vào
+`config.toml`. Còn đúng hai việc phải làm tay, và cả hai **nằm ngoài trình duyệt**: dán token vào EA,
+và đăng ký Scheduled Task (cần quyền Administrator trên VPS) — nên trang in sẵn token một lần và
+đúng câu lệnh đó.
+
+**Ba chỗ sai sửa kèm:**
+
+1. `CHUA_DAT_MAT_KHAU` từ mức Lưu ý lên **CHẶN**: mật khẩu trống thì **mọi** endpoint ghi trả 403 —
+   kể cả `/api/file_config`, tức không đặt nổi mật khẩu từ chính trang đó. Phải sửa `config.toml`
+   trên VPS rồi khởi động lại dịch vụ.
+2. `magic` biến khỏi đường tạo agent: EA **ghi đè** nó ở lần bắt tay đầu, và không chỗ nào trong
+   Bridge so magic giữa các agent. Hỏi con số này không mua được gì.
+3. Khoá hệ thống, `config.toml` và Đặt lại gom vào mục **Nâng cao** đóng sẵn — một bản cài bình
+   thường không bao giờ dùng tới chúng.
+
+**Hai lỗi chỉ lộ ra khi bấm thật**, cả hai đều trong code viết cùng ngày: bọc hàm chạm database
+trong `asyncio.to_thread` (sqlite3 chỉ dùng được trong đúng luồng đã tạo kết nối — nên phần DB chạy
+trên vòng sự kiện, chỉ phần ghi file mới đẩy sang luồng khác); và vẽ khối token **trước** khi gọi
+`taiCauHinh()`, mà hàm đó dựng lại cả tab — token hiện đúng một lần rồi bị chính mình xoá sau một
+nhịp.

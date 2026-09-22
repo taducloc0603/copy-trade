@@ -122,8 +122,12 @@ hiện **một lần** ngay trên trang. Rồi trong MT5:
 > **Hai chart cùng gắn EA = hai kết nối cùng token đá nhau liên tục** (đã gây 388 nghìn alert
 > 12→15/09). Kiểm menu **Window** và tab Experts: tên chart trong ngoặc chỉ được có **một**.
 
-**2. Khai clicker.** Khối **Agent** → với **từng** clicker, khai **số tài khoản** và **tiêu đề cửa
-sổ terminal**:
+**2. Khai clicker — thường không phải làm gì.** Bridge **tự suy** số tài khoản của clicker từ EA
+chạy trên chính terminal đó, và lấy tiêu đề cửa sổ mặc định bằng chính số ấy (D-38). Khối **Agent**
+hiện giá trị tự suy; chỉ khai tay khi topology lạ. Nếu bạn khai tay một con số khác con số EA báo,
+khối **Cần làm** sẽ nêu **cả hai** ở mức CHẶN — lệch nghĩa là clicker đang lái nhầm terminal.
+
+Khi phải khai tay, hai ô là:
 
 | Clicker | Số tài khoản | Tiêu đề cửa sổ |
 |---|---|---|
@@ -135,8 +139,10 @@ clicker đối chiếu trước **mỗi** cú bấm. Đừng dùng chuỗi chung
 terminal. Khối **Cần làm** bắt cả hai lỗi này. Chưa khai thì clicker **không chạy** (thoát mã 4 và
 thử lại mỗi 60 giây).
 
-**3. Ánh xạ symbol.** Khối **Ánh xạ symbol**: symbol Master ứng với symbol nào phía Client
-(`XAUUSD` → `XAUUSDm`). Dashboard kiểm với sàn trước khi lưu — nên nó vừa khai báo vừa nghiệm thu.
+**3. Ánh xạ symbol.** Khối **Ánh xạ symbol**: hai **danh sách chọn** lấy từ Market Watch thật của
+hai bên, kèm dòng **đề xuất** (`XAUUSD → XAUUSDm`) bấm *Nhận* để điền. Dashboard kiểm với sàn trước
+khi lưu — nên nó vừa khai báo vừa nghiệm thu. Hệ thống **không tự tạo** ánh xạ: chọn sai symbol
+không báo lỗi, nó chỉ lặng lẽ copy sang một thị trường khác.
 **Thiếu ánh xạ là mọi lệnh Master bị bỏ qua trong im lặng.** Cần EA Client đang chạy và symbol đã
 kéo vào Market Watch, nên làm sau việc 1.
 
@@ -354,41 +360,36 @@ vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao 
 
 ## B6. Thêm Client thứ hai, tắt hoặc xoá Client đang có
 
-**Một Client = một terminal MT5 riêng.** Thêm `CL-02` không chỉ là thêm một dòng cấu hình; nó cần:
+**Một Client = một terminal MT5 riêng.** Chuẩn bị trước: cài thêm một terminal MT5, đăng nhập tài
+khoản demo riêng, chế độ **Hedging**, bật Algo Trading, mở Toolbox ở tab **Trade**, và mở sẵn chart
+của symbol sẽ copy.
 
-| Cần gì | Làm ở đâu |
+Rồi trên dashboard → tab **Cấu hình** → khối **Thêm Client** → bấm **Thêm Client**. Một lần bấm tạo
+đủ (D-38):
+
+| Sinh ra | Tên |
 |---|---|
-| Terminal MT5 thứ ba, đăng nhập tài khoản Client thứ hai | Trên VPS, như A0 |
-| Một agent `CLIENT` riêng + token riêng, EA gắn lên đúng terminal đó | Dashboard → Cấu hình → Agent → *Thêm agent* (**chỉ dùng được khi dashboard có mật khẩu**); token hiện một lần, dán vào EA |
-| Dòng cấu hình `CL-02` | Dashboard → Cấu hình → khối **Thêm Client** |
-| Ánh xạ symbol cho `CL-02` | Dashboard → Cấu hình → Ánh xạ symbol |
-| **Một clicker riêng**, nếu muốn `CL-02` mở/đóng qua giao diện | Bốn bước ngay dưới đây |
+| Mã Client | `CL-02` (theo dãy đang có) |
+| Agent của EA | `AG-CL02` |
+| Agent clicker | `AG-CLICKER-CL02` |
+| Mục token clicker trong `config.toml` | `[clicker_cl02]` — ghi thẳng, không phải dán tay |
+| Dòng cấu hình copy | đường mở/đóng qua **giao diện** |
 
-`CL-02` chọn được **đường EA hay đường giao diện** y như `CL-01`. Đường EA không cần gì thêm ngoài
-bảng trên, chỉ khác là deal mang `DEAL_REASON = EXPERT` chứ không phải `CLIENT`. Muốn đường giao
-diện thì thêm cho `CL-02` một clicker riêng — **mỗi terminal một clicker, không dùng chung**:
+Còn đúng **hai việc**, và cả hai nằm ngoài trình duyệt — trang in sẵn cả token lẫn câu lệnh:
 
-1. **Agent clicker.** Dashboard → Cấu hình → Agent → *Thêm agent*, role `CLICKER`, ví dụ
-   `AG-CLICKER-CL02`. Token hiện **một lần** — copy ngay.
-2. **Token vào `config.toml`.** Dashboard → Cấu hình → khối `config.toml` → *Thêm token cho một
-   clicker mới*: tên `cl02` (tức mục `[clicker_cl02]`), dán token. Đừng truyền token qua dòng lệnh —
-   dòng lệnh của một tiến trình thì mọi tài khoản trên máy đọc được.
-3. **Số tài khoản + tiêu đề cửa sổ.** Dashboard → Cấu hình → Agent → dòng `AG-CLICKER-CL02`: khai
-   số tài khoản demo thứ hai và một mẩu tiêu đề cửa sổ của terminal đó. Đây là hàng rào chống lái
-   nhầm terminal, và nó được đối chiếu lại ở **mỗi** cú bấm.
-4. **Tác vụ Windows.** Trên VPS, PowerShell **Administrator**:
+1. **Dán token EA** (hiện đúng một lần ngay sau khi bấm) vào tham số `AgentToken` của
+   `CopyBridgeClient.ex5` trên terminal mới. Chép `.ex5` từ `C:\CopyBridge\ea\` như mục A2.
+2. **Đăng ký tác vụ clicker** — PowerShell **Administrator**, tại `C:\CopyBridge`:
 
    ```powershell
-   cd C:\CopyBridge
    .\scripts\tao-dich-vu.ps1 -ChiTacVuClicker -TacVuClicker clicker_cl02
    Start-ScheduledTask -TaskPath "\CopyBridge\" -TaskName ClickerCl02
    ```
 
-   `-ChiTacVuClicker` chỉ thêm tác vụ: dịch vụ Bridge **không** bị gỡ và cài lại, nên việc copy
-   lệnh không gián đoạn. Nhật ký riêng: `logs\clicker_cl02.log`.
+Sau đó khai **ánh xạ symbol** cho `CL-02` (khối Ánh xạ symbol, chọn từ danh sách). Số tài khoản và
+tiêu đề cửa sổ của clicker **không phải khai**: Bridge tự suy từ EA chạy trên chính terminal đó.
 
-Rồi ở khối `CL-02` đặt *Đường mở* / *Đường đóng* = **Giao diện**, và kiểm `liet-ke` thấy
-`AG-CLICKER-CL02` **ONLINE**. Terminal thứ ba cũng cần Toolbox ở tab **Trade** như hai cái kia.
+Khối **Cần làm** ở đầu tab là thứ nói khi nào xong — hết mục CHẶN là copy được.
 
 > **Ba clicker trên một VPS là bình thường** (`clicker`, `clicker_master`, `clicker_cl02`): mỗi cái
 > một tiến trình, một khoá chống chạy trùng, một nhật ký, và mỗi cái chỉ chạm đúng terminal có số

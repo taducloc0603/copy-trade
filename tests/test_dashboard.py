@@ -29,6 +29,7 @@ from bridge.ops import (
     dat_tich_huong_dan,
     doc_tich_huong_dan,
     ghi_moc_cap_nhat,
+    ma_client_ke_tiep,
 )
 from bridge.protocol.auth import verify_token
 from bridge.web import views
@@ -802,11 +803,11 @@ async def test_xoa_client_chua_co_cap_thi_duoc(client: httpx.AsyncClient,
 
 def test_ma_client_ke_tiep_theo_dung_day_CL(db: Database) -> None:
     """Để trống rồi bắt người ta tự nghĩ mã là cách chắc chắn có ngày thấy `CL2` và `cl-02`."""
-    assert views._ma_client_ke_tiep([]) == "CL-01"
-    assert views._ma_client_ke_tiep(["CL-01"]) == "CL-02"
-    assert views._ma_client_ke_tiep(["CL-01", "CL-09"]) == "CL-10"
+    assert ma_client_ke_tiep([]) == "CL-01"
+    assert ma_client_ke_tiep(["CL-01"]) == "CL-02"
+    assert ma_client_ke_tiep(["CL-01", "CL-09"]) == "CL-10"
     # Mã không theo dãy thì bỏ qua khi đếm, chứ không làm hỏng gợi ý.
-    assert views._ma_client_ke_tiep(["CL-01", "KHACH-VIP"]) == "CL-02"
+    assert ma_client_ke_tiep(["CL-01", "KHACH-VIP"]) == "CL-02"
 
 
 async def test_trang_cau_hinh_goi_y_ma_client_ke_tiep(client: httpx.AsyncClient) -> None:
@@ -1236,3 +1237,84 @@ def test_moi_tab_trong_index_html_deu_nam_trong_danh_sach_trang(project_root) ->
     html = (project_root / "bridge" / "web" / "static" / "index.html").read_text(encoding="utf-8")
     trong_html = set(re.findall(r'data-man="([a-z-]+)"', html))
     assert trong_html == set(MAN_HINH)
+
+
+# -- suy cau hinh clicker, nhin tu dashboard ----------------------------------------------------
+
+def test_can_lam_bao_lech_khi_khai_tay_khac_so_EA_bao(seeded_web: Database) -> None:
+    """Lệch nghĩa là clicker đang lái nhầm terminal, hoặc terminal vừa đăng nhập sang tài khoản
+    khác. Cả hai đều phải do người quyết — code không tự chọn hộ."""
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=0)
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                     clicker_agent_id="AG-CLICKER-X")
+    dat_terminal_clicker(seeded_web, "AG-CLICKER-X", 999111, "999111 - San khac")
+
+    viec = [v for v in views.viec_can_lam(seeded_web) if v["ma"] == "CLICKER_LECH_SO_TK"]
+    assert len(viec) == 1
+    assert viec[0]["muc"] == "CHAN"
+    assert "999111" in viec[0]["chu"]
+
+
+def test_can_lam_khong_bao_chua_khai_khi_suy_duoc(seeded_web: Database) -> None:
+    """Bắt "chưa khai" trong khi clicker vẫn chạy được là báo một việc không có thật."""
+    seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=0)
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT,
+                                     clicker_agent_id="AG-CLICKER-X")
+    ma = {v["ma"] for v in views.viec_can_lam(seeded_web)}
+    assert "CLICKER_CHUA_KHAI" not in ma
+
+
+def test_can_lam_chua_dat_mat_khau_la_muc_CHAN(seeded_web: Database, tmp_path: Path) -> None:
+    """Mật khẩu trống thì MỌI endpoint ghi trả 403 — kể cả `/api/file_config`, tức không đặt nổi
+    mật khẩu từ chính trang này. Đó là chặn, không phải lưu ý."""
+    trong = MAU_FILE_CONFIG.replace('dashboard_password = "mat-khau-thu-nghiem"',
+                                    'dashboard_password = ""')
+    cfg = parse_config(tomllib.loads(trong), source_path=tmp_path / "config.toml",
+                       project_root=tmp_path)
+    viec = [v for v in views.viec_can_lam(seeded_web, cfg) if v["ma"] == "CHUA_DAT_MAT_KHAU"]
+    assert [v["muc"] for v in viec] == ["CHAN"]
+
+
+async def test_trang_cau_hinh_gui_danh_sach_symbol_va_de_xuat(client: httpx.AsyncClient,
+                                                              seeded_web: Database) -> None:
+    def spec(s, digits=2, contract=100.0):
+        return {"symbol": s, "digits": digits, "point": 0.01, "volume_min": 0.01,
+                "volume_max": 50.0, "volume_step": 0.01, "contract_size": contract}
+
+    seeded_web.replace_symbol_specs(MASTER_AGENT, [spec("XAUUSD")])
+    seeded_web.replace_symbol_specs(CLIENT_AGENT, [spec("XAUUSDm")])
+
+    d = (await client.get("/api/config")).json()
+    assert [x["symbol"] for x in d["symbol_master"]] == ["XAUUSD"]
+    assert [x["symbol"] for x in d["symbol_client"][CLIENT_ID]] == ["XAUUSDm"]
+    assert d["de_xuat_anh_xa"][CLIENT_ID][0]["client_symbol"] == "XAUUSDm"
+
+
+# -- them Client bang mot nut -------------------------------------------------------------------
+
+async def test_api_client_moi_tao_du_va_ghi_token_vao_config(seeded_web: Database,
+                                                             tmp_path: Path) -> None:
+    dashboard, duong_dan = _dashboard_co_file(seeded_web, tmp_path)
+    async with _http(tao_app(dashboard)) as c:
+        await c.post("/login", data={"password": MAT_KHAU})
+        r = await c.post("/api/client_moi")
+    assert r.status_code == 200, r.text
+    d = r.json()
+
+    assert seeded_web.get_client_account(d["client_id"]) is not None
+    assert seeded_web.get_agent(d["agent"])["role"] == "CLIENT"
+    assert seeded_web.get_agent(d["clicker"])["role"] == "CLICKER"
+    # Token clicker đi thẳng vào config.toml và KHÔNG bao giờ ra tới trình duyệt: một token đi qua
+    # JSON là một token nằm trong cache trình duyệt.
+    assert "token_clicker" not in d
+    doc = tomllib.loads(duong_dan.read_text(encoding="utf-8"))
+    assert len(doc[d["muc_clicker"]]["token"]) >= 32
+    # Câu lệnh đăng ký tác vụ phải dán chạy được, không bắt người dùng tự ghép.
+    assert d["muc_clicker"] in d["lenh_tac_vu"]
+
+
+async def test_api_client_moi_doi_mat_khau_va_dang_nhap(seeded_web: Database) -> None:
+    async with _http(tao_app(Dashboard(seeded_web, password=MAT_KHAU))) as c:
+        assert (await c.post("/api/client_moi")).status_code == 401
+    async with _http(tao_app(Dashboard(seeded_web))) as c:
+        assert (await c.post("/api/client_moi")).status_code == 403

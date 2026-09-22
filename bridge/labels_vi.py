@@ -283,6 +283,10 @@ UI = {
     "can_lam_clicker_chua_khai": ("Clicker {agent_id} chưa khai số tài khoản hoặc tiêu đề cửa sổ "
                                   "terminal. Khối Agent bên dưới. Chưa khai thì clicker thoát và "
                                   "thử lại mỗi 60 giây — không bấm được lệnh nào."),
+    "can_lam_clicker_lech": ("Clicker {agent_id} khai số tài khoản {khai}, nhưng EA trên chính "
+                             "terminal đó ({tu_agent}) báo {suy}. Một trong hai sai: hoặc clicker "
+                             "đang lái nhầm terminal, hoặc terminal vừa đăng nhập sang tài khoản "
+                             "khác. Sửa ở khối Agent bên dưới."),
     "can_lam_tieu_de_lech": ("Tiêu đề cửa sổ của {agent_id} là “{tieu_de}” nhưng không chứa số "
                              "tài khoản {login}. Đó là thứ clicker đối chiếu trước MỖI cú bấm, "
                              "nên nó sẽ không bấm — hoặc bấm vào terminal khác."),
@@ -380,6 +384,31 @@ UI = {
     "hd_lenh_liet_ke": ".\\.venv\\Scripts\\python.exe -m bridge.admin liet-ke",
     "hd_lenh_kiem_tra": ".\\scripts\\kiem-tra.ps1",
     "hd_lenh_tinh_hinh": ".\\.venv\\Scripts\\python.exe -m bridge.admin tinh-hinh",
+    # -- thêm Client bằng một nút --------------------------------------------------------------
+    "cfg_client_new_ma": ("Bấm nút dưới đây là hệ thống tạo trọn bộ cho {ma}: agent của EA, agent "
+                          "clicker, token clicker ghi thẳng vào config.toml, và dòng cấu hình "
+                          "copy đi qua giao diện. Mọi cái tên đều sinh từ mã Client nên không thể "
+                          "đặt lệch nhau."),
+    "confirm_client_new": ("Tạo một Client mới kèm hai agent và một mục clicker trong config.toml?"),
+    "cfg_client_new_done": "Đã tạo {ma} — còn hai việc phải làm tay",
+    "cfg_client_new_agent": "Agent của EA: {agent} · clicker: {clicker}",
+    "cfg_client_new_token": ("1. Token của EA — hiện MỘT LẦN, chép ngay và dán vào tham số "
+                             "AgentToken của EA trên terminal mới:"),
+    "cfg_client_new_task": ("2. Đăng ký tác vụ clicker trên VPS (PowerShell Administrator, tại "
+                            "C:\\CopyBridge). Trình duyệt không làm được việc này:"),
+    "map_client": "Client",
+    "map_de_xuat": ("Đề xuất từ danh sách symbol thật của hai bên. Bấm Nhận để điền, rồi vẫn phải "
+                    "bấm Thêm ánh xạ — hệ thống không tự tạo, vì chọn sai symbol không báo lỗi mà "
+                    "chỉ copy sang một thị trường khác."),
+    "map_de_xuat_nhan": "Nhận",
+    "map_de_xuat_can_xem": "(tên khác nhau — xem kỹ)",
+
+    "loi_khong_ro": ("Không thực hiện được, và máy chủ không nói rõ vì sao. "
+                     "Xem logs\\bridge.log để biết chi tiết."),
+    "cfg_nang_cao": "Nâng cao",
+    "cfg_nang_cao_hint": ("Khoá kỹ thuật, config.toml và Đặt lại. Một bản cài bình thường không "
+                          "cần mở mục này — mọi khoá ở đây đều có mặc định an toàn."),
+
     "cfg_clicker_new_title": "Thêm token cho một clicker mới",
     "cfg_clicker_new_hint": ("Mỗi Client đi đường giao diện cần một clicker riêng, và mỗi clicker "
                              "một mục trong config.toml. Đặt tên theo mã Client, ví dụ cl02 cho "

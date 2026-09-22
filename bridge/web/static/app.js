@@ -497,32 +497,50 @@ function khoiThemClient() {
   const box = khoi(UI.cfg_client_new);
   box.appendChild(nhan(UI.cfg_client_new_hint, "ghi-chu"));
 
-  const daDung = new Set(CAU_HINH.clients.map((c) => c.agent_id));
-  const agentClient = CAU_HINH.agents.filter((a) => a.role === "CLIENT" && !daDung.has(a.agent_id))
-    .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
-  const clickers = CAU_HINH.agents.filter((a) => a.role === "CLICKER")
-    .map((a) => ({ gia_tri: a.agent_id, nhan: a.agent_id }));
-
-  const ma = oChu(CAU_HINH.ma_client_goi_y || "");
-  const agent = oChon(null, agentClient.length ? agentClient : [{ gia_tri: "", nhan: "—" }]);
-  const clicker = oChon(null, [{ gia_tri: "", nhan: "—" }].concat(clickers));
-  const duongMo = oChon("UI", CAU_HINH.chon_duong);
-  const duongDong = oChon("UI", CAU_HINH.chon_duong);
-
-  box.append(hang(UI.cfg_client_id, ma), hang(UI.cfg_client_agent, agent),
-             hang(UI.cfg_client_clicker, clicker),
-             hang(UI.cfg_open_route, duongMo), hang(UI.cfg_close_route, duongDong));
+  // Bon o nhap truoc day deu suy duoc tu MOT con so -- so thu tu cua Client. Ma client, ten hai
+  // agent, ten muc clicker, ten Scheduled Task: mot quy tac trong ops.ten_theo_client. Hoi tung
+  // cai chi tao co hoi dat lech nhau (AG-CLIENT2 voi muc [clicker_cl_02]).
+  box.appendChild(nhan(UI.cfg_client_new_ma.replace("{ma}", CAU_HINH.ma_client_goi_y || ""),
+                       "canh-bao-nho"));
 
   const them = nut(UI.cfg_client_new, "chinh");
-  them.onclick = () => ghiCauHinh("/api/client", {
-    client_id: ma.value.trim(),
-    agent_id: agent.value,
-    clicker_agent: clicker.value || null,
-    open_route: duongMo.value,
-    close_route: duongDong.value,
-  });
+  them.onclick = async () => {
+    if (!(await hoiXacNhan(UI.confirm_client_new, null))) return;
+    const r = await goi("/api/client_moi", { method: "POST" });
+    // Mot alert RONG la bao cao loi te nhat co the: no noi "co gi do sai" va het. Loi 500 tra ve
+    // text/plain nen `r.data` khong co truong nao -- phai co cau du phong.
+    if (!r.ok) { alert(r.data.message || r.data.error || UI.loi_khong_ro); return; }
+    // Ve SAU khi dung lai ca tab, khong truoc: `taiCauHinh` xoa sach `noi-dung-cau-hinh` roi ve
+    // lai tu dau, nen ve truoc la token hien duoc dung mot nhip roi bi chinh minh xoa -- ma token
+    // nay khong doc lai duoc o dau nua.
+    await taiCauHinh();
+    veClientMoi(r.data);
+  };
   box.appendChild(chanKhoi(them));
   return box;
+}
+
+// Ket qua cua mot lan them Client. Hai thu phai lam tay, va ca hai deu nam NGOAI trinh duyet:
+// dan token vao EA, va dang ky Scheduled Task (can quyen Administrator tren VPS).
+function veClientMoi(d) {
+  const box = khoi(UI.cfg_client_new_done.replace("{ma}", d.client_id));
+  box.className += " token-moi";
+  box.appendChild(nhan(UI.cfg_client_new_agent.replace("{agent}", d.agent)
+                                              .replace("{clicker}", d.clicker), "ghi-chu"));
+  box.appendChild(nhan(UI.cfg_client_new_token, "canh-bao-nho"));
+  const ma = document.createElement("pre");
+  ma.className = "lenh";
+  ma.textContent = d.token_ea;
+  box.appendChild(ma);
+  box.appendChild(nhan(UI.cfg_client_new_task, "canh-bao-nho"));
+  const lenh = document.createElement("pre");
+  lenh.className = "lenh";
+  lenh.textContent = d.lenh_tac_vu;
+  box.appendChild(lenh);
+  // Len DAU tab: day la thu duy nhat vua xay ra, va hai viec trong do phai lam ngay.
+  const el = $("noi-dung-cau-hinh");
+  el.insertBefore(box, el.firstChild);
+  box.scrollIntoView({ block: "start" });
 }
 
 function khoiMaster(el) {
@@ -580,17 +598,63 @@ function khoiAnhXa(el) {
 
   const chonClient = oChon(null, CAU_HINH.clients.map(
     (c) => ({ gia_tri: c.client_id, nhan: c.client_id })));
-  const sMaster = oChu("");
+
+  // Hai o go tay thanh hai danh sach THAT, lay tu symbol_spec ma EA day len. Go tay o day hong
+  // theo kieu te nhat: sai mot ky tu thi khong co loi nao, chi la moi lenh Master bi bo qua
+  // trong im lang. Chua co EA nao noi thi danh sach rong -> quay ve o go tay lam duong lui.
+  const dsMaster = (CAU_HINH.symbol_master || []).map((x) => x.symbol);
+  const dsClient = (CAU_HINH.symbol_client || {});
+  const veChon = (ds, hienTai) => oChon(hienTai,
+    ds.map((s) => ({ gia_tri: s, nhan: s })));
+  const coDanhSach = dsMaster.length > 0;
+  const sMaster = coDanhSach ? veChon(dsMaster, null) : oChu("");
   const sClient = oChu("");
-  box.append(hang("client", chonClient), hang(UI.map_master_symbol, sMaster),
+
+  // O phia Client di theo Client dang chon; doi Client thi doi ca danh sach.
+  const veOClient = () => {
+    const ds = dsClient[chonClient.value] || [];
+    const moi = ds.length ? veChon(ds.map((x) => x.symbol), sClient.value) : oChu(sClient.value);
+    sClient.replaceWith(moi);
+    return moi;
+  };
+
+  box.append(hang(UI.map_client, chonClient), hang(UI.map_master_symbol, sMaster),
              hang(UI.map_client_symbol, sClient));
+  let oClient = veOClient();
+  chonClient.onchange = () => { oClient = veOClient(); veDeXuat(); };
+
+  // De xuat, khong tu tao: chon sai symbol khong bao loi, no chi copy sang mot thi truong khac.
+  const hopDeXuat = document.createElement("div");
+  box.appendChild(hopDeXuat);
+  function veDeXuat() {
+    hopDeXuat.textContent = "";
+    const ds = (CAU_HINH.de_xuat_anh_xa || {})[chonClient.value] || [];
+    if (!ds.length) return;
+    hopDeXuat.appendChild(nhan(UI.map_de_xuat, "ghi-chu"));
+    for (const d of ds.slice(0, 8)) {
+      const dong = document.createElement("div");
+      dong.className = "o-va-nut";
+      dong.appendChild(nhan(d.master_symbol + " \u2192 " + d.client_symbol
+                            + (d.chac_chan ? "" : " " + UI.map_de_xuat_can_xem)));
+      const b = nut(UI.map_de_xuat_nhan);
+      b.onclick = () => {
+        if (sMaster.tagName === "SELECT" || sMaster.tagName === "INPUT") {
+          sMaster.value = d.master_symbol;
+        }
+        oClient.value = d.client_symbol;
+      };
+      dong.appendChild(b);
+      hopDeXuat.appendChild(dong);
+    }
+  }
+  veDeXuat();
   const them = nut(UI.map_add, "chinh");
   // Nut nay LUU, va phia server kiem symbol voi san truoc khi luu. Khong co duong nao luu mot
   // anh xa chua kiem: sai ten symbol mot ky tu chi lo ra dung luc co lenh that di qua.
   them.onclick = () => ghiCauHinh("/api/symbol_map", {
     client_id: chonClient.value,
     master_symbol: sMaster.value,
-    client_symbol: sClient.value,
+    client_symbol: oClient.value,
   });
   box.appendChild(chanKhoi(them, UI.map_add_hint));
   el.appendChild(box);
@@ -842,9 +906,19 @@ async function taiCauHinh() {
   khoiClient(el);
   khoiMaster(el);
   khoiAnhXa(el);
-  khoiHeThong(el);
-  khoiFileConfig(el);
-  khoiDatLai(el);
+  // Ba khoi duoi day la thu mot ban cai binh thuong KHONG BAO GIO dung toi: bay khoa ky thuat
+  // deu co mac dinh an toan, config.toml do trinh cai ghi, va Dat lai la duong mot chieu. De
+  // chung mo san thi trang Cau hinh dai gap doi vi nhung thu khong ai sua.
+  const nangCao = document.createElement("details");
+  nangCao.className = "nhom-huong-dan";
+  const dau = document.createElement("summary");
+  dau.textContent = UI.cfg_nang_cao;
+  nangCao.appendChild(dau);
+  nangCao.appendChild(nhan(UI.cfg_nang_cao_hint, "ghi-chu"));
+  el.appendChild(nangCao);
+  khoiHeThong(nangCao);
+  khoiFileConfig(nangCao);
+  khoiDatLai(nangCao);
 }
 
 // -- vong day thoi gian thuc ------------------------------------------------------------------
