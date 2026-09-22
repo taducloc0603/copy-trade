@@ -105,7 +105,7 @@ và sửa được trên dashboard.
 | TEST-32f | Thêm ánh xạ symbol sai một ký tự, rồi đúng | Sai thì bị từ chối và **không** lưu; đúng thì lưu kèm mốc "đã kiểm" |
 | TEST-32g | Cấp lại token cho một agent trên dashboard | Token hiện một lần; `grep -ri token logs\` vẫn rỗng |
 | TEST-32h | Sửa `config.toml` trên dashboard: đổi `telegram_chat_id`, rồi thử đặt `web_port` trùng `port` | Lần đầu lưu được, chú thích trong file còn nguyên, có file `config.toml.bak-*`; lần sau bị từ chối và file **không đổi** |
-| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `Restart-Service CopyBridge` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được. Ô bí mật để trống thì giá trị cũ **giữ nguyên**, không bị xoá |
+| TEST-32i | Đổi mật khẩu dashboard trên trang rồi `.\scripts\khoi-dong-lai.ps1` | Trước khi khởi động lại: mật khẩu **cũ** vẫn dùng được; sau khi khởi động lại: chỉ mật khẩu mới vào được. Ô bí mật để trống thì giá trị cũ **giữ nguyên**, không bị xoá |
 | TEST-32j | Tắt Client (`ĐÃ TẮT`) khi đang có cặp mở, rồi đóng lệnh đó ở Master | Cặp đang mở **vẫn đóng theo Master**; lệnh Master mới **không** được copy; bật lại thì copy chạy tiếp |
 | TEST-32k | Xoá Client đang có cặp lệnh | Bị từ chối kèm câu bảo TẮT; Client vẫn còn. Xoá một Client mới tạo (chưa có cặp) thì được, kèm ánh xạ của nó |
 | TEST-32l | Xoá một ánh xạ symbol rồi mở lệnh symbol đó ở Master | Không copy nữa, đúng như khi tắt; cặp đang mở của symbol đó **vẫn đóng được** |

@@ -3360,3 +3360,52 @@ Dung lai duoc ca hai chieu tren DB tam truoc khi sua, va ba test khoa lai. Kiem 
 RIENG views.py (stash ca cay thi cat luon test moi, va bai kiem thanh vo nghia).
 
 956 test xanh (+3).
+
+## Ba cai bay chi lo ra khi cai that (2026-09-22)
+
+Lan cai thu hai tren VPS di het duong: dich vu len, ca bon Scheduled Task dang ky duoc (ban va
+splat 25efcdb da an). Nhung no lo ra ba cho hong ma KHONG mot test tu dong nao bat duoc, vi ca ba
+chi ton tai o ranh gioi giua script va Windows.
+
+**1. Tac vu clicker dang ky xong nhung khong bao gio chay.** Trigger la At-Logon + tre 90 giay, ma
+viec cai dat LUON dien ra trong mot phien da dang nhap tu truoc -- nen trigger da troi qua va khong
+no lai. Tren may that: hai tac vu o `Ready`, `clicker-wrapper.log` trong tron, clicker chua tung
+chay. Va MOI ban cai moi deu nhu vay cho toi lan dang nhap ke tiep. Nguoi dung chi thay "agent chua
+ONLINE" roi di tim loi o phia EA -- sai huong hoan toan.
+
+`tao-dich-vu.ps1` gio `Start-ScheduledTask` ngay sau khi dang ky, roi **kiem lai `State`**. Phai
+kiem lai chu khong chi goi: `Start-ScheduledTask` khong nem khi tac vu chet ngay sau do (thieu token
+-> `chay-clicker.ps1` thoat ma 2 va dung han), va bao "da bat" cho mot thu vua chet la dung kieu im
+lang dang muon bo.
+
+**2. `Restart-Service` de lai tien trinh mo coi giu cong.** SCM bao dich vu da dung TRUOC KHI
+`python.exe` con thoat han; ban moi len thay cong 8787 bi giu va CO Y khong chay (dung thiet ke:
+tha bao loi tu te hon la chay nua voi). Windows chi noi "Failed to start service" -- khong mot chu
+nao ve cong. Dau vet duy nhat nam trong `logs\service-err.log`, file khong ai mo cho toi khi co su
+co. Mat muoi phut, va phai giet tay hai PID moi go ra.
+
+Ma `Restart-Service CopyBridge` chinh la thu **tai lieu dang bao nguoi dung lam** sau moi `git
+pull`. `scripts/khoi-dong-lai.ps1` lam dung thu tu: dung -> cho cong duoc nha -> giet tien trinh mo
+coi (chi in PID, dong lenh clicker ban cu co token trong do) -> bat lai -> cho toi khi cong THAT SU
+co nguoi nghe roi moi bao xong. Khong len duoc thi in dung ba cho can xem. Thay `Restart-Service` o
+`docs/` (B1b, muc cau hinh, RUNBOOK muc 3, ACCEPTANCE TEST-32i), `config.example.toml`, va
+`cai-dat.ps1 -CapNhat` goi no thay cho `Start-Service` tran.
+
+**3. Bang kiem "may da sach" bao nham.** Bo loc rong khop ca `notepad.exe` dang mo mot file trong
+thu muc cai, nen no bao "chua sach" tren mot may da sach. Bang kiem gio dung DUNG bo loc ma
+`go-bo.ps1` da dung de giet: `python.exe` chay `-m bridge`/`-m clicker`, va `powershell.exe` chay
+script trong thu muc cai -- hai cho noi cung mot thu.
+
+`kiem-tra.ps1` bat duoc hai trang thai nay: dich vu `Stopped` MA cong con bi giu (kem PID, kem lenh
+khoi-dong-lai), va tac vu `Clicker*` da dang ky nhung `State != Running` (kem cau lenh bat). Truoc
+day muc 4 chi dem tien trinh roi noi "clicker KHONG chay" -- dung nhung khong noi VI SAO, trong khi
+hai nguyen nhan can hai cach xu ly khac han nhau.
+
+**Kiem chung tren may dev khong co dich vu:** `ParseFile` ca nam script; `khoi-dong-lai.ps1` khi
+chua dang ky dich vu -> bao ro, thoat 1, khong nem. Hai nhanh moi cua `kiem-tra.ps1` dung lai bang
+cach TRICH chinh khoi code tu file that roi chay voi dau vao gia -- mot socket that giu 8787 cho
+nhanh cong, va mot `Get-ScheduledTask` gia cho ba nhanh tac vu. Khong dang ky duoc tac vu that o day
+(`Access is denied`, khong co quyen admin), nen phan `tao-dich-vu.ps1` nghiem thu tren VPS.
+
+958 test xanh (+2). Hai test moi khoa lai dung hai cho vua sai: bang kiem phai hep, va `docs/` khong
+duoc bao nguoi dung chay `Restart-Service` nua.

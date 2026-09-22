@@ -4,7 +4,7 @@
 # Cac khoa duoi day sua duoc tren dashboard (tab Cau hinh): noi dung moi duoc kiem bang dung
 # phep kiem cua lan khoi dong TRUOC khi ghi, ban cu duoc sao luu thanh
 # config.toml.bak-<ngay-gio> (giu 5 ban). Gia tri moi CHI co hieu luc sau
-# `Restart-Service CopyBridge`.
+# `.\scripts\khoi-dong-lai.ps1`.
 
 [bridge]
 # Chi nghe loopback. Doi thanh "0.0.0.0" de agent may khac noi toi duoc — khi do

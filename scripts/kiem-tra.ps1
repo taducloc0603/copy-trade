@@ -76,12 +76,28 @@ Write-Host ""
 Write-Host " Kiem tra MT5 Copy Bridge -- $ThuMuc" -ForegroundColor Cyan
 Write-Host ""
 
+# Doc cong TRUOC muc 1: muc 1 can biet cong de phat hien trang thai "dich vu da dung ma
+# cong van bi giu" -- thu lam Start-Service that bai ma Windows khong noi mot chu nao.
+$cfg = doc_cau_hinh
+
 # 1. Dich vu
 $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
 if ($null -eq $dv) {
     do_ "chua dang ky dich vu $TenDichVu (chay scripts\tao-dich-vu.ps1)"
 } elseif ($dv.Status -ne 'Running') {
     do_ "dich vu $TenDichVu dang o trang thai $($dv.Status)"
+    # Dich vu da dung MA CONG VAN BI GIU la trang thai lam `Start-Service` that bai, va thong bao
+    # cua Windows khong he nhac toi cong -- no chi noi "Failed to start service". Da mat muoi phut
+    # vi dung cai nay tren VPS 2026-09-22, sau dung mot lenh Restart-Service.
+    $dsCong = if ($null -eq $cfg) { @(8787, 8080) } else { @($cfg.port, $cfg.web_port) }
+    $giuCong = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+                 Where-Object { $_.LocalPort -in $dsCong } |
+                 ForEach-Object { [int] $_.OwningProcess } | Sort-Object -Unique)
+    if ($giuCong.Count -gt 0) {
+        do_ ("dich vu da dung nhung cong " + ($dsCong -join '/') + " VAN bi giu boi PID " +
+             ($giuCong -join ', ') + " -- day la mot tien trinh mo coi, va no lam dich vu khong " +
+             "bat len duoc. Chay: scripts\khoi-dong-lai.ps1")
+    }
 } elseif ($dv.StartType -ne 'Automatic') {
     vang "dich vu dang chay nhung StartType = $($dv.StartType), se khong tu bat sau reboot"
 } else {
@@ -89,7 +105,6 @@ if ($null -eq $dv) {
 }
 
 # 2 + 3. Cong nghe va dashboard
-$cfg = doc_cau_hinh
 if ($null -eq $cfg) {
     do_ "khong doc duoc config.toml"
 } else {
@@ -116,8 +131,25 @@ $tienTrinh = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorA
                Where-Object { $_.CommandLine -like '*-m clicker*' })
 if ($tienTrinh.Count -eq 0) {
     do_ "clicker KHONG chay (Bridge se co y khong copy lenh nao -- D-25)"
-    vang ("Nguyen nhan hay gap nhat: chua khai so tai khoan + tieu de cua so cho clicker tren " +
-          "dashboard (tab Cau hinh > Agent). Doc logs\clicker-wrapper.log: 'thoat 4' la dau hieu.")
+    # Noi VI SAO, khong chi noi la khong chay. Hai nguyen nhan, va chung can hai cach xu ly khac
+    # han nhau -- nen phai phan biet duoc ngay o day thay vi de nguoi dung doan.
+    $tvClicker = @(Get-ScheduledTask -TaskPath '\CopyBridge\' -ErrorAction SilentlyContinue |
+                   Where-Object { $_.TaskName -like 'Clicker*' })
+    $chuaChay = @($tvClicker | Where-Object { $_.State -ne 'Running' })
+    if ($tvClicker.Count -eq 0) {
+        vang "chua dang ky tac vu clicker nao. Chay: scripts\tao-dich-vu.ps1"
+    } elseif ($chuaChay.Count -gt 0) {
+        # Trigger la "khi dang nhap", ma viec cai dat luon dien ra trong mot phien da dang nhap tu
+        # truoc -- nen tac vu vua dang ky se nam im o trang thai Ready cho toi lan dang nhap ke
+        # tiep. Dung loi da gap o lan cai that thu hai (2026-09-22).
+        vang ("tac vu " + (($chuaChay | ForEach-Object { $_.TaskName }) -join ', ') +
+              " da dang ky nhung KHONG chay (trigger 'khi dang nhap' da troi qua). Bat ngay: " +
+              "Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like " +
+              "'Clicker*' | Start-ScheduledTask")
+    } else {
+        vang ("Nguyen nhan hay gap nhat: chua khai so tai khoan + tieu de cua so cho clicker tren " +
+              "dashboard (tab Cau hinh > Agent). Doc logs\clicker-wrapper.log: 'thoat 4' la dau hieu.")
+    }
 } else {
     xanh ("clicker dang chay, PID " + (($tienTrinh | ForEach-Object { $_.ProcessId }) -join ', '))
 }

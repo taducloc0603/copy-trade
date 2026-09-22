@@ -377,11 +377,17 @@ function xoa_thu_muc_cai() {
 
 function in_bang_kiem() {
     tieu_de "Kiem may da sach (moi dong phai ra ket qua nhu ghi chu)"
+    # Bo loc phai HEP bang dung bo loc `tien_trinh_cua_tool` / `tien_trinh_wrapper` da dung de giet
+    # -- neu khong thi bang kiem va script noi hai chuyen khac nhau. Ban cu loc
+    # `CommandLine` khop ten thu muc cai la khop ca notepad.exe dang mo mot file trong do, va
+    # da bao nham tren VPS 2026-09-22. Mot bang kiem keu oan la bang kiem nguoi ta thoi doc.
     @(
         'Get-Service CopyBridge -ErrorAction SilentlyContinue                       # khong ra gi',
         "Get-ScheduledTask -TaskPath '$DuongDanTacVu' -ErrorAction SilentlyContinue # khong ra gi",
-        'Get-CimInstance Win32_Process | Where-Object {',
-        "  `$_.ProcessId -ne `$PID -and `$_.CommandLine -like '*CopyBridge*' }       # khong ra gi",
+        'Get-CimInstance Win32_Process -Filter "Name=''python.exe''" | Where-Object {',
+        '  $_.CommandLine -match ''-m (bridge|clicker)(\s|$)'' }                    # khong ra gi',
+        'Get-CimInstance Win32_Process -Filter "Name=''powershell.exe''" | Where-Object {',
+        "  `$_.ProcessId -ne `$PID -and `$_.CommandLine -like '*$ThuMuc*' }          # khong ra gi",
         "Test-Path '$ThuMuc'                                                        # False",
         'Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"    # khong ra gi',
         'Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0 # khong ra gi'

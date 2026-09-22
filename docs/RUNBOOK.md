@@ -117,7 +117,7 @@ Gắn EA lên chart của **cả hai** terminal, điền token vào tham số EA
 Trên VPS mọi thứ chạy nền (bảng thành phần ở đầu [CAI-DAT-VPS.md](CAI-DAT-VPS.md)):
 
 ```powershell
-Restart-Service CopyBridge                                          # Bridge + dashboard
+.\scripts\khoi-dong-lai.ps1                                          # Bridge + dashboard
 Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Stop-ScheduledTask
 Get-ScheduledTask -TaskPath '\CopyBridge\' | Where-Object TaskName -like 'Clicker*' | Start-ScheduledTask
 ```

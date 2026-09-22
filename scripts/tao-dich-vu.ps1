@@ -276,6 +276,26 @@ function dang_ky_tac_vu_clicker([string] $Ten = "Clicker", [string] $Muc = "clic
         -Trigger $kichHoat -Principal $chuThe -Settings $caiDat -Force | Out-Null
     ok "tac vu $Ten (chay khi dang nhap, tre 90 giay, muc [$Muc])"
 
+    # BAT NGAY. Trigger la "khi dang nhap", ma viec cai dat LUON dien ra trong mot phien da dang
+    # nhap tu truoc -- nen trigger da troi qua va khong no lai. Khong bat o day thi moi ban cai moi
+    # deu co clicker CHET cho toi lan dang nhap ke tiep, va nguoi dung chi thay "agent chua ONLINE"
+    # roi di tim loi o phia EA. Da xay ra that o lan cai thu hai tren VPS (2026-09-22): hai tac vu
+    # o trang thai Ready, logs\clicker-wrapper.log trong tron.
+    Start-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $Ten -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    # Kiem LAI chu khong chi goi: Start-ScheduledTask khong nem khi tac vu chet ngay sau do (vi du
+    # thieu token -> chay-clicker.ps1 thoat ma 2 va dung han). Bao "da bat" cho mot thu vua chet la
+    # dung kieu im lang dang muon bo.
+    $tt = Get-ScheduledTask -TaskPath $DuongDanTacVu -TaskName $Ten -ErrorAction SilentlyContinue
+    if ($null -ne $tt -and $tt.State -eq 'Running') {
+        ok "tac vu $Ten dang chay"
+    } else {
+        $trangThai = if ($null -eq $tt) { "khong doc duoc" } else { $tt.State }
+        canh ("tac vu $Ten dang o trang thai '$trangThai', khong phai Running. Xem " +
+              "logs\clicker-wrapper.log; bat lai bang: " +
+              "Start-ScheduledTask -TaskPath '$DuongDanTacVu' -TaskName $Ten")
+    }
+
     canh ("Muc toan ven cua clicker phai >= cua MT5. MT5 chay 'Run as administrator' ma clicker " +
           "chay thuong thi UIPI chan het window message: PostMessage tra ve thanh cong nhung " +
           "KHONG CO GI XAY RA.")

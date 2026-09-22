@@ -595,8 +595,20 @@ function sau_khi_cap_nhat([string] $commitCu) {
 
     $dv = Get-Service $TenDichVu -ErrorAction SilentlyContinue
     if ($null -ne $dv) {
-        Start-Service $TenDichVu -ErrorAction Stop
-        ok "da bat lai dich vu $TenDichVu"
+        # KHONG `Start-Service` tran. SCM bao dich vu da dung TRUOC KHI python.exe con thoat han,
+        # nen ban moi len co the thay cong 8787 con bi giu va CO Y khong chay -- Windows chi noi
+        # "Failed to start service", khong mot chu nao ve cong. Da xay ra that tren VPS 2026-09-22.
+        # khoi-dong-lai.ps1 cho cong duoc nha, giet tien trinh mo coi, roi cho toi khi cong THAT SU
+        # co nguoi nghe. Tham so truyen theo TEN: splat MANG truyen theo VI TRI (xem 25efcdb).
+        $thamSo = @{ ThuMuc = $ThuMuc; TenDichVu = $TenDichVu }
+        & (Join-Path $ThuMuc "scripts\khoi-dong-lai.ps1") @thamSo
+        if ($LASTEXITCODE -eq 0) {
+            ok "da bat lai dich vu $TenDichVu"
+        } else {
+            # Khong nem: phan con lai cua buoc nay (bien nhan cho tab Huong dan, duong lui) van co
+            # ich, va khoi-dong-lai.ps1 vua in dung ba cho can xem.
+            canh "khong bat lai duoc dich vu $TenDichVu (ma thoat $LASTEXITCODE). Doc phan tren."
+        }
     } else {
         bo_qua "chua dang ky dich vu (chay scripts\tao-dich-vu.ps1)"
     }

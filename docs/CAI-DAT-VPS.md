@@ -213,6 +213,18 @@ danh sách luôn nói về lần gần nhất, và bước "biên dịch lại E
 Việc đầu tiên trong danh sách đó: **bấm `Ctrl+F5` một lần** trên mỗi tab mở từ trước lần cập nhật —
 tab cũ vẫn chạy CSS/JS cũ, và triệu chứng là "cập nhật xong mà dashboard y như cũ".
 
+**Dịch vụ không lên, chỉ nói `Failed to start service`:** đừng dùng `Restart-Service` — dùng
+
+```powershell
+.\scripts\khoi-dong-lai.ps1
+```
+
+Nguyên nhân hay gặp nhất là một tiến trình `python.exe` mồ côi **vẫn giữ cổng 8787**: SCM báo dịch
+vụ đã dừng trước khi tiến trình con thoát hẳn, và bản mới thấy cổng bận thì **cố ý không chạy** (thà
+báo lỗi tử tế hơn là chạy nửa vời). Windows không nhắc một chữ nào về cổng; dấu vết duy nhất nằm
+trong `logs\service-err.log`. Script trên làm đúng thứ tự: dừng → chờ cổng được nhả → giết tiến
+trình mồ côi → bật lại → **chờ tới khi cổng thật sự có người nghe** rồi mới báo xong.
+
 ### B1b. Riêng bản 2026-09-21 — cấu hình chuyển vào database (D-32)
 
 Bản này có **migration 008** và đổi chỗ hai giá trị của clicker. Làm đúng bốn việc sau, một lần:
@@ -221,7 +233,7 @@ Bản này có **migration 008** và đổi chỗ hai giá trị của clicker. 
    `config.toml` (Notepad, lưu **UTF-8 không BOM**). Còn chúng trong file thì **file thắng
    database**: khai trên dashboard sẽ không có tác dụng, và không script nào báo cho bạn biết —
    dấu hiệu duy nhất là hai dòng đỏ trong khối `config.toml` ở tab Cấu hình.
-2. Khởi động lại dịch vụ để Bridge đọc lại file: `Restart-Service CopyBridge`.
+2. Khởi động lại dịch vụ để Bridge đọc lại file: `.\scripts\khoi-dong-lai.ps1`.
 3. Trên dashboard → tab **Cấu hình** → khối **Agent**: khai **số tài khoản** và **tiêu đề cửa sổ**
    cho từng clicker (xem A4). Chưa khai thì clicker thoát mã 4 và thử lại mỗi 60 giây; kiểm bằng
    `Get-Content logs\clicker-wrapper.log -Tail 20`.
@@ -463,8 +475,10 @@ Mỗi dòng là một câu lệnh, không phải một lời hứa:
 ```powershell
 Get-Service CopyBridge -ErrorAction SilentlyContinue                       # khong ra gi
 Get-ScheduledTask -TaskPath '\CopyBridge\' -ErrorAction SilentlyContinue   # khong ra gi
-Get-CimInstance Win32_Process | Where-Object {
-  $_.ProcessId -ne $PID -and $_.CommandLine -like '*CopyBridge*' }         # khong ra gi
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object {
+  $_.CommandLine -match '-m (bridge|clicker)(\s|$)' }                      # khong ra gi
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object {
+  $_.ProcessId -ne $PID -and $_.CommandLine -like '*C:\CopyBridge*' }      # khong ra gi
 Test-Path C:\CopyBridge                                                    # False
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Experts\CopyBridge*"     # khong ra gi
 Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal\*\MQL5\Files\copybridge" -EA 0  # khong ra gi
@@ -579,7 +593,7 @@ nào chưa xong. Database được **sao lưu trước khi xoá** (`data\backup\
 trong database — sửa trên dashboard là có hiệu lực ngay. `config.toml` giữ thứ cần **trước khi**
 Bridge chạy: cổng, đường dẫn DB, mật khẩu dashboard, token clicker. Dashboard cũng sửa được các
 khoá này, nhưng giá trị mới chỉ có hiệu lực **sau khi khởi động lại dịch vụ**:
-`Restart-Service CopyBridge`. Giá trị bí mật không bao giờ hiện lại trên màn hình — ô để trống
+`.\scripts\khoi-dong-lai.ps1`. Giá trị bí mật không bao giờ hiện lại trên màn hình — ô để trống
 nghĩa là giữ nguyên (D-32).
 
 Nội dung mới được kiểm bằng đúng phép kiểm của lần khởi động **trước khi** ghi, nên một giá trị
