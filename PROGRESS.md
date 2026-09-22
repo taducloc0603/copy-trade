@@ -3786,3 +3786,40 @@ thiet ke. Dot bien DUNG la chep lai mot so tran vao `closing.py`, va luc do no d
 roi thay xanh thi da tuong la da phu.
 
 941 test xanh (+5).
+
+## Hai file bam dup: CAI-DAT.cmd va CAP-NHAT.cmd (2026-09-22)
+
+Yeu cau: hai file, mot de cai lan dau, mot de cap nhat. Phan logic thi DA CO -- `cai-dat.ps1` lam
+ca hai viec, chi khac co `-CapNhat`. Thu thieu la hai duong vao khong can nho gi.
+
+**Chon .cmd chu khong .ps1**, va ly do la mot su that ve Windows chu khong phai so thich: Windows
+mac dinh MO .ps1 BANG NOTEPAD khi bam dup. Mot file bao nguoi dung "bam dup de chay" ma bam dup ra
+Notepad la mot file hong. .cmd thi bam dup la chay, tu xin quyen Administrator duoc, va `pause`
+duoc de cua so khong bay mat truoc khi doc xong.
+
+Ca hai file KHONG chua logic cai dat nao -- chung goi `scripts\cai-dat.ps1`. Chep logic sang do la
+tao ban thu hai se lech voi ban that, va lech o duong cai dat thi lo ra tren may nguoi dung.
+
+`CAP-NHAT.cmd` tu va cai bay PATH da chan dung mot lan cap nhat hom nay: winget cai git xong chi
+cap nhat PATH trong registry, nen mot cua so mo tu truoc van bao "git is not recognized". No nap lai
+PATH truoc khi goi cai-dat.ps1. No cung lay thu muc tu CHINH VI TRI CUA NO (`%~dp0`) chu khong doan
+`C:\CopyBridge`.
+
+**Mot loi tu gay ra va tu bat duoc:** ban dau dung `for /f` de doc PATH ve bien cua cmd, va dau `^`
+noi dong ben trong `for /f` lam ca file TREO -- chay 120 giay khong ra gi. Gop thanh MOT loi goi
+PowerShell lam ca hai viec (nap PATH roi chay bo cap nhat trong cung tien trinh). Khong noi dong,
+khong `for /f`.
+
+Kiem bang cach CHAY THAT, tren ban da bo doan xin quyen admin: thu muc khong co scripts\ -> bao ro
+va dung; co scripts\ gia lap -> truyen dung `-CapNhat` va `-ThuMuc`, git goi duoc sau khi nap PATH;
+bo cap nhat thoat ma 3 -> thong bao noi dung ma 3 va chi duong khoi dong lai.
+
+Test doc ma nguon khoa bon dieu: co `pause`, co tu xin quyen, KHONG chep logic cai dat, va moi
+duong dan `scripts\*.ps1` lan URL raw deu tro toi file CO THAT trong kho. Cai cuoi quan trong nhat:
+`CAI-DAT.cmd` chay tren mot may CHUA CO GI, sai mot duong dan o do la hong dung luc khong co gi de
+go loi.
+
+Mot cai bay nho khi viet test: phep kiem "khong chep logic" bat nham chuoi `winget install` nam
+trong mot CAU THONG BAO. Thu hep lai: bo qua dong `rem`, `echo` va `Write-Host`.
+
+949 test xanh (+8).

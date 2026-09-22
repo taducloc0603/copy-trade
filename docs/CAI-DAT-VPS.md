@@ -69,9 +69,24 @@ Trên **mỗi** terminal:
 > **MT5 và clicker phải cùng mức quyền.** Cả hai chạy thường, hoặc cả hai "Run as administrator".
 > Lệch nhau thì Windows chặn mọi thao tác của clicker mà không báo lỗi.
 
-## A1. Một lệnh
+## A1. Một lệnh, rồi bấm đúp
 
-PowerShell **Administrator**, đứng ở `C:\`:
+Trong Command Prompt hoặc PowerShell trên VPS, **một dòng** để lấy file cài về Desktop:
+
+```
+curl -L -o "%USERPROFILE%\Desktop\CAI-DAT.cmd" https://raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd
+```
+
+Rồi **bấm đúp `CAI-DAT.cmd`** trên Desktop. Nó tự xin quyền Administrator, tải bộ cài mới nhất, và
+dừng lại cho bạn đọc kết quả.
+
+> **Vì sao `.cmd` chứ không `.ps1`:** Windows mặc định **mở `.ps1` bằng Notepad** khi bấm đúp. Một
+> file bảo "bấm đúp để chạy" mà bấm đúp ra Notepad là một file hỏng.
+
+Dòng đầu phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không có `(ban ...)` là bạn đang chạy
+một bản script cũ — tải lại.
+
+**Muốn chạy bằng dòng lệnh** (ví dụ cần thêm tuỳ chọn ở bảng dưới), PowerShell **Administrator**:
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -79,9 +94,6 @@ Invoke-WebRequest "https://raw.githubusercontent.com/taducloc0603/copy-trade/mai
   -OutFile "$env:USERPROFILE\Desktop\cai-dat.ps1" -UseBasicParsing
 & "$env:USERPROFILE\Desktop\cai-dat.ps1" -ThuMuc C:\CopyBridge
 ```
-
-Dòng đầu phải in `MT5 Copy Bridge -- cai dat (ban <ngày>)`. Không có `(ban ...)` là bạn đang chạy
-một bản script cũ — tải lại.
 
 Nó làm liền một mạch: cài Python 3.12 + git nếu thiếu → clone vào `C:\CopyBridge` → dựng `.venv`,
 cài gói → tạo `config.toml` → khởi
@@ -149,6 +161,14 @@ không phải một bước cài đặt, nên nó không nằm trong danh sách.
 Thêm Client thứ hai: mục **B6**. Xong phần A — từ giờ theo **Phần C** mỗi lần đăng nhập.
 
 ## B1. Cập nhật lên code mới (việc thường gặp nhất)
+
+**Bấm đúp `C:\CopyBridge\CAP-NHAT.cmd`.** Hết. Nó tự xin quyền Administrator, tự nạp lại `PATH`
+(xem khối bên dưới về lỗi `git not recognized`), chạy đúng `cai-dat.ps1 -CapNhat`, và dừng lại cho
+bạn đọc kết quả.
+
+File đó đi kèm mã nguồn, nên mỗi lần cập nhật nó tự cập nhật luôn chính nó.
+
+**Hoặc bằng dòng lệnh:**
 
 ```powershell
 cd C:\CopyBridge
