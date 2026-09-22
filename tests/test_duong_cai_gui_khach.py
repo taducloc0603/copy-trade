@@ -277,3 +277,28 @@ def test_file_bam_dup_giu_crlf_tren_dia(project_root: Path, ten: str) -> None:
     byte = (project_root / ten).read_bytes()
     assert b"\r\n" in byte
     assert byte.count(b"\n") == byte.count(b"\r\n"), f"{ten}: co dong ket bang LF tran"
+
+
+# ---------------------------------------------------------------------------------------------
+# Dòng lệnh đầu tiên khách gõ
+# ---------------------------------------------------------------------------------------------
+@pytest.mark.parametrize("duong", ("CAI-DAT.cmd", "docs/CAI-DAT-VPS.md"))
+def test_dong_tai_file_cai_chay_duoc_trong_powershell(project_root: Path, duong: str) -> None:
+    """`curl` trần và `%USERPROFILE%` đều **sai trong PowerShell**, và cả hai nằm cùng một dòng.
+
+    Đo được trong lúc diễn tập 2026-09-22, ngay ở dòng lệnh **đầu tiên** người dùng gõ: trong
+    Windows PowerShell, `curl` là bí danh của `Invoke-WebRequest` — một cmdlet khác hẳn, không hiểu
+    `-L`, và nó báo *"A parameter cannot be found that matches parameter name 'L'"*. Thông báo đó
+    không nhắc một chữ nào tới bí danh, nên người dùng không có đường nào tự lần ra.
+
+    Test nhắm vào **dòng chứa URL**, không nhắm vào cả file: phần giải thích ngay cạnh buộc phải
+    nhắc tới `curl` và `%USERPROFILE%` để nói vì sao chúng sai.
+    """
+    dau_moi = "raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd"
+    dong = [d for d in _doc(project_root, duong).splitlines() if dau_moi in d and "-o" in d]
+    assert dong, f"{duong}: khong thay dong tai CAI-DAT.cmd"
+    for d in dong:
+        assert "curl.exe" in d, f"{duong}: `curl` tran la bi danh Invoke-WebRequest -- {d.strip()}"
+        assert "%USERPROFILE%" not in d, (
+            f"{duong}: %USERPROFILE% chi dung trong cmd, phai la $env:USERPROFILE -- {d.strip()}"
+        )

@@ -12,8 +12,13 @@ rem
 rem  File nay KHONG chua logic cai dat nao. No tai scripts\cai-dat.ps1 tu GitHub roi chay. Chep
 rem  logic sang day la tao ban thu hai se lech voi ban that.
 rem
-rem  Dua file nay len VPS: chay MOT dong nay trong PowerShell hoac Command Prompt --
-rem    curl -L -o "%USERPROFILE%\Desktop\CAI-DAT.cmd" https://raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd
+rem  Dua file nay len VPS: mo PowerShell, dan MOT dong nay --
+rem    curl.exe -L -o "$env:USERPROFILE\Desktop\CAI-DAT.cmd" https://raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd
+rem  CO `.exe`: trong Windows PowerShell, `curl` la bi danh cua Invoke-WebRequest, no khong
+rem  hieu -L va bao "A parameter cannot be found that matches parameter name 'L'" -- mot
+rem  thong bao khong he nhac toi bi danh. Va `$env:USERPROFILE` moi la cach PowerShell doc
+rem  bien moi truong; `%USERPROFILE%` chi dung trong Command Prompt. Da chan dung mot lan
+rem  dien tap that 2026-09-22 -- ngay o dong dau tien nguoi dung go.
 rem  roi bam dup no tren Desktop.
 rem ============================================================================================
 

@@ -71,11 +71,18 @@ Trên **mỗi** terminal:
 
 ## A1. Một lệnh, rồi bấm đúp
 
-Trong Command Prompt hoặc PowerShell trên VPS, **một dòng** để lấy file cài về Desktop:
+Mở **PowerShell** trên VPS (Start > gõ `powershell`), dán **một dòng** này để lấy file cài về
+Desktop:
 
+```powershell
+curl.exe -L -o "$env:USERPROFILE\Desktop\CAI-DAT.cmd" https://raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd
 ```
-curl -L -o "%USERPROFILE%\Desktop\CAI-DAT.cmd" https://raw.githubusercontent.com/taducloc0603/copy-trade/main/CAI-DAT.cmd
-```
+
+> **`curl.exe`, có `.exe`, không phải `curl`.** Trong Windows PowerShell, `curl` là **bí danh của
+> `Invoke-WebRequest`** — một cmdlet khác hẳn, không hiểu `-L` và báo *"A parameter cannot be found
+> that matches parameter name 'L'"*. Một thông báo không hề nhắc tới bí danh, nên rất khó tự lần ra.
+> `curl.exe` gọi đúng curl thật (có sẵn từ Windows 10 1803). Và `$env:USERPROFILE` là cách
+> PowerShell đọc biến môi trường; `%USERPROFILE%` chỉ đúng trong Command Prompt.
 
 Rồi **bấm đúp `CAI-DAT.cmd`** trên Desktop. Nó tự xin quyền Administrator, tải bộ cài mới nhất, và
 dừng lại cho bạn đọc kết quả.
