@@ -167,6 +167,22 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 .nut-kiem-lai { margin-top: 6px; font-size: 12px; padding: 3px 10px; }
 .ket-qua-kiem { margin-top: 4px; font-size: 12px; color: var(--mo); }
 
+/* Nut Chay va ket qua cua no. Ket qua phai doc duoc boi nguoi KHONG doc log bao gio: mot dong ket
+   luan bang tieng Viet truoc, output tho de ben duoi cho ai can. */
+.buoc-chay { margin: 8px 0 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+.buoc-chay button { font-size: 12px; padding: 4px 10px; }
+.ket-qua-chay { width: 100%; margin-top: 6px; }
+.ket-qua-chay-dong { font-size: 12px; padding: 4px 8px; border-left: 3px solid var(--vien); }
+.ket-qua-chay-dong.xong  { border-left-color: var(--xanh); }
+.ket-qua-chay-dong.luu-y { border-left-color: var(--cam); }
+.ket-qua-chay-dong.loi   { border-left-color: var(--do); }
+.ket-qua-chay-ra { max-height: 320px; overflow: auto; cursor: text; }
+
+/* Nut dang chay: khoa lai va noi ra la no dang chay. Mot nut bam mat vai giay ma khong doi gi thi
+   nguoi ta bam lai -- va voi nut cap token, bam lai la mot hanh dong THAT. */
+button.dang-chay { opacity: .65; cursor: progress; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+
 /* Nhay toi mot khoi ma khong lam no noi len thi van la bat nguoi dung tu tim tren mot trang dai. */
 .khoi-noi-bat { outline: 2px solid var(--lam); outline-offset: 2px; }
 

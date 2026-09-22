@@ -47,6 +47,7 @@ from bridge.ops import (
     xoa_client,
 )
 from bridge.web import views
+from bridge.web.lenh import LENH_CHAY_DUOC, chay
 
 log = get_logger(__name__)
 
@@ -466,6 +467,18 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
                 log.warning("Khong cat ket noi %s de nap lai: dang co %d lenh chua xong",
                             agent_id, len(dang_bay))
         return {"ok": True, "doi": doi, "nap_lai": nap_lai}
+
+    @app.post("/api/chay/{ma}")
+    async def api_chay(ma: str) -> Any:
+        """Chạy một lệnh trong **danh sách trắng cố định**. Xem `bridge/web/lenh.py`.
+
+        Trình duyệt gửi MÃ, không gửi câu lệnh. Mã lạ thì từ chối — không đoán, không ghép chuỗi.
+        """
+        if ma not in LENH_CHAY_DUOC:
+            log.warning("Dashboard xin chay ma la: %r", ma)
+            return _tra_loi(LoiCauHinh("LENH_KHONG_CHAY_DUOC", lenh=ma))
+        goc = getattr(dashboard.config, "project_root", None) or Path.cwd()
+        return {"ok": True, **await chay(ma, Path(goc))}
 
     @app.post("/api/agent/{agent_id}/token")
     async def api_cap_token(agent_id: str) -> Any:

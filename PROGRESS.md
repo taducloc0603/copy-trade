@@ -3590,3 +3590,31 @@ vong ma no vua bo.
 - `doiCheDo` phai kiem `r.ok`, phai `alert`, va phai tu goi `/api/snapshot`.
 
 915 test xanh (+2).
+
+## Nut Chay tren dashboard, va trang thai cho (2026-09-22)
+
+Tab Huong dan in ra `.\scripts\kiem-tra.ps1` roi bao nguoi dung mo PowerShell chay. Nguoi van hanh
+he thong nay khong phai dan ky thuat -- cau do la BON cho hong duoc, va ca bon deu hong im lang.
+
+Gio moi buoc co nut Chay, ket qua hien ngay tren trang: mot dong ket luan tieng Viet truoc, output
+tho de ben duoi. Danh sach trang co dinh trong `bridge/web/lenh.py`; trinh duyet gui MA chu khong
+gui cau lenh (D-41, bon rang buoc, ca bon co test).
+
+**Ba loi bat duoc bang cach BAM THAT, khong doc code nao ra:**
+
+1. `kiem-tra.ps1` chay tu dashboard bao "Khong thay C:\CopyBridge\.venv". Script mac dinh
+   `-ThuMuc C:\CopyBridge`, ma tren VPS that thu muc do DUNG BANG project_root -- nen bo qua tham
+   so nay van chay dung, vi mot su trung hop. Tren may dev thi lo ra ngay. Truyen `-ThuMuc` tuong
+   minh.
+2. Lan thu dau khong thay trang thai "Dang chay": lenh xong trong 0,1 giay nen no da tra lai nguyen
+   trang truoc khi minh nhin. Phai chay mot lenh CHAM (kiem-tra.ps1, 5,9 giay) moi kiem duoc.
+3. `LoiCauHinh("LENH_KHONG_CHAY_DUOC", ma=ma)` -> `TypeError: got multiple values for argument
+   'ma'`. Tham so dau tien cua `LoiCauHinh` cung ten `ma`. Doi cho giu cho thanh `{lenh}`.
+
+**Mot he qua that cua D-39 lo ra o day, va no khong lien quan gi toi tinh nang nay:** `config.toml`
+tren may dev dang de `host = "0.0.0.0"`, va luat moi TU CHOI khoi dong. Nghia la mot ban cai cu dang
+de `0.0.0.0` se khong khoi dong duoc sau khi cap nhat. Ban cai moi khong dinh (config.example.toml
+la 127.0.0.1), va thong bao loi tu no da noi ro phai sua gi -- nhung day la thu can noi truoc khi
+ai do cap nhat mot may dang chay that.
+
+926 test xanh (+11).

@@ -844,3 +844,34 @@ thu. Một tài liệu song song là một tài liệu sẽ sai.
 
 **Câu mô tả nhóm thôi ghi cứng số việc.** Bản cũ ghi "Chín việc" khi danh sách có tám — số bước đã
 đổi ba lần và không ai sửa câu đó. Giao diện tự đếm; có test chặn việc ghi lại bằng chữ.
+
+### D-41 — Dashboard chạy hộ một **danh sách trắng cố định** các lệnh chẩn đoán
+
+Tab Hướng dẫn in ra `.\scripts\kiem-tra.ps1` rồi bảo người dùng mở PowerShell chạy. Người vận hành
+hệ thống này không phải dân kỹ thuật, và câu đó là **bốn** chỗ hỏng được: mở đúng PowerShell, đứng
+đúng thư mục, dán đúng dòng, rồi tự đọc output. Cả bốn đều hỏng trong im lặng.
+
+Nên có nút **Chạy** ngay trong bước, và kết quả hiện lên trang: một dòng kết luận tiếng Việt trước,
+output thô để bên dưới cho ai cần.
+
+**Phần nguy hiểm, và cách chặn.** Dashboard không còn xác thực (D-39), nên một endpoint chạy lệnh là
+một đường thực thi mã cho bất kỳ ai chạm tới cổng 8080. Bốn ràng buộc, cả bốn có test khoá:
+
+1. **Trình duyệt gửi MÃ, không gửi câu lệnh.** Không tham số, không đường dẫn, không tên file. Mã lạ
+   thì từ chối — không đoán, không ghép chuỗi.
+2. **`argv` dựng trong `bridge/web/lenh.py`**, chạy `create_subprocess_exec` chứ không phải `_shell`.
+   Không có chỗ nào cho một chuỗi lạ chen vào. `chay()` chỉ nhận `(ma, goc)` — không có tham số nào
+   để nhét một câu lệnh vào, kể cả khi endpoint sơ hở.
+3. **Chỉ lệnh chỉ-đọc + biên dịch EA.** Không lệnh nào sửa cấu hình, chạm database hay đụng vị thế:
+   những việc đó đã có nút riêng và đi qua đường riêng.
+4. **Mọi lệnh có hạn giờ.** Một lệnh treo mà không có hạn giờ là một dashboard treo theo.
+
+**Nút Chạy biên dịch CẢ HAI EA.** Câu lệnh in trên trang chỉ biên dịch Master rồi bảo "chạy lại, đổi
+Master thành Client" — đúng loại việc người ta làm sót một nửa, và triệu chứng của nửa bị sót là
+"EA Client không kéo được lên chart", một câu không dẫn về đây. `scripts/bien-dich-ea.ps1` tách ra
+từ `tro-ly.ps1::buoc_bien_dich` vì bản trong trợ lý hỏi có/không trên stdin, mà một tiến trình con
+của dịch vụ thì không trả lời được.
+
+**Mọi nút bất đồng bộ đều khoá lại và nói "Đang chạy…".** Không có nó thì người dùng bấm một nút mất
+vài giây, không thấy gì, rồi bấm lại — và với nút Cấp token, bấm lại là một hành động **thật**:
+token vừa cấp chết ngay.

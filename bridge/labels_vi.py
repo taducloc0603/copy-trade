@@ -91,6 +91,8 @@ LOI_CAU_HINH = {
     "KHOA_NGOAI_DANH_SACH": "Khoá {khoa} không sửa được trên dashboard.",
     "GIA_TRI_LA": "Giá trị không hợp lệ cho {khoa}.",
     "NGOAI_MIEN": "{khoa} phải trong khoảng {tu}…{den}, nhận được {gia_tri}.",
+    "LENH_KHONG_CHAY_DUOC": ("Lệnh {lenh} không nằm trong danh sách được phép chạy từ dashboard. "
+                             "Danh sách nằm trong bridge/web/lenh.py và cố ý ngắn."),
 }
 
 #: Nhóm nhãn **ánh xạ từ enum trong DB**. Key phải là enum tiếng Anh viết hoa, đúng như giá trị
@@ -371,6 +373,23 @@ UI = {
     # Nút kiểm lại từng bước. Trang tự cập nhật theo WebSocket, nhưng "tự cập nhật lúc nào đó"
     # không trả lời được câu hỏi người dùng đang có trong đầu: "tôi vừa làm xong, đã ăn chưa?"
     "hd_kiem_lai": "Kiểm lại",
+
+    # Nút Chạy: người vận hành hệ thống này không phải dân kỹ thuật. Mở PowerShell, đứng đúng thư
+    # mục, dán đúng dòng, rồi tự đọc output là BỐN chỗ hỏng được — và cả bốn đều im lặng.
+    "hd_chay": "Chạy: {ten}",
+    "hd_dang_chay": "Đang chạy…",
+    "hd_chay_xong_sach": "Xong sau {giay} giây — không có vấn đề gì (mã thoát 0).",
+    "hd_chay_xong_con_viec": ("Xong sau {giay} giây, mã thoát {ma}: còn việc cần xem. "
+                              "Đọc kết quả bên dưới."),
+    "hd_chay_qua_han": ("Quá {giay} giây chưa xong nên đã dừng lại. Chạy tay trong PowerShell "
+                        "để xem nó kẹt ở đâu."),
+    "hd_chay_khong_duoc": "Không chạy được lệnh này. Thường là thiếu .venv hoặc thiếu chính file script.",
+    "hd_lenh_ten_liet_ke": "liệt kê agent",
+    "hd_lenh_ten_tinh_hinh": "xem tình hình",
+    "hd_lenh_ten_kiem_reason": "kiểm nguồn vào lệnh",
+    "hd_lenh_ten_kiem_dong_sai": "kiểm đóng sai",
+    "hd_lenh_ten_kiem_tra": "kiểm tra toàn hệ thống",
+    "hd_lenh_ten_bien_dich_ea": "biên dịch hai EA",
     "hd_kiem_xong": "Kiểm lúc {gio}: đã xong.",
     "hd_kiem_con_thieu": "Kiểm lúc {gio}: còn {n} việc — xem Đang còn thiếu ở trên.",
     "hd_kiem_tu_tich": "Kiểm lúc {gio}: bước này Bridge không tự thấy được, bạn tự tích.",
