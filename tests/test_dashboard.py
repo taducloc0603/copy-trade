@@ -1399,14 +1399,51 @@ def test_nang_luc_N_CLIENT_van_con_nguyen_duoi_gioi_han(db: Database) -> None:
     assert db.get_client_account("CL-02") is not None
 
 
-def test_giao_dien_re_nhanh_theo_cho_them_client(project_root) -> None:
-    """`khoiClient` phải đọc `cho_them_client`, và phải NÓI RA khi ẩn.
+def test_giao_dien_giau_han_chuc_nang_nhieu_client(project_root) -> None:
+    """Bản giao **không nói một chữ nào** về việc có bản nhiều Client.
 
-    Một nút biến mất không một lời giải thích là thứ làm người ta tưởng hệ thống hỏng — đúng loại
-    hoang mang mà ô nhập rỗng của clicker đã gây ra.
+    Bản đầu vẽ một câu "liên hệ nhà cung cấp để mở thêm". Bỏ đi, và lý do đáng ghi lại: không ai đi
+    tìm một nút họ chưa bao giờ biết là có, nên câu ấy không gỡ một hoang mang nào — nó **chỉ quảng
+    cáo** ra rằng có một bản đắt hơn, và biến một sản phẩm trọn vẹn thành một bản bị cắt.
+
+    Khác hẳn hai ô nhập rỗng của clicker (D-38): ở đó có một thứ **biến mất khỏi chỗ nó vừa ở**,
+    nên im lặng là một câu hỏi. Ở đây không có gì biến mất cả.
     """
+    from bridge.labels_vi import UI
+
     js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
     dau = js.index("function khoiClient(")
     than = js[dau:js.index("\n}\n", dau)]
     assert "cho_them_client" in than, "khoiClient khong he nhin toi gioi han"
-    assert "cfg_client_gioi_han" in than, "an nut ma khong noi ly do"
+
+    # Không một nhãn giao diện nào được quảng cáo bản nhiều Client hay chỉ đường mở khoá.
+    #
+    # Danh sách cố ý HẸP và gồm toàn cụm không thể hiểu nhầm. Bản đầu cấm cả "mở thêm", và nó bắt
+    # nhầm ngay câu "Terminal thứ ba, nếu bạn có mở thêm: KHÔNG gắn EA lên" — một câu nói về
+    # terminal, không liên quan gì tới Client. Một phép cấm bắt nhầm là một phép cấm sẽ bị nới ra
+    # cho qua.
+    for khoa, gia_tri in UI.items():
+        chu = (" ".join(gia_tri) if isinstance(gia_tri, tuple) else str(gia_tri)).lower()
+        for cam in ("liên hệ nhà cung cấp", "trả phí", "bản mở rộng", "gioi-han-client"):
+            assert cam not in chu, f"nhan {khoa} quang cao ban nhieu Client: {chu[:60]}"
+
+
+def test_tai_lieu_khach_khong_nhac_toi_ban_nhieu_client(project_root) -> None:
+    """`docs/CAI-DAT-VPS.md` và `README.md` là hai thứ khách đọc — chúng không được nhắc tới nó.
+
+    Tài liệu cài đặt mà mô tả một thứ bản của khách không có thì hoặc làm họ đi tìm một nút không
+    tồn tại, hoặc quảng cáo hộ một bản đắt hơn. Phần nhiều Client chuyển sang
+    `docs/NOI-BO-nhieu-client.md`.
+
+    `ACCEPTANCE.md`, `DECISIONS.md`, `RUNBOOK.md` và `PROGRESS.md` **không** nằm trong phép kiểm
+    này: chúng là sổ tay nội bộ, và xoá năng lực khỏi chúng là tự xoá bằng chứng rằng nó còn chạy.
+    """
+    for ten in ("docs/CAI-DAT-VPS.md", "README.md"):
+        noi = (project_root / ten).read_text(encoding="utf-8")
+        for cam in ("CL-02", "Client thứ hai", "gioi-han-client", "nhiều Client"):
+            assert cam not in noi, f"{ten} con nhac toi ban nhieu Client: {cam!r}"
+
+    # Va tai lieu noi bo phai CON DO -- neu khong thi kien thuc do bien mat luon.
+    noi_bo = project_root / "docs" / "NOI-BO-nhieu-client.md"
+    assert noi_bo.exists(), "mat luon tai lieu noi bo ve nhieu Client"
+    assert "gioi-han-client" in noi_bo.read_text(encoding="utf-8")

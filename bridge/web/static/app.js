@@ -586,14 +586,16 @@ function khoiClient(el) {
     box.appendChild(chan);
     el.appendChild(box);
   }
-  // Ban giao cau hinh cho 1 Client. An khoi Them Client, nhung NOI RA ly do: mot nut bien mat
-  // khong mot loi giai thich la thu lam nguoi ta tuong he thong hong.
+  // Ban giao cau hinh cho 1 Client: khong ve gi ca.
+  //
+  // Ban truoc ve mot cau "lien he nha cung cap de mo them". Bo di, va ly do dang ghi lai: khong
+  // ai di tim mot nut ho chua bao gio biet la co. Cau ay khong go mot hoang mang nao -- no CHI
+  // quang cao ra rang co mot ban dat hon, va bien mot san pham tron ven thanh mot ban bi cat.
+  //
+  // Khac han truong hop hai o nhap rong cua clicker (D-38): o do co mot thu BIEN MAT khoi cho no
+  // vua o, nen im lang la mot cau hoi. O day khong co gi bien mat ca.
   if (CAU_HINH.cho_them_client) {
     el.appendChild(khoiThemClient());
-  } else {
-    const box = khoi(UI.cfg_client_new);
-    box.appendChild(nhan(UI.cfg_client_gioi_han, "ghi-chu"));
-    el.appendChild(box);
   }
 }
 

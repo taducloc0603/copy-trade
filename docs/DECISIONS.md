@@ -921,9 +921,20 @@ Chặn sâu hơn chỉ làm phiền chính người bán lúc hỗ trợ khách,
    cho khách. Nó có hằng riêng: `ops.SO_CLIENT_MAC_DINH` + `ops.KHOA_GIOI_HAN_CLIENT`.
 2. **Đếm Client đang BẬT, không đếm cả Client đã tắt.** Tắt một Client là cách người ta tạm ngừng
    nó, và một chỗ trống thật thì nên dùng lại được.
-3. **Ẩn nút thì phải nói ra.** Khối Thêm Client được thay bằng một câu giải thích, không để trống.
-   Một nút biến mất không một lời nào là thứ làm người ta tưởng hệ thống hỏng — đúng loại hoang mang
-   mà hai ô nhập rỗng của clicker đã gây ra (D-38).
+3. **Giấu thì giấu hẳn — không một chữ nào.** Bản đầu thay khối Thêm Client bằng câu *"liên hệ
+   nhà cung cấp để mở thêm"*. Bỏ. Lý do đáng ghi vì nó ngược với D-38: **không ai đi tìm một nút họ
+   chưa bao giờ biết là có**, nên câu ấy không gỡ một hoang mang nào — nó chỉ quảng cáo ra rằng có
+   một bản đắt hơn, và biến một sản phẩm trọn vẹn thành một bản bị cắt. Ở D-38 có một thứ *biến mất
+   khỏi chỗ nó vừa ở* nên im lặng là một câu hỏi; ở đây không có gì biến mất cả.
+
+   Tương tự với tài liệu: phần thêm Client rời `docs/CAI-DAT-VPS.md` sang
+   `docs/NOI-BO-nhieu-client.md`. Tài liệu cài đặt mà mô tả một thứ bản của khách không có thì hoặc
+   làm họ đi tìm một nút không tồn tại, hoặc quảng cáo hộ.
+
+   **Giới hạn của việc giấu, nói thẳng:** kho công khai và bản cài `git clone` trọn nguồn, nên một
+   khách chịu đọc vẫn thấy `ops.SO_CLIENT_MAC_DINH`, thấy chính mục D-42 này, và thấy
+   `docs/NOI-BO-nhieu-client.md`. Giấu ở đây chỉ có nghĩa là **không chủ động mời**, không phải là
+   che được.
 
 **Mở khoá:** `bridge.admin gioi-han-client <n>`. Không tham số thì in giá trị hiện tại.
 

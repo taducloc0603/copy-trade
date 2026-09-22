@@ -3863,3 +3863,32 @@ Kiem bang trinh duyet tron vong: gioi han 1 -> nut bien mat, cau giai thich o la
 `gioi-han-client 2` -> nut hien; bam that -> tao ra CL-02 day du; roi lai cham gioi han va tu an.
 
 952 test xanh (+3).
+
+### Giau thi giau han -- khong mot chu nao (2026-09-22)
+
+Ban truoc thay khoi Them Client bang cau "lien he nha cung cap de mo them". Nguoi dung bac: ho muon
+GIAU chuc nang, khong muon mot cua ban hang.
+
+Dung, va ly do dang ghi vi no NGUOC voi nguyen tac D-38 ma chinh toi vua dung: **khong ai di tim mot
+nut ho chua bao gio biet la co**. Cau ay khong go mot hoang mang nao -- no chi quang cao ra rang co
+mot ban dat hon, va bien mot san pham tron ven thanh mot ban bi cat. O D-38 co mot thu BIEN MAT khoi
+cho no vua o (hai o nhap cua clicker), nen im lang la mot cau hoi; o day khong co gi bien mat ca.
+
+Da bo: nhan `cfg_client_gioi_han`, va ca khoi. Phan them Client roi `docs/CAI-DAT-VPS.md` sang
+`docs/NOI-BO-nhieu-client.md`; B6 con dung phan tat/xoa Client, la viec that cua ban 1 Client.
+
+Test doi chieu: khong nhan giao dien nao chua "lien he nha cung cap" / "tra phi" / "ban mo rong" /
+"gioi-han-client"; va `CAI-DAT-VPS.md` + `README.md` khong nhac "CL-02" / "Client thu hai" /
+"nhieu Client". `ACCEPTANCE.md`, `DECISIONS.md`, `RUNBOOK.md` KHONG nam trong phep kiem -- chung la
+so tay noi bo, xoa nang luc khoi chung la tu xoa bang chung rang no con chay.
+
+**Mot cai bay khi viet phep cam:** ban dau cam ca cum "mo them", va no bat nham ngay cau "Terminal
+thu ba, neu ban co mo them: KHONG gan EA len" -- mot cau noi ve terminal, khong lien quan gi toi
+Client. Thu hep con nhung cum khong the hieu nham. Mot phep cam bat nham la mot phep cam se bi noi
+ra cho qua.
+
+**Gioi han cua viec giau, noi thang:** kho cong khai va ban cai `git clone` tron nguon, nen mot
+khach chiu doc van thay `ops.SO_CLIENT_MAC_DINH`, thay chinh muc D-42, va thay
+`docs/NOI-BO-nhieu-client.md`. Giau o day chi co nghia la KHONG CHU DONG MOI, khong phai che duoc.
+
+953 test xanh (+1).

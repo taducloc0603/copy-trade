@@ -249,10 +249,6 @@ UI = {
     "cfg_client_id": "Mã client",
     "cfg_client_agent": "Agent CLIENT (EA trên terminal đó)",
     "cfg_client_clicker": "Clicker lái terminal đó",
-    # Ban giao cau hinh cho 1 Client. Cau nay thay cho nut Them Client khi da du -- an mot nut ma
-    # khong noi gi la lam nguoi dung tuong he thong hong.
-    "cfg_client_gioi_han": ("Bản này cấu hình cho 1 Client. Cần copy sang nhiều tài khoản hơn: "
-                            "liên hệ nhà cung cấp để mở thêm."),
     "cfg_client_new_hint": ("Mỗi Client cần một terminal MT5 riêng, một agent CLIENT riêng, "
                             "và nếu đi qua giao diện thì một clicker riêng nữa. Hệ thống "
                             "hiện chạy được hai clicker: của Client và của Master."),
