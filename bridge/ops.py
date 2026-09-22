@@ -1216,6 +1216,38 @@ def de_xuat_anh_xa(db: Database, client_id: str) -> list[dict[str, Any]]:
 #: EA đó kiểm lại. Hỏi người dùng con số này không mua được gì.
 MAGIC_MAC_DINH = 770001
 
+#: Số Client tối đa của **bản giao**, khi chưa ai đặt `system_config.so_client_toi_da`.
+#:
+#: Đây là một **ranh giới thương mại**, không phải một cái khoá: kho mã này công khai, khách nhận
+#: trọn nguồn khi cài, nên mọi cổng đặt trong mã đều đọc được và gỡ được. Nó tồn tại để bản giao
+#: khớp với phạm vi đã ghi từ đầu (`docs/ARCHITECTURE.md`: *"1 Master, 1 Client. Nhưng toàn bộ mô
+#: hình dữ liệu và routing phải viết cho N Client ngay từ đầu"*), và để phần N Client bán thêm được
+#: về sau.
+#:
+#: Cổng chỉ nằm ở **giao diện** (`views.trang_cau_hinh` → `cho_them_client`). `tao_client`,
+#: `tao_client_moi`, `/api/client` và `bridge.admin them-client` KHÔNG kiểm giới hạn — có chủ đích:
+#: chặn sâu hơn chỉ làm phiền chính người bán lúc hỗ trợ khách, mà không cưỡng chế được ai.
+SO_CLIENT_MAC_DINH = 1
+
+#: Khoá `system_config` giữ giới hạn. CỐ Ý không nằm trong `KHOA_SUA_DUOC`: danh sách ấy là những
+#: khoá **khách được sửa từ dashboard**, và mọi khoá trong đó hiện thành một ô nhập ở mục Nâng cao.
+#: Một cổng thương mại không phải thông số tinh chỉnh, nên nó không thuộc về đó.
+KHOA_GIOI_HAN_CLIENT = "so_client_toi_da"
+
+
+def gioi_han_client(db: Database) -> int:
+    """Số Client tối đa bản này cho phép **thêm từ dashboard**."""
+    return db.get_config_int(KHOA_GIOI_HAN_CLIENT, SO_CLIENT_MAC_DINH)
+
+
+def dat_gioi_han_client(db: Database, so: int) -> int:
+    """Đặt giới hạn. Dùng khi khách nâng cấp — xem `bridge.admin gioi-han-client`."""
+    if so < 1:
+        raise LoiCauHinh("GIOI_HAN_CLIENT_LA", so=so)
+    db.set_config(KHOA_GIOI_HAN_CLIENT, str(so))
+    log.warning("Doi gioi han so Client thanh %d", so)
+    return so
+
 
 def ma_client_ke_tiep(da_co: list[str]) -> str:
     """Mã client tiếp theo theo đúng dãy `CL-01`, `CL-02`, …

@@ -3823,3 +3823,43 @@ Mot cai bay nho khi viet test: phep kiem "khong chep logic" bat nham chuoi `wing
 trong mot CAU THONG BAO. Thu hep lai: bo qua dong `rem`, `echo` va `Write-Host`.
 
 949 test xanh (+8).
+
+## Ban giao: 1 Master x 1 Client, nang luc N Client giu nguyen ben duoi (2026-09-22)
+
+Ban gui khach chi cho 1 Master + 1 Client; phan N Client giu lai de ban them sau. Khong phai cat
+tinh nang -- la QUAY VE dung pham vi da ghi tu dau (`ARCHITECTURE.md`: *"1 Master, 1 Client. Nhung
+toan bo mo hinh du lieu va routing phai viet cho N Client ngay tu dau"*).
+
+**Mot su that phai noi truoc khi thiet ke:** kho nay CONG KHAI (`api.github.com` tra `private:
+false`), va `CAI-DAT.cmd` tai ma tu URL cong khai do; ban cai `git clone` tron nguon ve may khach.
+Nen MOI cong dat trong ma deu doc duoc va go duoc -- ke ca giay phep ky so, vi khoa cong khai de
+kiem chu ky cung nam trong chinh ma ay. Cai dung o day la mot RANH GIOI THUONG MAI nhin thay duoc,
+khong phai mot cai khoa. Noi thang ra tot hon gia vo nguoc lai.
+
+Cong chi nam o GIAO DIEN: `tao_client`, `tao_client_moi`, `/api/client`, `/api/client_moi` va
+`bridge.admin them-client` khong kiem gi. He qua tot: 52 cho trong `tests/` cham toi nhieu Client
+khong phai sua mot dong.
+
+**Ba chi tiet khong hien nhien:**
+
+1. Khoa gioi han CO Y khong nam trong `KHOA_SUA_DUOC`. Danh sach do la nhung khoa khach DUOC SUA TU
+   DASHBOARD, va moi khoa trong do hien thanh mot o nhap o muc Nang cao -- tuc la tu mo cong cho
+   khach. No co hang rieng: `SO_CLIENT_MAC_DINH` + `KHOA_GIOI_HAN_CLIENT`.
+2. Dem Client dang BAT, khong dem ca Client da tat. Tat la cach nguoi ta tam ngung mot Client, va
+   mot cho trong that thi nen dung lai duoc.
+3. An nut thi PHAI noi ra. Khoi Them Client thay bang mot cau giai thich, khong de trong -- dung
+   loai hoang mang ma hai o nhap rong cua clicker da gay ra.
+
+**Thu bao ve phan ban-them-sau khoi muc di:** mot test chay `tao_client_moi` HAI LAN o dung canh
+ban giao (gioi han 1, da co CL-01) va doi lan hai ra `CL-02` day du (agent, clicker, muc config).
+Mot nang luc giu lai ma khong ai chay la mot nang luc hong trong im lang. Cung ly do do,
+`ACCEPTANCE.md` (ca B-06, hai Client) va bang lenh trong `RUNBOOK.md` GIU NGUYEN -- sua chung la tu
+xoa bang chung rang phan do con chay.
+
+Kiem hai chieu: chen mot phep chan vao `tao_client_moi` -> test N Client do; bo cau giai thich khoi
+giao dien -> test "an nut ma khong noi ly do" do.
+
+Kiem bang trinh duyet tron vong: gioi han 1 -> nut bien mat, cau giai thich o lai; chay
+`gioi-han-client 2` -> nut hien; bam that -> tao ra CL-02 day du; roi lai cham gioi han va tu an.
+
+952 test xanh (+3).

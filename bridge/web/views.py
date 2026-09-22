@@ -32,6 +32,7 @@ from bridge.ops import (
     de_xuat_anh_xa,
     doc_tich_huong_dan,
     gia_tri_khoa,
+    gioi_han_client,
     ma_client_ke_tiep,
     symbol_cua_agent,
 )
@@ -800,6 +801,11 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
             for khoa, (kieu, a, b) in KHOA_SUA_DUOC.items()
         ],
         "ma_client_goi_y": ma_client_ke_tiep([c["client_id"] for c in clients]),
+        # Bản giao cấu hình cho 1 Client (xem `ops.SO_CLIENT_MAC_DINH`). Giới hạn chỉ chặn ở GIAO
+        # DIỆN: `tao_client` và `bridge.admin them-client` không kiểm, nên năng lực N Client còn
+        # nguyên và bán thêm được. Đếm Client đang BẬT, không đếm cả Client đã tắt: tắt một Client
+        # là cách người ta tạm ngừng nó, và một chỗ trống thật thì nên dùng lại được.
+        "cho_them_client": sum(1 for c in clients if c["enabled"]) < gioi_han_client(db),
         # Danh sách symbol thật của hai bên, để hai ô gõ tay thành hai danh sách chọn. Gõ tay ở đây
         # hỏng theo kiểu tệ nhất: sai một ký tự thì không có lỗi nào, chỉ là mọi lệnh Master bị bỏ
         # qua trong im lặng.

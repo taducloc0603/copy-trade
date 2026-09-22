@@ -586,7 +586,15 @@ function khoiClient(el) {
     box.appendChild(chan);
     el.appendChild(box);
   }
-  el.appendChild(khoiThemClient());
+  // Ban giao cau hinh cho 1 Client. An khoi Them Client, nhung NOI RA ly do: mot nut bien mat
+  // khong mot loi giai thich la thu lam nguoi ta tuong he thong hong.
+  if (CAU_HINH.cho_them_client) {
+    el.appendChild(khoiThemClient());
+  } else {
+    const box = khoi(UI.cfg_client_new);
+    box.appendChild(nhan(UI.cfg_client_gioi_han, "ghi-chu"));
+    el.appendChild(box);
+  }
 }
 
 // Them Client moi. Mot Client = mot terminal MT5 rieng + mot agent CLIENT rieng (+ mot clicker

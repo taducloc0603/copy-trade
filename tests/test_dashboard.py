@@ -1352,3 +1352,61 @@ def test_khoi_master_khong_xoa_clicker_khi_no_hien_dang_chu(project_root) -> Non
         "doc thang .value tren mot phan tu co the la <div> -- xem chu thich trong ham"
     )
     assert "motLuaChon ? hienTai" in than
+
+
+def test_ban_giao_chi_cho_them_client_toi_gioi_han(seeded_web: Database) -> None:
+    """Bản giao cấu hình cho 1 Client: khối Thêm Client không hiện khi đã đủ.
+
+    Cổng chỉ nằm ở **giao diện** — xem `ops.SO_CLIENT_MAC_DINH`. Đây là một ranh giới thương mại,
+    không phải một cái khoá: kho mã công khai nên khách nhận trọn nguồn khi cài.
+    """
+    from bridge.ops import KHOA_GIOI_HAN_CLIENT
+
+    # seeded_web da co CL-01, va gioi han mac dinh la 1.
+    assert views.trang_cau_hinh(seeded_web)["cho_them_client"] is False
+
+    seeded_web.set_config(KHOA_GIOI_HAN_CLIENT, "2")
+    assert views.trang_cau_hinh(seeded_web)["cho_them_client"] is True
+
+    # Client da TAT khong tinh: tat la cach nguoi ta tam ngung mot Client, va cho trong that thi
+    # nen dung lai duoc.
+    seeded_web.set_config(KHOA_GIOI_HAN_CLIENT, "1")
+    seeded_web.upsert_client_account(CLIENT_ID, agent_id=CLIENT_AGENT, enabled=0)
+    assert views.trang_cau_hinh(seeded_web)["cho_them_client"] is True
+
+
+def test_nang_luc_N_CLIENT_van_con_nguyen_duoi_gioi_han(db: Database) -> None:
+    """Giới hạn **không** chặn `tao_client_moi`: năng lực N Client phải còn chạy được.
+
+    Đây là test quan trọng nhất của thay đổi này. Phần N Client được giữ lại để bán thêm về sau, và
+    thứ giữ lại mà không ai chạy là thứ mục đi trong im lặng — sáu tháng nữa không ai biết nó còn
+    hoạt động hay không. Test này chạy nó ở đúng cảnh bản giao: giới hạn = 1, đã có một Client.
+    """
+    from bridge.ops import gioi_han_client, tao_client_moi
+
+    assert gioi_han_client(db) == 1, "ban giao phai mac dinh 1 Client"
+
+    mot = tao_client_moi(db)
+    assert mot["client_id"] == "CL-01"
+    # Da cham gioi han -- giao dien se an nut. Nhung duong CLI thi khong bi chan:
+    assert views.trang_cau_hinh(db)["cho_them_client"] is False
+
+    hai = tao_client_moi(db)
+    assert hai["client_id"] == "CL-02", "N Client da hong -- phan ban them sau khong con chay"
+    assert hai["agent"] == "AG-CL02"
+    assert hai["clicker"] == "AG-CLICKER-CL02"
+    assert hai["muc_clicker"] == "clicker_cl02"
+    assert db.get_client_account("CL-02") is not None
+
+
+def test_giao_dien_re_nhanh_theo_cho_them_client(project_root) -> None:
+    """`khoiClient` phải đọc `cho_them_client`, và phải NÓI RA khi ẩn.
+
+    Một nút biến mất không một lời giải thích là thứ làm người ta tưởng hệ thống hỏng — đúng loại
+    hoang mang mà ô nhập rỗng của clicker đã gây ra.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("function khoiClient(")
+    than = js[dau:js.index("\n}\n", dau)]
+    assert "cho_them_client" in than, "khoiClient khong he nhin toi gioi han"
+    assert "cfg_client_gioi_han" in than, "an nut ma khong noi ly do"

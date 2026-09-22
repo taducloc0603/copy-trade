@@ -5,7 +5,7 @@ Tài liệu cài đặt **duy nhất** của dự án. Chọn phần theo tình 
 | Tình trạng VPS | Đọc |
 |---|---|
 | **Chưa có hệ thống** — VPS trắng, hoặc mới chỉ có MT5 | [Phần A — Cài mới](#phần-a--cài-mới-trên-vps-chưa-có-hệ-thống): **một lệnh**, rồi khai nốt trên dashboard |
-| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 thêm/tắt/xoá Client · B7 gỡ sạch toàn bộ |
+| **Đã có hệ thống** `C:\CopyBridge` đang chạy | [Phần B — VPS đã có hệ thống](#phần-b--vps-đã-có-hệ-thống): B1 cập nhật · B2 lùi bản · B3 bật thêm tính năng · B4 đổi tài khoản MT5 · B5 chuyển VPS · B6 tắt/xoá Client · B7 gỡ sạch toàn bộ |
 | Hằng ngày, sau mỗi lần khởi động lại | [Phần C — Vận hành](#phần-c--vận-hành-hằng-ngày) |
 
 Muốn biết **vì sao** một bước như vậy: [RUNBOOK.md](RUNBOOK.md). Gặp sự cố khi đang chạy: RUNBOOK mục 7.
@@ -158,7 +158,7 @@ không phải một bước cài đặt, nên nó không nằm trong danh sách.
 | `bridge.admin kiem-reason` | `DAT` |
 | `bridge.admin kiem-dong-sai` | `[A] [B] [C]` đều 0 |
 
-Thêm Client thứ hai: mục **B6**. Xong phần A — từ giờ theo **Phần C** mỗi lần đăng nhập.
+Xong phần A — từ giờ theo **Phần C** mỗi lần đăng nhập.
 
 ## B1. Cập nhật lên code mới (việc thường gặp nhất)
 
@@ -368,7 +368,18 @@ dùng lại được token cũ. Mất token EA thì cấp lại trên dashboard 
 token*) hoặc bằng `bridge.admin cap-token`, rồi dán lại
 vào EA. Cấu hình nghiệp vụ nằm trong database nên đi theo bản sao lưu — không phải khai lại.
 
-## B6. Thêm Client thứ hai, tắt hoặc xoá Client đang có
+## B6. Tắt hoặc xoá Client — và thêm Client thứ hai (bản mở rộng)
+
+> **Bản tiêu chuẩn cấu hình cho 1 Master + 1 Client.** Khối **Thêm Client** trên dashboard không
+> hiện ra khi đã đủ; trang nói rõ lý do ngay tại chỗ. Toàn bộ phần dưới đây **vẫn đúng** sau khi mở
+> giới hạn:
+>
+> ```powershell
+> .\.venv\Scripts\python.exe -m bridge.admin gioi-han-client 2
+> ```
+>
+> Giới hạn chỉ chặn ở **giao diện**: `bridge.admin them-client` chưa bao giờ bị chặn, nên năng lực
+> nhiều Client vẫn nguyên vẹn bên dưới (xem **D-42**).
 
 **Một Client = một terminal MT5 riêng.** Chuẩn bị trước: cài thêm một terminal MT5, đăng nhập tài
 khoản demo riêng, chế độ **Hedging**, bật Algo Trading, mở Toolbox ở tab **Trade**, và mở sẵn chart

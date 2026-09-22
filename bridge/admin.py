@@ -25,11 +25,13 @@ from bridge.ops import (
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
+    dat_gioi_han_client,
     dat_lai_lich_su,
     dat_lai_toan_bo,
     dat_terminal_clicker,
     doi_login_agent,
     ghi_moc_cap_nhat,
+    gioi_han_client,
     khai_anh_xa,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
@@ -51,6 +53,7 @@ VAI_TRO = VAI_TRO_AGENT
 #: đọc; dashboard dịch **cùng những mã này** sang tiếng Việt có dấu qua `labels_vi.py` (D-16). Một
 #: mã đi hai đường ra, nhưng chỉ có một chỗ kiểm — đó là mục đích của cả lần tách này.
 CAU_LOI: dict[str, str] = {
+    "GIOI_HAN_CLIENT_LA": "Gioi han so Client phai la so nguyen duong, nhan duoc {so}.",
     "AGENT_DA_TON_TAI": "Agent {agent_id} da ton tai. Dung `cap-token` neu chi muon doi token.",
     "KHONG_CO_AGENT": "Khong co agent {agent_id}",
     "SAI_ROLE": "Agent {agent_id} co role {role}, can {can}.",
@@ -615,6 +618,24 @@ def lenh_run_mode(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_gioi_han_client(db: Database, args: argparse.Namespace) -> int:
+    """Xem hoặc đặt số Client tối đa **thêm được từ dashboard**.
+
+    Bản giao cấu hình cho 1 Client; lệnh này là đường mở khi khách nâng cấp. Nó chỉ đổi cái cổng ở
+    giao diện — `them-client` chưa bao giờ bị chặn, nên năng lực N Client vẫn nguyên vẹn bên dưới.
+    """
+    if args.so is None:
+        print(gioi_han_client(db))
+        return 0
+    try:
+        so = dat_gioi_han_client(db, args.so)
+    except LoiCauHinh as exc:
+        print(CAU_LOI.get(exc.ma, exc.ma).format(**exc.ngu_canh))
+        return 1
+    print(f"so_client_toi_da = {so}")
+    return 0
+
+
 def lenh_xac_nhan_alert(db: Database, args: argparse.Namespace) -> int:
     """Đánh dấu **đã xem** các alert cũ theo mã. Không đổi gì khác ngoài `acknowledged_at`.
 
@@ -752,6 +773,11 @@ def build_parser() -> argparse.ArgumentParser:
     gm.add_argument("--tu-commit", dest="tu_commit", default="",
                     help="Commit truoc khi cap nhat, chi de hien ra cho de doi chieu")
 
+    gh = sub.add_parser("gioi-han-client",
+                        help="Xem hoac dat so Client toi da THEM DUOC TU DASHBOARD")
+    gh.add_argument("so", nargs="?", type=int,
+                    help="Bo trong de xem. Ban giao mac dinh 1.")
+
     rm = sub.add_parser("run-mode", help="Xem hoac dat run_mode")
     rm.add_argument("gia_tri", nargs="?",
                     choices=("PAUSED", "RUNNING", "PAUSE_NEW_ENTRIES", "EMERGENCY"))
@@ -795,6 +821,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_anh_xa_symbol(db, args)
         if args.lenh == "them-client":
             return lenh_them_client(db, args)
+        if args.lenh == "gioi-han-client":
+            return lenh_gioi_han_client(db, args)
         if args.lenh == "cau-hinh-client":
             return lenh_cau_hinh_client(db, args)
         if args.lenh == "cau-hinh-master":

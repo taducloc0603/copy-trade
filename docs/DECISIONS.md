@@ -896,3 +896,38 @@ không bề mặt tấn công mới.
 service qua NSSM, tức ở **session 0**; mọi tiến trình con nó sinh ra đều vô hình với người đang ngồi
 trước máy. Chính `scripts/tao-dich-vu.ps1:13` đã ghi điều đó — đó là lý do clicker phải là Scheduled
 Task chứ không phải service. Thêm `CREATE_NEW_CONSOLE` vào cũng không đổi được gì.
+
+### D-42 — Bản giao cấu hình cho 1 Master + 1 Client; năng lực N Client giữ nguyên bên dưới
+
+Bản gửi khách chỉ cho **1 Master + 1 Client**. Đây không phải cắt tính năng mà là **quay về đúng
+phạm vi đã ghi từ đầu** — `docs/ARCHITECTURE.md`: *"1 Master, 1 Client. Nhưng toàn bộ mô hình dữ
+liệu và routing phải viết cho N Client ngay từ đầu."* Năng lực N Client giữ lại để bán thêm về sau.
+
+**Cổng chỉ nằm ở giao diện, và đó là một quyết định chứ không phải một sơ sót.** Kho mã này **công
+khai** — `CAI-DAT.cmd` tải từ `raw.githubusercontent.com` không cần đăng nhập, và bản cài `git clone`
+trọn nguồn về máy khách. Nên **mọi cổng đặt trong mã đều đọc được và gỡ được**, kể cả một giấy phép
+ký số: khoá công khai để kiểm chữ ký cũng nằm trong chính mã ấy. Cái dựng ở đây là một **ranh giới
+thương mại nhìn thấy được**, không phải một cái khoá, và nói thẳng ra thì tốt hơn là giả vờ ngược
+lại.
+
+Hệ quả: `ops.tao_client`, `ops.tao_client_moi`, `POST /api/client`, `POST /api/client_moi` và
+`bridge.admin them-client` **không** kiểm giới hạn. Ai biết dòng lệnh vẫn tạo được Client thứ hai.
+Chặn sâu hơn chỉ làm phiền chính người bán lúc hỗ trợ khách, mà không cưỡng chế được ai.
+
+**Ba chi tiết đáng ghi:**
+
+1. **Khoá giới hạn cố ý KHÔNG nằm trong `KHOA_SUA_DUOC`.** Danh sách đó là những khoá *khách được
+   sửa từ dashboard*, và mọi khoá trong đó hiện thành một ô nhập ở mục Nâng cao — tức là tự mở cổng
+   cho khách. Nó có hằng riêng: `ops.SO_CLIENT_MAC_DINH` + `ops.KHOA_GIOI_HAN_CLIENT`.
+2. **Đếm Client đang BẬT, không đếm cả Client đã tắt.** Tắt một Client là cách người ta tạm ngừng
+   nó, và một chỗ trống thật thì nên dùng lại được.
+3. **Ẩn nút thì phải nói ra.** Khối Thêm Client được thay bằng một câu giải thích, không để trống.
+   Một nút biến mất không một lời nào là thứ làm người ta tưởng hệ thống hỏng — đúng loại hoang mang
+   mà hai ô nhập rỗng của clicker đã gây ra (D-38).
+
+**Mở khoá:** `bridge.admin gioi-han-client <n>`. Không tham số thì in giá trị hiện tại.
+
+**Thứ bảo vệ phần bán-thêm-sau khỏi mục đi:** một test chạy `tao_client_moi` **hai lần** ở đúng cảnh
+bản giao (giới hạn 1, đã có `CL-01`) và đòi lần thứ hai ra `CL-02` đầy đủ. Một năng lực giữ lại mà
+không ai chạy là một năng lực hỏng trong im lặng. Vì cùng lý do đó, `docs/ACCEPTANCE.md` (ca B-06,
+hai Client) và bảng lệnh trong `docs/RUNBOOK.md` **giữ nguyên**.
