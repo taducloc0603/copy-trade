@@ -288,8 +288,14 @@ UI = {
     "can_lam_tieu_de_lech": ("Tiêu đề cửa sổ của {agent_id} là “{tieu_de}” nhưng không chứa số "
                              "tài khoản {login}. Đó là thứ clicker đối chiếu trước MỖI cú bấm, "
                              "nên nó sẽ không bấm — hoặc bấm vào terminal khác."),
-    "can_lam_agent_chua_online": ("{agent_id} ({role}) đang {status}. Gắn EA lên chart với token "
-                                  "của agent này, hoặc kiểm clicker đang chạy."),
+    # Hai câu, không một câu nước đôi: agent EA và agent clicker hỏng vì hai lý do khác hẳn nhau
+    # và sửa bằng hai việc khác hẳn nhau. Một câu chung buộc phải viết "hoặc...", và một hướng dẫn
+    # có chữ "hoặc" là một hướng dẫn bắt người đọc tự chẩn đoán.
+    "can_lam_agent_chua_online": ("{agent_id} ({role}) đang {status}. Gắn EA lên chart của "
+                                  "terminal này và dán đúng token của agent."),
+    "can_lam_clicker_chua_online": ("{agent_id} đang {status}. Clicker là một tiến trình trên "
+                                    "VPS, không phải EA: kiểm tác vụ Clicker đang chạy và đọc "
+                                    "logs\\clicker-wrapper.log."),
     "can_lam_algo_tat": ("Algo Trading đang TẮT trên terminal của {agent_id}. Bật nút Algo "
                          "Trading trong MT5: đó là lưới cuối của đường đóng lệnh."),
     "can_lam_thieu_anh_xa": ("Client {client_id} chưa có ánh xạ symbol nào đang bật. Khối Ánh xạ "
@@ -299,19 +305,36 @@ UI = {
                                      "chỉ đặt được lúc tạo)."),
     "can_lam_master_thieu_clicker": ("Đường đóng Master đặt UI nhưng chưa khai clicker của "
                                      "Master. Khối Đường đóng phía Master bên dưới."),
+    "can_lam_config_con_khoa": ("config.toml còn khai {khoa} cho clicker. File THẮNG database, "
+                                "nên khai trên trang này sẽ không có tác dụng."),
     "can_lam_chua_bat_copy": ("Đang ở chế độ {run_mode}. Xong các mục trên thì bấm Bắt đầu copy "
                               "ở thanh trên cùng."),
 
     # -- trang Hướng dẫn -----------------------------------------------------------------------
     #
-    # Mỗi bước phải nói **làm gì, ở đâu**, và khi có hậu quả thì nói cả hậu quả. Người đọc trang
-    # này vừa cài xong và chưa biết trang có những khối nào — một câu như "khai ánh xạ symbol" mà
-    # không nói khối nào là một câu đố.
+    # Mỗi bước có **bốn** phần, và cả bốn đều bắt buộc trừ `_bay`:
+    #
+    #   `hd_<ma>`        một dòng để quét mắt. KHÔNG nhồi hướng dẫn vào đây.
+    #   `hd_<ma>_viec`   TUPLE các việc con, theo đúng thứ tự phải làm. Mỗi phần tử là một hành
+    #                    động làm được, không phải một lời khuyên.
+    #   `hd_<ma>_kiem`   tự kiểm bước này xong chưa: nhìn thấy gì thì coi là xong.
+    #   `hd_<ma>_bay`    cái bẫy ĐÃ bắt được người thật. Không có thì để trống, đừng bịa.
+    #
+    # Bản đầu chỉ có dòng một, và mọi thứ phải nhồi vào đó: bước gắn EA gói sáu hành động vào một
+    # câu, không thứ tự, không nói làm ở đâu, không cách tự kiểm. Lần chạy thử tài liệu trên VPS
+    # 2026-09-22 tắc ngay ở bước ấy.
+    #
+    # Người đọc trang này vừa cài xong và CHƯA biết trang có những khối nào — nên mỗi việc con
+    # phải nói rõ khối nào, nút nào, cửa sổ nào.
     "nav_guide": "Hướng dẫn",
     "hd_title": "Làm theo thứ tự này",
     "hd_nhom_lan_dau": "Cài đặt lần đầu",
-    "hd_nhom_lan_dau_chu": ("Tám việc, theo đúng thứ tự này. Việc nào dashboard tự kiểm được thì "
-                            "nó tự chuyển sang Đã xong; việc nằm trong MT5 thì bạn tự tích."),
+    # KHÔNG ghi số việc vào đây. Bản cũ ghi "Chín việc" trong khi danh sách có tám, và không ai
+    # sửa — số bước đã đổi ba lần rồi. Giao diện tự đếm và hiện số việc còn lại ở tiêu đề nhóm.
+    "hd_nhom_lan_dau_chu": ("Theo đúng thứ tự này — bước sau cần kết quả của bước trước. Mở Chi "
+                            "tiết ở mỗi bước để xem từng việc con, cách tự kiểm và cái bẫy hay "
+                            "gặp. Việc nào dashboard tự kiểm được thì nó tự chuyển sang Đã xong "
+                            "và nói rõ đang còn thiếu cái gì; việc nằm trong MT5 thì bạn tự tích."),
     "hd_nhom_sau_update": "Sau khi cập nhật code",
     "hd_nhom_sau_update_chu": ("Làm sau mỗi lần chạy cai-dat.ps1 -CapNhat. Ô tự tích được xoá "
                                "sạch ở mỗi lần cập nhật, nên danh sách này luôn nói về lần gần "
@@ -323,51 +346,208 @@ UI = {
     "hd_het_viec": "Không còn việc nào trong mục này.",
     "hd_lenh_hint": "Chạy trong PowerShell, tại C:\\CopyBridge:",
 
-    # Lần đầu
-    "hd_ld_gan_ea": ("Gắn EA lên chart. Khối Agent ở tab Cấu hình → Cấp lại token cho agent "
-                     "Master và Client (token hiện MỘT LẦN ngay trên trang), rồi trong MT5 kéo EA "
-                     "lên ĐÚNG MỘT chart mỗi terminal, dán token vào AgentToken, BridgeHost = "
-                     "127.0.0.1, BridgePort = 8787. Hai chart cùng gắn EA là hai kết nối cùng "
-                     "token đá nhau liên tục."),
-    "hd_ld_khai_clicker": ("Khai số tài khoản và tiêu đề cửa sổ terminal cho TỪNG clicker (khối "
-                           "Agent). Tiêu đề phải chứa số tài khoản — đó là thứ clicker đối chiếu "
-                           "trước mỗi cú bấm. Chưa khai thì clicker không chạy."),
-    "hd_ld_algo": ("Bật nút Algo Trading trên mọi terminal MT5. Đường mở đi qua giao diện nên "
-                   "không cần nó, nhưng đường đóng dự phòng thì cần — tắt là mất lưới cuối."),
-    "hd_ld_toolbox": ("Mở Toolbox (Ctrl+T) và để ở tab Trade trên mọi terminal. Clicker đọc danh "
-                      "sách vị thế ở đây; đóng Toolbox là không đóng được lệnh qua giao diện."),
-    "hd_ld_anh_xa": ("Khai ánh xạ symbol cho từng Client (khối Ánh xạ symbol): symbol bên Master "
-                     "ứng với symbol nào bên Client. Thiếu là MỌI lệnh Master bị bỏ qua trong im "
-                     "lặng. Cần EA Client đang chạy và symbol đã kéo vào Market Watch."),
-    "hd_ld_cau_hinh_copy": ("Xem lại cấu hình copy của từng Client: chiều copy, hệ số volume, và "
-                            "Cho phép Client đóng ngược Master. Đây là lựa chọn, không phải thứ "
-                            "thiếu — nên tự tích khi đã xem."),
-    "hd_ld_bat_copy": ("Bấm Bắt đầu copy ở thanh trên cùng. Bridge luôn khởi động ở chế độ dừng, "
-                       "kể cả khi máy tự bật lại lúc 3 giờ sáng — đó là chủ đích."),
-    "hd_ld_thu_demo": ("Thử một lệnh demo volume nhỏ nhất: Master mở → Client vào lệnh trong ~1 "
-                       "giây; Master đóng → Client đóng theo. Rồi chạy hai lệnh kiểm bên dưới."),
+    # Nhãn của khối chi tiết.
+    "hd_chi_tiet": "Chi tiết",
+    "hd_nhan_noi": "Làm ở",
+    "hd_noi_dashboard": "chính trang này (dashboard)",
+    "hd_noi_mt5": "trong MT5",
+    "hd_noi_powershell": "PowerShell trên VPS",
+    "hd_nhan_viec": "Từng việc, theo thứ tự",
+    "hd_nhan_kiem": "Biết là xong khi",
+    "hd_nhan_bay": "Bẫy hay gặp",
+    "hd_nhan_thieu": "Đang còn thiếu",
+    "hd_nhan_lenh": "Đường dòng lệnh (bấm để chọn hết)",
 
-    # Sau khi cập nhật
-    "hd_up_ctrl_f5": ("Bấm Ctrl+F5 một lần trên mỗi tab dashboard mở từ TRƯỚC lần cập nhật. Tab cũ "
-                      "vẫn chạy CSS/JS cũ, và triệu chứng là “cập nhật xong mà dashboard y như "
-                      "cũ”."),
-    "hd_up_gan_lai_ea": ("Thư mục ea/ đã đổi ở lần cập nhật này: biên dịch lại EA, chép .ex5 mới "
-                         "vào MQL5\\Experts của từng terminal, rồi GỠ EA KHỎI CHART VÀ GẮN LẠI. "
-                         "Đổi khung thời gian KHÔNG làm MT5 đọc lại .ex5 từ đĩa. Bước này "
-                         "dashboard không tự kiểm được: EA không báo phiên bản của chính nó."),
-    "hd_up_agent_online": ("Kiểm mọi agent ONLINE lại. Clicker cần khoảng 10–45 giây sau khi dịch "
-                           "vụ bật lại."),
-    "hd_up_code_cu": ("Kiểm không còn tiến trình nào chạy code CŨ (mục 4b của kiem-tra.ps1). "
-                      "Dịch vụ Running mà vẫn là code trước lần cập nhật là trạng thái “trông vẫn "
-                      "khoẻ” nguy hiểm nhất."),
-    "hd_up_config_sot": ("config.toml còn khai account_login hoặc terminal_title cho clicker. "
-                         "File THẮNG database, nên khai trên dashboard sẽ không có tác dụng — xoá "
-                         "hai dòng đó rồi khởi động lại dịch vụ (khối config.toml hiện chúng kèm "
-                         "cảnh báo)."),
-    "hd_up_bat_copy": ("Bấm Bắt đầu copy. Bridge khởi động lại luôn về chế độ dừng, nên không bấm "
-                       "là hệ thống đứng im mà mọi thứ khác trông bình thường."),
-    "hd_up_tinh_hinh": ("Chạy tinh-hinh: nó thoát khác 0 khi còn mục cần xử lý, nên đây là cách "
-                        "nhanh nhất để biết lần cập nhật có để lại gì không."),
+    # -- Cài đặt lần đầu -----------------------------------------------------------------------
+    "hd_ld_bien_dich": "Biên dịch hai EA thành .ex5 rồi chép vào MT5",
+    "hd_ld_bien_dich_viec": (
+        "Chạy lệnh dưới đây một lần cho CopyBridgeMaster.mq5.",
+        "Chạy lại, đổi Master thành Client, để biên dịch CopyBridgeClient.mq5.",
+        "Mở logs\\compile.log và xem dòng cuối: phải là 0 errors.",
+        "Trong MT5 của Master: File > Open Data Folder > MQL5 > Experts. Chép "
+        "ea\\CopyBridgeMaster.ex5 vào đó.",
+        "Làm lại cho terminal Client với CopyBridgeClient.ex5.",
+        "Trong mỗi MT5: Navigator (Ctrl+N) > chuột phải Expert Advisors > Refresh. EA phải hiện "
+        "ra trong danh sách.",
+    ),
+    "hd_ld_bien_dich_kiem": ("Navigator của cả hai terminal đều thấy EA của mình — "
+                            "CopyBridgeMaster ở terminal Master, CopyBridgeClient ở Client."),
+    "hd_ld_bien_dich_bay": ("Mỗi terminal MT5 có một thư mục dữ liệu RIÊNG. Chép .ex5 vào một "
+                           "terminal rồi tưởng cả hai đã có là lỗi hay gặp nhất — luôn vào File > "
+                           "Open Data Folder của CHÍNH terminal đó, đừng đoán đường dẫn."),
+
+    "hd_ld_gan_ea": "Gắn EA lên chart và dán token, mỗi terminal đúng một chart",
+    "hd_ld_gan_ea_viec": (
+        "Sang tab Cấu hình > khối Agent. Bấm Cấp lại token ở dòng AG-MASTER: token hiện ra MỘT "
+        "LẦN ngay trên trang, chép ngay và đừng đóng trang.",
+        "Trong MT5 của Master: mở đúng một chart của symbol bạn sẽ copy, rồi kéo CopyBridgeMaster "
+        "từ Navigator lên chart đó.",
+        "Hộp thoại mở ra, tab Inputs: AgentToken = token vừa chép, BridgeHost = 127.0.0.1, "
+        "BridgePort = 8787. Bấm OK.",
+        "Góc trên phải chart phải có mặt cười. Mặt buồn nghĩa là EA chưa chạy.",
+        "Về dashboard, Cấp lại token cho AG-CLIENT, rồi làm lại đúng các bước trên trong terminal "
+        "Client với CopyBridgeClient.",
+        "Terminal thứ ba, nếu bạn có mở thêm: KHÔNG gắn EA lên.",
+    ),
+    "hd_ld_gan_ea_kiem": ("Khối Agent hiện AG-MASTER và AG-CLIENT đều ONLINE. Hoặc chạy lệnh "
+                         "liet-ke dưới đây."),
+    "hd_ld_gan_ea_bay": ("Hai chart cùng gắn EA là hai kết nối dùng CÙNG một token, và chúng đá "
+                        "nhau liên tục: agent nhảy ONLINE/OFFLINE không dừng. Mỗi terminal đúng "
+                        "MỘT chart. Và mỗi lần Cấp lại token là token cũ hết hiệu lực ngay — cấp "
+                        "lại mà quên dán vào EA thì agent tắt luôn."),
+
+    "hd_ld_khai_clicker": "Khai số tài khoản và tiêu đề cửa sổ cho từng clicker",
+    "hd_ld_khai_clicker_viec": (
+        "Trong MT5 của Master, đọc thanh tiêu đề trên cùng của cửa sổ và chép nguyên văn. Nó "
+        "thường có dạng: <số tài khoản> - <tên broker> - ...",
+        "Sang tab Cấu hình > khối Agent > dòng AG-CLICKER-MASTER: điền số tài khoản và tiêu đề "
+        "cửa sổ, rồi Lưu.",
+        "Làm lại cho AG-CLICKER với tiêu đề của terminal Client.",
+        "Chờ tới 70 giây rồi mới kết luận. Xem phần Bẫy hay gặp.",
+    ),
+    "hd_ld_khai_clicker_kiem": ("AG-CLICKER và AG-CLICKER-MASTER chuyển sang ONLINE trong khối "
+                               "Agent, và logs\\clicker-wrapper.log không còn dòng thoat 4 mới."),
+    "hd_ld_khai_clicker_bay": ("Tiêu đề PHẢI chứa số tài khoản: đó là thứ clicker đối chiếu với "
+                              "cửa sổ thật trước MỖI cú bấm, nên một tiêu đề chung như MetaTrader "
+                              "5 sẽ khớp cả terminal khác. Và khai xong KHÔNG có tác dụng tức "
+                              "thì: clicker ngủ 60 giây giữa hai lần thử, nên trang còn báo đỏ "
+                              "thêm khoảng một phút là bình thường."),
+
+    "hd_ld_algo": "Bật Algo Trading trên mọi terminal MT5",
+    "hd_ld_algo_viec": (
+        "Trong mỗi terminal: bấm nút Algo Trading trên thanh công cụ, hoặc Ctrl+E.",
+        "Nút phải sáng XANH. Xám là đang tắt.",
+        "Làm cho cả terminal Master và terminal Client.",
+    ),
+    "hd_ld_algo_kiem": "Khối Agent không còn dòng nào báo Algo Trading tắt.",
+    "hd_ld_algo_bay": ("Đường mở và đường đóng bình thường đi qua giao diện nên KHÔNG cần Algo "
+                      "Trading — vì thế tắt nó đi thì mọi thứ vẫn trông bình thường. Nhưng nó là "
+                      "LƯỚI CUỐI: clicker hỏng thì đường đóng rơi về OrderSend của EA, và lúc ấy "
+                      "Algo Trading là thứ duy nhất còn giữ cho vị thế đóng được. Kiểm lại sau "
+                      "MỖI lần VPS khởi động lại hoặc MT5 tự cập nhật."),
+
+    "hd_ld_toolbox": "Mở Toolbox và để ở tab Trade trên mọi terminal",
+    "hd_ld_toolbox_viec": (
+        "Trong mỗi terminal: Ctrl+T để mở Toolbox.",
+        "Chọn tab Trade, không phải History hay Journal.",
+        "Để nguyên như vậy: đừng đóng, đừng chuyển sang tab khác.",
+    ),
+    "hd_ld_toolbox_kiem": "Cả hai terminal đều thấy danh sách vị thế ở nửa dưới cửa sổ.",
+    "hd_ld_toolbox_bay": ("Clicker đọc danh sách vị thế từ đúng tab này để đóng lệnh. Đóng Toolbox "
+                         "hoặc chuyển tab là không đóng được lệnh qua giao diện nữa — và triệu "
+                         "chứng chỉ hiện ra lúc cần đóng, tức lúc đắt nhất."),
+
+    "hd_ld_anh_xa": "Khai ánh xạ symbol cho từng Client",
+    "hd_ld_anh_xa_viec": (
+        "Trong MT5 của Client: mở Market Watch (Ctrl+M) và kéo vào đó symbol bạn sẽ copy. Bridge "
+        "chỉ thấy symbol nào đã có trong Market Watch.",
+        "Sang tab Cấu hình > khối Ánh xạ symbol.",
+        "Chọn symbol bên Master, rồi symbol tương ứng bên Client. Trang đã đề xuất sẵn cặp khớp "
+        "nếu tìm được — kiểm lại rồi Lưu.",
+        "Làm cho từng symbol bạn định copy.",
+    ),
+    "hd_ld_anh_xa_kiem": "Khối Ánh xạ symbol có ít nhất một dòng đang bật cho mỗi Client.",
+    "hd_ld_anh_xa_bay": ("Thiếu ánh xạ thì MỌI lệnh của Master bị bỏ qua TRONG IM LẶNG: không "
+                        "lỗi, không cảnh báo, chỉ là không có gì xảy ra. Đây là lỗi tốn thời gian "
+                        "nhất để tự tìm ra."),
+
+    "hd_ld_cau_hinh_copy": "Xem lại cấu hình copy của từng Client",
+    "hd_ld_cau_hinh_copy_viec": (
+        "Tab Cấu hình > khối Client. Với từng Client, xem ba giá trị dưới đây.",
+        "Chiều copy: SAME đi cùng chiều Master, REVERSE đi ngược.",
+        "Hệ số volume: 1.0 là copy đúng khối lượng Master. Bấm Xem trước để thấy lệnh nào bị rớt "
+        "vì khối lượng tối thiểu của sàn.",
+        "Cho phép Client đóng ngược Master: bật thì đóng lệnh ở Client sẽ đóng cả bên Master.",
+        "Đây là lựa chọn, không phải thứ còn thiếu — xem xong thì tự tích.",
+    ),
+    "hd_ld_cau_hinh_copy_kiem": "Bạn đã xem và đồng ý ba giá trị trên cho từng Client.",
+
+    "hd_ld_bat_copy": "Bấm Bắt đầu copy",
+    "hd_ld_bat_copy_viec": (
+        "Kiểm mọi bước trên đã xanh. Bật copy khi còn bước đỏ là mở đường cho lệnh đi vào một cấu "
+        "hình chưa xong.",
+        "Bấm Bắt đầu copy ở thanh trên cùng — nút này thấy được ở mọi tab.",
+        "Nhãn trạng thái phải chuyển sang RUNNING.",
+    ),
+    "hd_ld_bat_copy_kiem": "Thanh trên cùng hiện RUNNING thay vì PAUSED.",
+    "hd_ld_bat_copy_bay": ("Bridge LUÔN khởi động ở chế độ dừng, kể cả khi VPS tự bật lại lúc 3 "
+                          "giờ sáng — đó là chủ đích. Nghĩa là sau MỖI lần khởi động lại dịch vụ "
+                          "bạn phải bấm lại nút này. Dịch vụ đang chạy KHÔNG có nghĩa là hệ thống "
+                          "đang copy."),
+
+    "hd_ld_thu_demo": "Thử một lệnh demo khối lượng nhỏ nhất",
+    "hd_ld_thu_demo_viec": (
+        "Trong MT5 của Master: mở một lệnh với khối lượng nhỏ nhất sàn cho phép.",
+        "Xem terminal Client: phải có lệnh tương ứng trong khoảng 1 giây.",
+        "Đóng lệnh ở Master. Client phải đóng theo.",
+        "Chạy hai lệnh kiểm dưới đây. Cả hai phải không báo dòng nào.",
+    ),
+    "hd_ld_thu_demo_kiem": ("Client vào và ra theo Master, và kiem-reason / kiem-dong-sai không "
+                           "báo dòng nào."),
+    "hd_ld_thu_demo_bay": ("Làm việc này trên tài khoản DEMO. Và mỗi terminal Client chỉ copy "
+                          "được MỘT symbol: hộp thoại New Order lấy symbol theo chart đang mở, "
+                          "nên phải mở đúng chart đó và giữ nguyên."),
+
+    # -- Sau khi cập nhật code -----------------------------------------------------------------
+    "hd_up_ctrl_f5": "Bấm Ctrl+F5 trên mọi tab dashboard mở từ trước lần cập nhật",
+    "hd_up_ctrl_f5_viec": (
+        "Với mỗi tab dashboard đang mở: bấm Ctrl+F5, không phải F5.",
+        "Tab mới mở sau khi cập nhật thì không cần.",
+    ),
+    "hd_up_ctrl_f5_kiem": "Trang tải lại và bạn thấy thay đổi của bản mới.",
+
+    "hd_up_gan_lai_ea": "Biên dịch lại EA rồi GỠ khỏi chart và GẮN LẠI",
+    "hd_up_gan_lai_ea_viec": (
+        "Chạy lệnh biên dịch dưới đây cho từng EA đã đổi.",
+        "Chép .ex5 mới vào MQL5\\Experts của từng terminal.",
+        "GỠ EA khỏi chart: chuột phải > Expert Advisors > Remove.",
+        "Kéo EA lên chart lại, dán lại token và BridgeHost / BridgePort.",
+    ),
+    "hd_up_gan_lai_ea_kiem": "Hai agent EA ONLINE lại, và Journal của MT5 báo EA vừa nạp.",
+    "hd_up_gan_lai_ea_bay": ("Đổi khung thời gian KHÔNG làm MT5 đọc lại .ex5 từ đĩa. Phải gỡ rồi "
+                            "gắn lại, không có đường tắt nào."),
+
+    "hd_up_agent_online": "Kiểm mọi agent ONLINE lại",
+    "hd_up_agent_online_viec": (
+        "Chạy lệnh liet-ke dưới đây.",
+        "Clicker cần khoảng 10-45 giây sau khi dịch vụ lên. Chờ rồi chạy lại.",
+    ),
+    "hd_up_agent_online_kiem": "Cả bốn agent đều ONLINE.",
+    "hd_up_agent_online_bay": ("Một agent còn OFFLINE sau hai phút thì đọc "
+                              "logs\\clicker-wrapper.log: thoat 4 nghĩa là chưa khai số tài "
+                              "khoản, thoat 2 là thiếu token."),
+
+    "hd_up_code_cu": "Kiểm không còn tiến trình nào chạy code CŨ",
+    "hd_up_code_cu_viec": (
+        "Chạy kiem-tra.ps1 dưới đây.",
+        "Xem mục 4b: nó phải xanh.",
+    ),
+    "hd_up_code_cu_kiem": "Mục 4b của kiem-tra.ps1 xanh.",
+
+    "hd_up_config_sot": "Xoá khoá clicker còn sót trong config.toml",
+    "hd_up_config_sot_viec": (
+        "Tab Cấu hình > khối config.toml, tìm dòng đỏ.",
+        "Mở C:\\CopyBridge\\config.toml bằng Notepad, xoá account_login và terminal_title khỏi "
+        "mục [clicker] và [clicker_master]. Lưu dạng UTF-8 không BOM.",
+        "Chạy .\\scripts\\khoi-dong-lai.ps1.",
+    ),
+    "hd_up_config_sot_kiem": "Khối config.toml không còn dòng đỏ nào.",
+    "hd_up_config_sot_bay": ("Còn hai khoá đó trong file thì FILE THẮNG DATABASE: khai trên "
+                            "dashboard sẽ không có tác dụng, và không script nào báo cho bạn."),
+
+    "hd_up_bat_copy": "Bấm Bắt đầu copy",
+    "hd_up_bat_copy_viec": (
+        "Bấm Bắt đầu copy ở thanh trên cùng.",
+        "Nhãn trạng thái phải chuyển sang RUNNING.",
+    ),
+    "hd_up_bat_copy_kiem": "Thanh trên cùng hiện RUNNING.",
+
+    "hd_up_tinh_hinh": "Chạy tinh-hinh để xem lần cập nhật có để lại gì",
+    "hd_up_tinh_hinh_viec": (
+        "Chạy lệnh tinh-hinh dưới đây.",
+        "Đọc phần mục cần chú ý ở cuối.",
+    ),
+    "hd_up_tinh_hinh_kiem": "tinh-hinh thoát 0, hoặc mọi mục nó nêu đều là thứ bạn đã biết.",
 
     # Câu lệnh để copy
     "hd_lenh_kiem_demo": (".\\.venv\\Scripts\\python.exe -m bridge.admin kiem-reason\n"
@@ -378,6 +558,15 @@ UI = {
     "hd_lenh_liet_ke": ".\\.venv\\Scripts\\python.exe -m bridge.admin liet-ke",
     "hd_lenh_kiem_tra": ".\\scripts\\kiem-tra.ps1",
     "hd_lenh_tinh_hinh": ".\\.venv\\Scripts\\python.exe -m bridge.admin tinh-hinh",
+    # Bốn lệnh dưới đây là đường CLI của đúng bốn bước làm trên dashboard. Khi đường dashboard tắc
+    # thì trước đây không còn đường nào khác — đã xảy ra thật ở lần chạy thử 2026-09-22.
+    "hd_lenh_sua_agent": (".\\.venv\\Scripts\\python.exe -m bridge.admin sua-agent "
+                          "AG-CLICKER-MASTER --login <so-tk> --terminal-title <tieu-de>"),
+    "hd_lenh_anh_xa": (".\\.venv\\Scripts\\python.exe -m bridge.admin anh-xa-symbol CL-01 "
+                       "<symbol-master> --client-symbol <symbol-client>"),
+    "hd_lenh_cau_hinh_client": (".\\.venv\\Scripts\\python.exe -m bridge.admin cau-hinh-client "
+                                "CL-01"),
+    "hd_lenh_run_mode": ".\\.venv\\Scripts\\python.exe -m bridge.admin run-mode RUNNING",
     # -- thêm Client bằng một nút --------------------------------------------------------------
     "cfg_client_new_ma": ("Bấm nút dưới đây là hệ thống tạo trọn bộ cho {ma}: agent của EA, agent "
                           "clicker, token clicker ghi thẳng vào config.toml, và dòng cấu hình "

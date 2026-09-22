@@ -101,72 +101,42 @@ Chạy lại bao nhiêu lần cũng được — bước nào xong rồi in `BO 
 | `-BoQuaTroLy` | Chỉ dựng nền rồi dừng, in danh sách việc phải làm tay |
 | `-LamMoiVenv` | Tạo lại `.venv` |
 
-## A2. Ba việc còn lại — làm trên trình duyệt và trong MT5
+## A2 + A3. Làm theo tab Hướng dẫn
 
-Trình duyệt vừa mở ở `http://127.0.0.1:8080/#huong-dan` (không cần đăng nhập — D-39) — tab **Hướng dẫn**,
-mục **Cài đặt lần đầu**. Đó là danh sách chính thức: **chín bước, theo đúng thứ tự**, mỗi bước tự
-biết đã xong chưa, và bước nào dashboard không thấy được (gắn EA lên chart, mở Toolbox) thì có ô
-để bạn tự tích. Phần dưới đây là cùng nội dung, viết dài hơn để đọc trước khi bắt tay.
+Trình duyệt vừa mở ở `http://127.0.0.1:8080/#huong-dan` (không cần đăng nhập — D-39), tab **Hướng
+dẫn**, mục **Cài đặt lần đầu**. **Đó là hướng dẫn chính thức, không phải tài liệu này.**
 
-Tab **Cấu hình** là nơi thao tác; khối **Cần làm** ở đầu tab đó nói gọn cái gì còn thiếu.
+Mỗi bước ở đó có: nơi làm (dashboard / MT5 / PowerShell), từng việc con đánh số theo thứ tự, cách
+tự kiểm, cái bẫy hay gặp, và đường dòng lệnh tương đương. Bước nào Bridge tự kiểm được thì nó tự
+chuyển sang **Đã xong** và **nói rõ đang còn thiếu đối tượng nào**; bước nào Bridge không thấy được
+(gắn EA lên chart, mở Toolbox) thì có ô để bạn tự tích.
 
-**1. Lấy token và gắn EA.** Khối **Agent** → *Cấp lại token* cho `AG-MASTER` và `AG-CLIENT`; token
-hiện **một lần** ngay trên trang. Rồi trong MT5:
+Trang đó là **một nguồn sự thật duy nhất**. Trước đây mục này chép lại cùng nội dung "để đọc trước
+khi bắt tay", và hai bản đã lệch nhau thật: trang có bước biên dịch EA, mục này thì không; mục này
+nói "chín bước" trong khi trang có tám. Một tài liệu song song là một tài liệu sẽ sai.
 
-- Chép `C:\CopyBridge\ea\CopyBridgeMaster.ex5` vào `MQL5\Experts` của terminal **Master**,
-  `CopyBridgeClient.ex5` vào terminal **Client** (File → Open Data Folder).
-- Kéo EA lên **đúng MỘT chart** mỗi terminal. `AgentToken` = token vừa lấy,
-  `BridgeHost` = `127.0.0.1`, `BridgePort` = `8787`. Tab Common: tick **Allow Algo Trading**.
-- Tab **Experts** phải hiện `CopyBridgeMaster khoi dong ...` / `CopyBridgeClient khoi dong ...`.
+### Những gì tab Hướng dẫn KHÔNG nói được
 
-> **Hai chart cùng gắn EA = hai kết nối cùng token đá nhau liên tục** (đã gây 388 nghìn alert
-> 12→15/09). Kiểm menu **Window** và tab Experts: tên chart trong ngoặc chỉ được có **một**.
+Chỉ ba thứ, vì chúng nằm ngoài tầm Bridge:
 
-**2. Khai clicker — thường không phải làm gì.** Bridge **tự suy** số tài khoản của clicker từ EA
-chạy trên chính terminal đó, và lấy tiêu đề cửa sổ mặc định bằng chính số ấy (D-38). Khối **Agent**
-hiện giá trị tự suy; chỉ khai tay khi topology lạ. Nếu bạn khai tay một con số khác con số EA báo,
-khối **Cần làm** sẽ nêu **cả hai** ở mức CHẶN — lệch nghĩa là clicker đang lái nhầm terminal.
+**Nếu dashboard không mở được.** Mọi bước đều có đường dòng lệnh tương đương, in ngay trong phần
+Chi tiết của chính bước đó. Danh sách đầy đủ: `bridge.admin --help`.
 
-Khi phải khai tay, hai ô là:
+**Nếu bạn chưa có `.ex5`.** Bước 1 của danh sách là biên dịch EA. Cần MetaEditor có sẵn cùng MT5;
+đường dẫn mặc định nằm trong câu lệnh của bước đó. Biên dịch **không** cần mở giao diện MetaEditor.
 
-| Clicker | Số tài khoản | Tiêu đề cửa sổ |
-|---|---|---|
-| `AG-CLICKER` | tài khoản **Client** | thường chính là số tài khoản Client |
-| `AG-CLICKER-MASTER` | tài khoản **Master** | thường chính là số tài khoản Master |
+**Đường đóng phía Master.** A1 đặt sẵn **UI** để deal đóng trên Master mang `CLIENT` thay vì
+`EXPERT`; đổi về `EA` được ở tab Cấu hình → khối Đường đóng phía Master. Đây là lựa chọn kiến trúc,
+không phải một bước cài đặt, nên nó không nằm trong danh sách.
 
-Tiêu đề **phải chứa số tài khoản** — cửa sổ MT5 mở đầu tiêu đề bằng số tài khoản, và đó là thứ
-clicker đối chiếu trước **mỗi** cú bấm. Đừng dùng chuỗi chung như `MetaTrader 5`: nó khớp cả hai
-terminal. Khối **Cần làm** bắt cả hai lỗi này. Chưa khai thì clicker **không chạy** (thoát mã 4 và
-thử lại mỗi 60 giây).
-
-**3. Ánh xạ symbol.** Khối **Ánh xạ symbol**: hai **danh sách chọn** lấy từ Market Watch thật của
-hai bên, kèm dòng **đề xuất** (`XAUUSD → XAUUSDm`) bấm *Nhận* để điền. Dashboard kiểm với sàn trước
-khi lưu — nên nó vừa khai báo vừa nghiệm thu. Hệ thống **không tự tạo** ánh xạ: chọn sai symbol
-không báo lỗi, nó chỉ lặng lẽ copy sang một thị trường khác.
-**Thiếu ánh xạ là mọi lệnh Master bị bỏ qua trong im lặng.** Cần EA Client đang chạy và symbol đã
-kéo vào Market Watch, nên làm sau việc 1.
-
-**Tuỳ chọn, cùng trang:** chiều copy (`OPPOSITE` = Master BUY thì Client SELL), hệ số volume,
-đường mở/đóng lệnh, *Cho phép Client đóng ngược Master* (mặc định **tắt**), và *Đường đóng phía
-Master* (A1 đặt sẵn **UI** để deal đóng trên Master mang `CLIENT`; đổi về EA được).
+### Ba điều về hành vi copy, đọc một lần là đủ
 
 - **Mở lệnh chỉ đi một chiều Master → Client.** Mở tay ở Client không làm Master vào lệnh.
-- **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi
-  *Cho phép Client đóng ngược Master* được bật.
+- **Đóng:** Master đóng thì Client luôn đóng theo. Client đóng thì Master chỉ đóng theo khi *Cho
+  phép Client đóng ngược Master* được bật (mặc định **tắt**).
 - Đổi cấu hình chỉ áp cho **lệnh mới**; cặp đang mở giữ tỷ lệ cũ.
 
-## A3. Bật copy
-
-Khối **Cần làm** hết mục `CHẶN` là xong phần khai. Bấm **Bắt đầu copy** trên thanh trên cùng —
-hoặc kiểm bằng dòng lệnh trước cho chắc:
-
-```powershell
-Set-Location C:\CopyBridge
-.\scripts\kiem-tra.ps1
-.\.venv\Scripts\python.exe -m bridge.admin liet-ke        # cac agent ONLINE
-```
-
-Thử trên **demo**, volume nhỏ nhất:
+### Nghiệm thu, trên demo, volume nhỏ nhất
 
 | Thử | Đạt khi |
 |---|---|
@@ -177,10 +147,6 @@ Thử trên **demo**, volume nhỏ nhất:
 | `bridge.admin kiem-dong-sai` | `[A] [B] [C]` đều 0 |
 
 Thêm Client thứ hai: mục **B6**. Xong phần A — từ giờ theo **Phần C** mỗi lần đăng nhập.
-
----
-
-# Phần B — VPS đã có hệ thống
 
 ## B1. Cập nhật lên code mới (việc thường gặp nhất)
 

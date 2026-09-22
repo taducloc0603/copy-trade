@@ -800,3 +800,47 @@ là một đánh đổi có ý thức cho một VPS một người vận hành, 
 khẩu" và "cấp token bị chặn khi không có mật khẩu" không còn đúng. Bước `LD_MAT_KHAU` biến khỏi
 danh sách Cài đặt lần đầu — còn **tám** việc — và mã chặn `CHUA_DAT_MAT_KHAU` biến khỏi
 `viec_can_lam`. Số ô phải điền tay trên trang Cấu hình xuống **0**.
+
+### D-40 — Một bước hướng dẫn có bốn phần, không phải một câu
+
+Lần chạy thử tài liệu trên VPS 2026-09-22 tắc ở bước 1 và không đi tiếp được. Gỡ xong cái tắc
+(D-39) thì lộ ra vấn đề lớn hơn: **mô hình dữ liệu của một bước quá hẹp**. Một bước chỉ có một
+chuỗi chữ, một câu lệnh, một trạng thái — nên mọi thứ phải nhồi vào câu chữ. Bước `LD_GAN_EA` gói
+**sáu** hành động vào một đoạn: cấp token cho hai agent, kéo EA lên đúng một chart, dán token, đặt
+host, đặt port, cảnh báo hai chart. Không thứ tự, không nói làm ở đâu, không cách tự kiểm.
+
+**Một bước nay có bốn phần** (`views.Buoc`), và ba trong bốn là bắt buộc:
+
+* `khoa` — một dòng để quét mắt. Test chặn nó dài quá 70 ký tự.
+* `khoa_viec` — **tuple** các việc con, theo đúng thứ tự phải làm. Tuple chứ không phải một đoạn
+  văn: một danh sách có thứ tự thì không thể viết lẫn lộn được.
+* `khoa_kiem` — nhìn thấy gì thì coi là xong.
+* `khoa_bay` — cái bẫy **đã** bắt được người thật. Không có thì để trống.
+
+Cộng `noi` (dashboard / MT5 / PowerShell): ba nơi ấy đòi ba thứ khác nhau của người vận hành, nên
+nói trước là tiết kiệm được một lần mò.
+
+**Bước đỏ phải nói đỏ vì ĐỐI TƯỢNG nào.** `viec_can_lam` vốn đã sinh sẵn một dòng cho từng agent,
+từng Client — và `_mot_buoc` nén hết xuống thành một boolean rồi bỏ đi. Nay nó đi thẳng lên trang,
+nằm **ngoài** khối Chi tiết: một lý do phải bấm mới thấy thì không khác gì không có.
+
+**Ba lỗ hổng nội dung sửa kèm:**
+
+1. **Thêm bước biên dịch EA vào lần đầu.** Lệnh biên dịch trước đây chỉ nằm ở nhóm *sau khi cập
+   nhật*, nên người cài lần đầu không hề được bảo phải tạo `.ex5`. Không có file đó thì bước gắn EA
+   không làm được, mà triệu chứng lại là "EA không kéo được lên chart" — một câu không dẫn về đây.
+2. **`AGENT_CHUA_ONLINE` tách theo role.** Agent EA và agent clicker hỏng vì hai lý do khác hẳn và
+   sửa bằng hai việc khác hẳn. Một mã chung buộc câu chữ phải nước đôi ("gắn EA lên chart, **hoặc**
+   kiểm clicker đang chạy"), và bước "Gắn EA" liệt kê cả clicker — bảo người dùng gắn EA cho một
+   thứ không có EA. Nhìn thấy trên màn hình thật, không đọc ra từ code.
+3. **Mọi bước làm trên dashboard đều in đường dòng lệnh tương đương.** Ngày 2026-09-22 đường
+   dashboard tắc và trang không nhắc một câu nào về `bridge.admin`, dù CLI phủ hết cả chín bước.
+   Một hướng dẫn chỉ có một đường là một hướng dẫn hỏng khi đường đó hỏng.
+
+**`docs/CAI-DAT-VPS.md` A2/A3 co lại thành con trỏ.** Trước đây nó chép lại cùng nội dung "để đọc
+trước khi bắt tay", và hai bản đã lệch thật: trang có bước biên dịch, doc thì không; doc nói "chín
+bước" trong khi trang có tám. Nay doc chỉ giữ ba thứ tab Hướng dẫn không nói được, và bảng nghiệm
+thu. Một tài liệu song song là một tài liệu sẽ sai.
+
+**Câu mô tả nhóm thôi ghi cứng số việc.** Bản cũ ghi "Chín việc" khi danh sách có tám — số bước đã
+đổi ba lần và không ai sửa câu đó. Giao diện tự đếm; có test chặn việc ghi lại bằng chữ.

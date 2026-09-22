@@ -11,7 +11,7 @@ không chứa nhãn nào, nên thêm một ngôn ngữ hay đổi cách gọi m�
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, NamedTuple
 
 from bridge.clock import parse_iso
 from bridge.config import KHOA_FILE_SUA_DUOC
@@ -391,16 +391,20 @@ def viec_can_lam(db: Database, config: Any = None) -> list[dict[str, Any]]:
                  UI["can_lam_tieu_de_lech"].format(agent_id=a["agent_id"], login=login,
                                                    tieu_de=tieu_de))
 
-    # -- agent chưa nối, hoặc terminal mất kết nối sàn -------------------------------------------
+    # -- agent chưa nối ------------------------------------------------------------------------
+    # Tách theo role, vì hai loại đòi hai việc KHÁC HẲN nhau: agent EA cần gắn EA lên chart, agent
+    # clicker thì không có EA nào cả — nó là một tiến trình trên VPS. Bản đầu dùng chung một mã,
+    # nên bước "Gắn EA" liệt kê cả clicker và bảo người dùng gắn EA cho chúng, còn câu chữ thì
+    # phải nước đôi ("hoặc kiểm clicker đang chạy"). Nhìn thấy trên màn hình thật 2026-09-22.
     for a in agents:
-        if not a["enabled"]:
+        if not a["enabled"] or a["status"] == "ONLINE":
             continue
-        if a["status"] == "ONLINE":
-            continue
-        them(MUC_CHAN, "AGENT_CHUA_ONLINE",
-             UI["can_lam_agent_chua_online"].format(
-                 agent_id=a["agent_id"], role=label(AGENT_ROLE, a["role"]),
-                 status=label(AGENT_STATUS, a["status"])))
+        ma = "CLICKER_CHUA_ONLINE" if a["role"] == "CLICKER" else "AGENT_CHUA_ONLINE"
+        khoa = ("can_lam_clicker_chua_online" if a["role"] == "CLICKER"
+                else "can_lam_agent_chua_online")
+        them(MUC_CHAN, ma,
+             UI[khoa].format(agent_id=a["agent_id"], role=label(AGENT_ROLE, a["role"]),
+                             status=label(AGENT_STATUS, a["status"])))
 
     # -- Algo Trading: lưới cuối của đường đóng (B-09) ------------------------------------------
     for a in agents:
@@ -468,37 +472,98 @@ BUOC_TU_TICH = "TU_TICH"
 NHOM_LAN_DAU = "LAN_DAU"
 NHOM_SAU_UPDATE = "SAU_UPDATE"
 
-#: Một bước: `(mã, khoá nhãn, mã kiểm của viec_can_lam, khoá câu lệnh)`.
-#:
-#: `ma_kiem` rỗng nghĩa là **tự tích**. `khoa_lenh` rỗng nghĩa là bước không có câu lệnh nào để
-#: copy — phần lớn việc làm trên chính trang này hoặc trong MT5.
-BUOC_LAN_DAU: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
-    ("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), ""),
-    # `CHUA_CO_AGENT` đi kèm hai bước dưới đây vì thiếu nó thì phép kiểm thành **rỗng**: chưa có
-    # clicker nào thì "mọi clicker đã khai xong" là đúng về logic và sai về sự thật — và một bước
-    # báo Đã xong khi chưa ai làm gì là cách nhanh nhất để mất lòng tin vào cả danh sách.
-    ("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
-     ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK"), ""),
-    ("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), ""),
-    ("LD_TOOLBOX", "hd_ld_toolbox", (), ""),
-    ("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), ""),
-    ("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), ""),
-    ("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), ""),
-    ("LD_THU_DEMO", "hd_ld_thu_demo", (), "hd_lenh_kiem_demo"),
+#: Việc của một bước làm Ở ĐÂU. Ba nơi này đòi ba thứ khác nhau của người vận hành — đổi cửa sổ,
+#: đổi cách gõ, đổi cả tâm thế — nên nói trước là tiết kiệm được một lần mò.
+NOI_DASHBOARD = "DASHBOARD"
+NOI_MT5 = "MT5"
+NOI_POWERSHELL = "POWERSHELL"
+
+
+class Buoc(NamedTuple):
+    """Một bước trong danh sách việc.
+
+    Bản đầu chỉ có bốn trường, và mọi thứ phải nhồi vào `khoa` — một chuỗi. Kết quả: bước "gắn EA"
+    gói SÁU hành động vào một câu, không thứ tự, không nói làm ở đâu, không cách tự kiểm. Lần chạy
+    thử tài liệu trên VPS 2026-09-22 tắc ngay ở đó.
+
+    Nên tách ra: `khoa` chỉ còn là một dòng để quét mắt, phần hướng dẫn thật nằm trong `khoa_viec`
+    (các việc con, đánh số theo thứ tự phải làm), `khoa_kiem` (tự kiểm bằng cách nào) và `khoa_bay`
+    (cái bẫy đã bắt được người thật).
+    """
+
+    #: Mã bước — cũng là khoá của ô tự tích trong database, nên ĐỔI LÀ MẤT ô tích cũ.
+    ma: str
+    #: Nhãn một dòng.
+    khoa: str
+    #: Mã kiểm của `viec_can_lam`. Rỗng nghĩa là **tự tích**.
+    ma_kiem: tuple[str, ...]
+    #: Nơi làm việc này.
+    noi: str
+    #: Nhãn chứa **tuple** các việc con, theo đúng thứ tự phải làm.
+    khoa_viec: str
+    #: Nhãn: tự kiểm bước này xong chưa bằng cách nào.
+    khoa_kiem: str
+    #: Nhãn câu lệnh để copy. Rỗng = không có.
+    khoa_lenh: str = ""
+    #: Nhãn cái bẫy thường gặp. Rỗng = không có.
+    khoa_bay: str = ""
+
+
+# `CHUA_CO_AGENT` / `CHUA_CO_CLIENT` đi kèm nhiều bước vì thiếu chúng thì phép kiểm thành **rỗng**:
+# chưa có clicker nào thì "mọi clicker đã khai xong" là đúng về logic và sai về sự thật — và một
+# bước báo Đã xong khi chưa ai làm gì là cách nhanh nhất để mất lòng tin vào cả danh sách.
+BUOC_LAN_DAU: tuple[Buoc, ...] = (
+    # Bước này KHÔNG có trong bản đầu, và đó là một lỗ hổng thật: lệnh biên dịch chỉ nằm ở nhóm
+    # "sau khi cập nhật", nên người cài LẦN ĐẦU không hề được bảo phải tạo `.ex5`. Không có file
+    # đó thì bước gắn EA ngay dưới không thể làm được, và triệu chứng lại là "EA không kéo được
+    # lên chart" — một câu không dẫn về đây.
+    Buoc("LD_BIEN_DICH", "hd_ld_bien_dich", (), NOI_POWERSHELL,
+         "hd_ld_bien_dich_viec", "hd_ld_bien_dich_kiem", "hd_lenh_bien_dich",
+         "hd_ld_bien_dich_bay"),
+    Buoc("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), NOI_MT5,
+         "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_lenh_liet_ke", "hd_ld_gan_ea_bay"),
+    Buoc("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
+         ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK",
+          "CLICKER_CHUA_ONLINE"), NOI_DASHBOARD,
+         "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_lenh_sua_agent",
+         "hd_ld_khai_clicker_bay"),
+    Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
+         "hd_ld_algo_viec", "hd_ld_algo_kiem", "", "hd_ld_algo_bay"),
+    Buoc("LD_TOOLBOX", "hd_ld_toolbox", (), NOI_MT5,
+         "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "", "hd_ld_toolbox_bay"),
+    Buoc("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), NOI_DASHBOARD,
+         "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_lenh_anh_xa", "hd_ld_anh_xa_bay"),
+    Buoc("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), NOI_DASHBOARD,
+         "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "hd_lenh_cau_hinh_client", ""),
+    Buoc("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
+         "hd_ld_bat_copy_viec", "hd_ld_bat_copy_kiem", "hd_lenh_run_mode", "hd_ld_bat_copy_bay"),
+    Buoc("LD_THU_DEMO", "hd_ld_thu_demo", (), NOI_MT5,
+         "hd_ld_thu_demo_viec", "hd_ld_thu_demo_kiem", "hd_lenh_kiem_demo",
+         "hd_ld_thu_demo_bay"),
 )
 
-BUOC_SAU_UPDATE: tuple[tuple[str, str, tuple[str, ...], str], ...] = (
-    ("UP_CTRL_F5", "hd_up_ctrl_f5", (), ""),
-    ("UP_GAN_LAI_EA", "hd_up_gan_lai_ea", (), "hd_lenh_bien_dich"),
-    ("UP_AGENT_ONLINE", "hd_up_agent_online", ("AGENT_CHUA_ONLINE",), "hd_lenh_liet_ke"),
-    ("UP_CODE_CU", "hd_up_code_cu", (), "hd_lenh_kiem_tra"),
-    ("UP_CONFIG_SOT", "hd_up_config_sot", ("CONFIG_CON_KHOA_CLICKER",), ""),
-    ("UP_BAT_COPY", "hd_up_bat_copy", ("CHUA_BAT_COPY",), ""),
-    ("UP_TINH_HINH", "hd_up_tinh_hinh", (), "hd_lenh_tinh_hinh"),
+BUOC_SAU_UPDATE: tuple[Buoc, ...] = (
+    Buoc("UP_CTRL_F5", "hd_up_ctrl_f5", (), NOI_DASHBOARD,
+         "hd_up_ctrl_f5_viec", "hd_up_ctrl_f5_kiem", "", ""),
+    Buoc("UP_GAN_LAI_EA", "hd_up_gan_lai_ea", (), NOI_MT5,
+         "hd_up_gan_lai_ea_viec", "hd_up_gan_lai_ea_kiem", "hd_lenh_bien_dich",
+         "hd_up_gan_lai_ea_bay"),
+    Buoc("UP_AGENT_ONLINE", "hd_up_agent_online",
+         ("AGENT_CHUA_ONLINE", "CLICKER_CHUA_ONLINE"), NOI_POWERSHELL,
+         "hd_up_agent_online_viec", "hd_up_agent_online_kiem", "hd_lenh_liet_ke",
+         "hd_up_agent_online_bay"),
+    Buoc("UP_CODE_CU", "hd_up_code_cu", (), NOI_POWERSHELL,
+         "hd_up_code_cu_viec", "hd_up_code_cu_kiem", "hd_lenh_kiem_tra", ""),
+    Buoc("UP_CONFIG_SOT", "hd_up_config_sot", ("CONFIG_CON_KHOA_CLICKER",), NOI_DASHBOARD,
+         "hd_up_config_sot_viec", "hd_up_config_sot_kiem", "", "hd_up_config_sot_bay"),
+    Buoc("UP_BAT_COPY", "hd_up_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
+         "hd_up_bat_copy_viec", "hd_up_bat_copy_kiem", "hd_lenh_run_mode", ""),
+    Buoc("UP_TINH_HINH", "hd_up_tinh_hinh", (), NOI_POWERSHELL,
+         "hd_up_tinh_hinh_viec", "hd_up_tinh_hinh_kiem", "hd_lenh_tinh_hinh", ""),
 )
 
 #: Mọi mã bước, để `ops.dat_tich_huong_dan` từ chối mã lạ.
-MA_BUOC = tuple(b[0] for b in BUOC_LAN_DAU + BUOC_SAU_UPDATE)
+MA_BUOC = tuple(b.ma for b in BUOC_LAN_DAU + BUOC_SAU_UPDATE)
 
 
 def _buoc_ea_doi_moi_hien(ma: str, ea_doi: bool) -> bool:
@@ -510,42 +575,51 @@ def _buoc_ea_doi_moi_hien(ma: str, ea_doi: bool) -> bool:
     return ma != "UP_GAN_LAI_EA" or ea_doi
 
 
-def _mot_buoc(bo: tuple[str, str, tuple[str, ...], str], ma_thieu: set[str],
-              da_tich: set[str]) -> dict[str, Any]:
-    ma, khoa, ma_kiem, khoa_lenh = bo
-    if ma_kiem:
-        trang_thai = BUOC_CON_THIEU if (set(ma_kiem) & ma_thieu) else BUOC_XONG
+def _mot_buoc(b: Buoc, thieu: list[dict[str, Any]], da_tich: set[str]) -> dict[str, Any]:
+    # `thieu` là CẢ danh sách việc còn thiếu, không phải tập mã. `viec_can_lam` đã sinh sẵn một
+    # dòng cho TỪNG đối tượng — "AG-CLIENT (Client) đang OFFLINE" — và bản đầu nén hết xuống thành
+    # một boolean rồi bỏ đi. Một bước đỏ mà không nói đỏ vì cái gì thì người dùng phải đi dò lại
+    # bằng tay đúng thứ Bridge vừa biết.
+    cua_buoc = [v["chu"] for v in thieu if v["ma"] in b.ma_kiem]
+    if b.ma_kiem:
+        trang_thai = BUOC_CON_THIEU if cua_buoc else BUOC_XONG
     else:
         trang_thai = BUOC_TU_TICH
     return {
-        "ma": ma,
-        "chu": UI[khoa],
-        "lenh": UI[khoa_lenh] if khoa_lenh else "",
+        "ma": b.ma,
+        "chu": UI[b.khoa],
+        "noi": b.noi,
+        "viec": list(UI[b.khoa_viec]),
+        "kiem": UI[b.khoa_kiem],
+        "bay": UI[b.khoa_bay] if b.khoa_bay else "",
+        "lenh": UI[b.khoa_lenh] if b.khoa_lenh else "",
         "trang_thai": trang_thai,
-        "da_tich": ma in da_tich,
+        "da_tich": b.ma in da_tich,
+        "thieu": cua_buoc,
         # `tu_kiem` = Bridge tự biết bước này xong chưa. Giao diện dùng nó để quyết định hiện dấu
         # tích hay hiện ô cho người dùng tự tích — JS không được tự suy ra điều đó.
-        "tu_kiem": bool(ma_kiem),
+        "tu_kiem": bool(b.ma_kiem),
     }
 
 
 def trang_huong_dan(db: Database, config: Any = None) -> dict[str, Any]:
     """Hai nhóm việc kèm trạng thái từng bước, và nhóm nào nên mở sẵn."""
     thieu = viec_can_lam(db, config)
-    ma_thieu = {v["ma"] for v in thieu}
     # Khoá clicker còn sót trong `config.toml` **thắng** database (D-32), nên nó là một việc thật
     # sự còn thiếu — nhưng nó không nằm trong `viec_can_lam` vì chỉ trang Cấu hình đọc file. Lấy
     # từ cùng một nguồn mà khối config.toml dùng, để hai chỗ không bao giờ nói khác nhau.
-    if any(d.get("chi_doc") for d in _mo_ta_file_config(config)):
-        ma_thieu.add("CONFIG_CON_KHOA_CLICKER")
+    sot = [d["khoa"] for d in _mo_ta_file_config(config) if d.get("chi_doc")]
+    if sot:
+        thieu = [*thieu, {"muc": MUC_CHAN, "ma": "CONFIG_CON_KHOA_CLICKER",
+                          "chu": UI["can_lam_config_con_khoa"].format(khoa=", ".join(sot))}]
 
     da_tich = doc_tich_huong_dan(db)
     ea_doi = (db.get_config("cap_nhat_ea_doi", "0") or "0") == "1"
     moc = (db.get_config("moc_cap_nhat", "") or "").strip() or None
 
-    lan_dau = [_mot_buoc(b, ma_thieu, da_tich) for b in BUOC_LAN_DAU]
-    sau_update = [_mot_buoc(b, ma_thieu, da_tich) for b in BUOC_SAU_UPDATE
-                  if _buoc_ea_doi_moi_hien(b[0], ea_doi)]
+    lan_dau = [_mot_buoc(b, thieu, da_tich) for b in BUOC_LAN_DAU]
+    sau_update = [_mot_buoc(b, thieu, da_tich) for b in BUOC_SAU_UPDATE
+                  if _buoc_ea_doi_moi_hien(b.ma, ea_doi)]
 
     def con_viec(buoc: list[dict[str, Any]]) -> bool:
         return any(b["trang_thai"] == BUOC_CON_THIEU

@@ -135,6 +135,29 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 .ds-buoc .the-muc { color: var(--do); font-weight: 700; margin-right: 4px; }
 .ds-buoc li.xong .the-muc { color: var(--xanh); }
 .ds-buoc .o-tich { width: 15px; height: 15px; vertical-align: -2px; margin-right: 4px; }
+
+/* "Dang con thieu": ly do buoc nay dang do, in NGAY tren dong buoc chu khong an trong Chi tiet.
+   Mot ly do phai bam moi thay thi khong khac gi khong co. */
+.buoc-thieu { margin: 6px 0 0; }
+.buoc-thieu ul { margin: 2px 0 0; padding-left: 1.2rem; }
+.buoc-thieu li { border: 0; padding: 1px 0; margin: 0; font-size: 12px; color: var(--do); }
+.nhan-nho { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--mo); }
+
+/* Khoi Chi tiet: dong san. Mo het ra thi danh sach dai qua man hinh va thanh mot buc tuong chu. */
+.chi-tiet-buoc { margin: 6px 0 0; }
+.chi-tiet-buoc > summary {
+  cursor: pointer; font-size: 12px; color: var(--lam); width: max-content;
+}
+.chi-tiet-buoc > * { font-size: 12px; }
+.ds-viec { margin: 4px 0 8px; padding-left: 1.4rem; }
+.ds-viec li {
+  border: 0; padding: 2px 0; margin: 0; font-size: 12px; line-height: 1.5;
+  color: var(--chu);
+}
+.buoc-noi   { margin: 6px 0 2px; color: var(--mo); }
+.buoc-kiem  { margin: 4px 0; padding-left: 8px; border-left: 2px solid var(--xanh); }
+.buoc-bay   { margin: 4px 0; padding-left: 8px; border-left: 2px solid var(--cam); }
+
 /* Cau lenh de copy: nguoi dung dang o RDP nen bam-de-chon dang tin hon la boi bang chuot. */
 .ds-buoc .lenh {
   margin: 6px 0 0; padding: 8px 10px; background: var(--nen); border: 1px solid var(--vien);

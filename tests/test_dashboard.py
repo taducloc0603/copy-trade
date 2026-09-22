@@ -801,7 +801,14 @@ def test_huong_dan_buoc_tu_kiem_doi_trang_thai_khi_sua_dung_nguyen_nhan(
     seeded_web.upsert_agent("AG-CLICKER-X", role="CLICKER", token_hash="h", magic_number=770001)
     assert _buoc(seeded_web)["LD_KHAI_CLICKER"]["trang_thai"] == "CON_THIEU"
 
+    # Khai xong mà clicker vẫn chưa nối thì bước CHƯA xong: khai tiêu đề không làm clicker chạy,
+    # nó chỉ gỡ lý do khiến clicker thoát mã 4. Bước này chỉ xanh khi clicker THẬT SỰ lên.
     dat_terminal_clicker(seeded_web, "AG-CLICKER-X", 538217, "538217 - Demo")
+    assert _buoc(seeded_web)["LD_KHAI_CLICKER"]["trang_thai"] == "CON_THIEU"
+
+    for a in seeded_web.query_all("SELECT agent_id FROM agent WHERE role = 'CLICKER'"):
+        seeded_web.upsert_agent(a["agent_id"], role="CLICKER", token_hash="h", magic_number=0,
+                                status="ONLINE")
     assert _buoc(seeded_web)["LD_KHAI_CLICKER"]["trang_thai"] == "XONG"
 
 
@@ -1008,3 +1015,85 @@ def test_huong_dan_o_tu_tich_chua_bam_khong_lam_ket_o_muc_lan_dau(db: Database) 
     lan_dau = next(n for n in hd["nhom"] if n["ma"] == "LAN_DAU")
     assert any(b["trang_thai"] == "TU_TICH" and not b["da_tich"] for b in lan_dau["buoc"])
     assert hd["che_do"] == "SAU_UPDATE"
+
+
+# -- huong dan chi tiet (ban 2026-09-22) -------------------------------------------------------
+#
+# Lan chay thu tai lieu tren VPS tac ngay o buoc 1: mot buoc = mot dong chu, gom sau hanh dong,
+# khong thu tu, khong noi lam o dau, khong cach tu kiem. Bon test duoi day khoa lai dung bon thieu
+# sot do, de mot ban sau khong am tham quay ve bang mot dong.
+
+def test_moi_buoc_co_du_bon_phan(seeded_web: Database) -> None:
+    """Mỗi bước phải có: nơi làm, các việc con, cách tự kiểm. `bay` thì tuỳ bước.
+
+    Thiếu một trong ba là quay về đúng bản đã tắc: người đọc biết phải làm *gì* nhưng không biết
+    làm *ở đâu*, theo thứ tự nào, và nhìn thấy gì thì coi là xong.
+    """
+    for ma, b in _buoc(seeded_web).items():
+        assert b["noi"] in ("DASHBOARD", "MT5", "POWERSHELL"), f"{ma}: noi = {b['noi']!r}"
+        assert len(b["viec"]) >= 2, f"{ma}: chi co {len(b['viec'])} viec con"
+        assert b["kiem"].strip(), f"{ma}: khong noi cach tu kiem"
+        # Mot dong chu de quet mat, khong phai mot doan van: doan van la dung thu vua bo.
+        assert len(b["chu"]) <= 70, f"{ma}: dong mot dai {len(b['chu'])} ky tu"
+
+
+def test_buoc_do_noi_ro_do_vi_DOI_TUONG_nao(seeded_web: Database) -> None:
+    """Bước đỏ phải nói rõ **đối tượng nào** đang thiếu, không chỉ một dấu ✗.
+
+    `viec_can_lam` đã sinh sẵn một dòng cho từng agent / từng Client. Bản đầu nén hết xuống thành
+    một boolean rồi bỏ đi, nên một bước đỏ bắt người dùng đi dò lại bằng tay đúng thứ Bridge vừa
+    biết.
+    """
+    b = _buoc(seeded_web)["LD_GAN_EA"]
+    assert b["trang_thai"] == "CON_THIEU"
+    assert b["thieu"], "buoc do ma khong noi thieu gi"
+    # Ten agent phai co mat trong loi giai thich.
+    assert any(MASTER_AGENT in t or CLIENT_AGENT in t for t in b["thieu"]), b["thieu"]
+
+    # Buoc xanh thi khong co gi de ke.
+    seeded_web.set_config("run_mode", "RUNNING")
+    assert _buoc(seeded_web)["LD_BAT_COPY"]["thieu"] == []
+
+
+def test_lan_dau_co_buoc_bien_dich_ea(seeded_web: Database) -> None:
+    """Lần đầu **phải** có bước biên dịch EA, và nó phải đứng trước bước gắn EA.
+
+    Bản đầu không có bước này: lệnh biên dịch chỉ nằm ở nhóm "sau khi cập nhật", nên người cài lần
+    đầu không hề được bảo phải tạo `.ex5`. Không có file đó thì bước gắn EA không làm được, mà
+    triệu chứng lại là "EA không kéo được lên chart" — một câu không dẫn về đây.
+    """
+    hd = views.trang_huong_dan(seeded_web)
+    lan_dau = next(n for n in hd["nhom"] if n["ma"] == views.NHOM_LAN_DAU)
+    ma = [b["ma"] for b in lan_dau["buoc"]]
+    assert "LD_BIEN_DICH" in ma
+    assert ma.index("LD_BIEN_DICH") < ma.index("LD_GAN_EA")
+    assert "MetaEditor64.exe" in _buoc(seeded_web)["LD_BIEN_DICH"]["lenh"]
+
+
+def test_moi_buoc_lam_tren_dashboard_deu_co_duong_dong_lenh(seeded_web: Database) -> None:
+    """Bước làm trên dashboard phải kèm đường dòng lệnh tương đương.
+
+    Ngày 2026-09-22 đường dashboard tắc (nút Cấp lại token trả 403 vì chưa đặt mật khẩu) và trang
+    không nhắc một câu nào về `bridge.admin` — nên không còn đường nào để đi tiếp, dù CLI phủ hết
+    cả chín bước. Một hướng dẫn chỉ có một đường là một hướng dẫn hỏng khi đường đó hỏng.
+    """
+    # `LD_CAU_HINH_COPY` va `UP_CTRL_F5` la ngoai le co y: mot cai la "xem lai roi tu tich" (lenh
+    # `cau-hinh-client` chi xem, van dua vao), con Ctrl+F5 thi khong co dong lenh nao tuong duong.
+    khong_can = {"UP_CTRL_F5", "UP_CONFIG_SOT"}
+    for ma, b in _buoc(seeded_web).items():
+        if b["noi"] != "DASHBOARD" or ma in khong_can:
+            continue
+        assert b["lenh"].strip(), f"{ma}: lam tren dashboard ma khong co duong dong lenh"
+        assert "bridge.admin" in b["lenh"], f"{ma}: lenh khong phai bridge.admin"
+
+
+def test_chu_nhom_lan_dau_khong_ghi_cung_so_viec(seeded_web: Database) -> None:
+    """Câu mô tả nhóm không được ghi số việc bằng chữ.
+
+    Bản cũ ghi "Chín việc" trong khi danh sách có tám, và không ai sửa — số bước đã đổi ba lần.
+    Giao diện tự đếm, nên câu chữ đừng nói lại.
+    """
+    from bridge.labels_vi import UI
+    chu = UI["hd_nhom_lan_dau_chu"].lower()
+    for so in ("bảy việc", "tám việc", "chín việc", "mười việc"):
+        assert so not in chu, f"cau mo ta con ghi cung so viec: {so!r}"

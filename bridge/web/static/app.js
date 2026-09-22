@@ -840,21 +840,75 @@ function dongBuoc(b) {
   }
 
   li.appendChild(document.createTextNode(" " + b.chu));
-  if (b.lenh) {
-    const ma = document.createElement("pre");
-    ma.className = "lenh";
-    ma.textContent = b.lenh;
-    // Bam la chon het: nguoi ta dang o RDP, va boi den mot dong lenh dai bang chuot qua RDP la
-    // thu de bo giua.
-    ma.onclick = () => {
-      const r = document.createRange();
-      r.selectNodeContents(ma);
-      window.getSelection().removeAllRanges();
-      window.getSelection().addRange(r);
-    };
-    li.appendChild(ma);
+
+  // Khoi "Dang con thieu" nam NGOAI phan Chi tiet: no la ly do buoc nay dang do, va mot ly do
+  // phai bam moi thay thi khong khac gi khong co. `viec_can_lam` da sinh san mot dong cho TUNG
+  // doi tuong -- agent nao, Client nao -- nen chi viec in ra.
+  if (b.thieu && b.thieu.length) {
+    const kh = document.createElement("div");
+    kh.className = "buoc-thieu";
+    kh.appendChild(nhan(UI.hd_nhan_thieu + ":", "nhan-nho"));
+    const ds = document.createElement("ul");
+    for (const t of b.thieu) {
+      const d = document.createElement("li");
+      d.textContent = t;
+      ds.appendChild(d);
+    }
+    kh.appendChild(ds);
+    li.appendChild(kh);
   }
+
+  li.appendChild(chiTietBuoc(b));
   return li;
+}
+
+// Bam de chon het: nguoi ta dang o RDP, va boi den mot dong lenh dai bang chuot qua RDP la thu de
+// bo giua.
+function khoiLenh(lenh) {
+  const ma = document.createElement("pre");
+  ma.className = "lenh";
+  ma.textContent = lenh;
+  ma.onclick = () => {
+    const r = document.createRange();
+    r.selectNodeContents(ma);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(r);
+  };
+  return ma;
+}
+
+// Phan chi tiet cua mot buoc: lam o dau, tung viec con theo thu tu, cach tu kiem, cai bay, va
+// duong dong lenh. Dong san -- danh sach mo het ra thi dai qua man hinh va thanh mot buc tuong chu.
+function chiTietBuoc(b) {
+  const hop = document.createElement("details");
+  hop.className = "chi-tiet-buoc";
+  const dau = document.createElement("summary");
+  dau.textContent = UI.hd_chi_tiet;
+  hop.appendChild(dau);
+
+  const noi = { DASHBOARD: UI.hd_noi_dashboard, MT5: UI.hd_noi_mt5,
+                POWERSHELL: UI.hd_noi_powershell }[b.noi];
+  if (noi) hop.appendChild(nhan(UI.hd_nhan_noi + ": " + noi, "buoc-noi"));
+
+  if (b.viec && b.viec.length) {
+    hop.appendChild(nhan(UI.hd_nhan_viec + ":", "nhan-nho"));
+    const ds = document.createElement("ol");
+    ds.className = "ds-viec";
+    for (const v of b.viec) {
+      const d = document.createElement("li");
+      d.textContent = v;
+      ds.appendChild(d);
+    }
+    hop.appendChild(ds);
+  }
+
+  if (b.kiem) hop.appendChild(nhan(UI.hd_nhan_kiem + ": " + b.kiem, "buoc-kiem"));
+  if (b.bay) hop.appendChild(nhan(UI.hd_nhan_bay + ": " + b.bay, "buoc-bay"));
+  if (b.lenh) {
+    hop.appendChild(nhan(UI.hd_nhan_lenh + ":", "nhan-nho"));
+    hop.appendChild(khoiLenh(b.lenh));
+  }
+  return hop;
 }
 
 function nhomHuongDan(n, moSan) {

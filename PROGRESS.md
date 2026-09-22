@@ -3481,3 +3481,45 @@ sach lan dau con 8 buoc khong co `LD_MAT_KHAU`. Va sau phep kiem host: ba dia ch
 tu choi kem duong sua, ba dia chi loopback chay duoc.
 
 907 test xanh (-52: xoa cac test chi ton tai vi dang nhap), ruff sach.
+
+## Viet lai trang Huong dan: mot buoc co bon phan (2026-09-22)
+
+Sau khi bo dang nhap (D-39), di tiep lan chay thu thi lo ra van de that: mo hinh du lieu cua mot
+buoc qua hep. Mot buoc chi co MOT chuoi chu, nen moi thu phai nhoi vao do -- `LD_GAN_EA` goi SAU
+hanh dong vao mot cau, khong thu tu, khong noi lam o dau, khong cach tu kiem.
+
+Nay mot buoc co: dong mot (co test chan dai qua 70 ky tu), TUPLE cac viec con theo thu tu, cach tu
+kiem, cai bay, noi lam (dashboard / MT5 / PowerShell), va duong dong lenh. Chi tiet nam trong mot
+khoi `<details>` dong san -- mo het ra thi danh sach thanh mot buc tuong chu.
+
+**Buoc do noi do vi DOI TUONG nao.** `viec_can_lam` von da sinh san mot dong cho tung agent, tung
+Client. `_mot_buoc` nen het xuong thanh mot boolean roi bo di. Chi viec thoi bo no -- khong phai
+lam moi gi ca. Phan nay nam NGOAI khoi Chi tiet: mot ly do phai bam moi thay thi khong khac gi
+khong co.
+
+**Ba lo hong noi dung:**
+
+1. Khong co buoc bien dich EA trong lan dau. Lenh bien dich chi nam o nhom sau-update, nen nguoi
+   cai lan dau khong he duoc bao phai tao `.ex5`. Chinh toi da phai hoi nguoi dung "da co
+   CopyBridgeMaster.ex5 chua" -- dung bang chung la tai lieu thieu.
+2. `AGENT_CHUA_ONLINE` dung chung cho moi role, nen buoc "Gan EA" liet ke ca AG-CLICKER va bao
+   nguoi dung gan EA cho clicker -- thu khong co EA. Va cau chu phai nuoc doi: "gan EA len chart,
+   HOAC kiem clicker dang chay". Tach theo role thi hai cau deu noi thang duoc.
+3. Moi buoc lam tren dashboard gio in ca duong `bridge.admin` tuong duong.
+
+`docs/CAI-DAT-VPS.md` A2/A3 co lai thanh con tro: 76 dong -> 47, chi giu ba thu tab Huong dan khong
+noi duoc. Hai ban da lech that (trang co buoc bien dich, doc thi khong; doc noi "chin buoc" trong
+khi trang co tam).
+
+**Ba dieu chi bat duoc bang cach MO TRINH DUYET ra nhin, khong doc code nao ra:**
+
+1. Buoc "Gan EA" liet ke ca hai clicker. Doc `ma_kiem` thi no hop ly; nhin man hinh thi no vo ly
+   ngay lap tuc.
+2. Lan xem dau tien khong thay khoi Chi tiet nao -- `app.js` cu trong cache trinh duyet, trong khi
+   chu buoc da la ban moi (chu den tu API, renderer den tu JS). Dung cai bay Ctrl+F5 ma chinh D-37
+   canh bao, va no bat chinh nguoi viet ra no.
+3. Lan thu hai van sai: uvicorn khoi dong TRUOC khi sua `views.py` nen dang phuc vu Python cu. Hai
+   lan lien tiep nhin nham mot ban cu ma khong biet.
+
+Kiem chung: 5 test moi, ca ba dot bien deu do dung cho (bo `thieu` -> do; bo buoc bien dich -> do;
+bo viec con -> do). 912 test xanh (+5), ruff sach.

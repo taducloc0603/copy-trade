@@ -15,12 +15,21 @@ from bridge.labels_vi import ALL_GROUPS, ENUM_GROUPS, PAIR_STATUS, RUN_MODE, lab
 
 @pytest.mark.parametrize("group_name", sorted(ALL_GROUPS))
 def test_moi_nhan_la_chuoi_khong_rong(group_name: str) -> None:
+    """Một nhãn là chuỗi không rỗng, hoặc một tuple chuỗi không rỗng.
+
+    Dạng tuple là các **việc con** của một bước trong trang Hướng dẫn (`hd_*_viec`): chúng phải là
+    một danh sách có thứ tự, không phải một đoạn văn cho người đọc tự tách ra.
+    """
     group = ALL_GROUPS[group_name]
     assert group, f"Nhóm {group_name} rỗng"
     for key, value in group.items():
         assert isinstance(key, str) and key, f"{group_name}: key không hợp lệ {key!r}"
-        assert isinstance(value, str), f"{group_name}[{key}] không phải chuỗi"
-        assert value.strip(), f"{group_name}[{key}] là chuỗi rỗng"
+        assert isinstance(value, str | tuple), f"{group_name}[{key}] không phải chuỗi hay tuple"
+        phan = value if isinstance(value, tuple) else (value,)
+        assert phan, f"{group_name}[{key}] là tuple rỗng"
+        for i, mot in enumerate(phan):
+            assert isinstance(mot, str), f"{group_name}[{key}][{i}] không phải chuỗi"
+            assert mot.strip(), f"{group_name}[{key}][{i}] là chuỗi rỗng"
 
 
 @pytest.mark.parametrize("group_name", sorted(ENUM_GROUPS))
