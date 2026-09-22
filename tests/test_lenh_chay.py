@@ -22,8 +22,9 @@ from bridge.web.lenh import GIOI_HAN_DONG, LENH_CHAY_DUOC, _cat, chay
 def test_moi_ma_chay_cua_buoc_deu_nam_trong_danh_sach_trang() -> None:
     """Bước khai một mã lệnh không có trong danh sách trắng = nút hiện ra rồi báo lỗi khi bấm."""
     for b in views.BUOC_LAN_DAU + views.BUOC_SAU_UPDATE:
-        for ma in b.ma_chay:
-            assert ma in LENH_CHAY_DUOC, f"{b.ma} khai ma_chay={ma!r} khong co trong danh sach"
+        for _khoa, ma in b.lenh:
+            # Rong = lenh phai TU GO (can tham so cua rieng nguoi van hanh). Hop le.
+            assert not ma or ma in LENH_CHAY_DUOC, f"{b.ma} khai {ma!r} khong co trong danh sach"
 
 
 def test_khong_ham_nao_dung_shell() -> None:
@@ -77,3 +78,60 @@ def test_cat_giu_phan_CUOI_cua_output() -> None:
     assert len(ra.split("\n")) == GIOI_HAN_DONG + 1
     # Ngan thi giu nguyen, khong them gi.
     assert _cat("mot\nhai") == "mot\nhai"
+
+
+def test_moi_cau_lenh_in_ra_hoac_chay_duoc_hoac_noi_ro_vi_sao_khong() -> None:
+    """Một ô lệnh trơ trơ không nút nào là một câu hỏi — và người dùng đã hỏi đúng câu đó.
+
+    Ngày 2026-09-22 bước "Bắt đầu copy" in `run-mode RUNNING` mà không có nút Chạy, trong khi bước
+    ngay trên nó thì có. Không có quy tắc nào giải thích được sự khác nhau ấy, vì hồi đó câu lệnh
+    IN RA và lệnh CHẠY ĐƯỢC là hai trường rời nhau.
+
+    Nay chúng đi thành cặp, nên chỉ còn hai khả năng hợp lệ và cả hai đều nói ra được:
+    chạy được (có mã), hoặc phải tự gõ vì cần tham số của riêng người vận hành.
+    """
+    phai_tu_go = set()
+    for b in views.BUOC_LAN_DAU + views.BUOC_SAU_UPDATE:
+        for khoa, ma in b.lenh:
+            if not ma:
+                phai_tu_go.add(khoa)
+                continue
+            assert ma in LENH_CHAY_DUOC, f"{b.ma}/{khoa}: ma {ma!r} khong co trong danh sach"
+
+    # Lenh phai tu go thi PHAI co cho giu cho -- do la bang chung no can tham so that, chu khong
+    # phai ai do quen gan ma chay.
+    from bridge.labels_vi import UI
+    for khoa in sorted(phai_tu_go):
+        assert "<" in UI[khoa], (
+            f"{khoa}: khai la phai tu go nhung cau lenh khong co cho giu cho nao -- "
+            f"vay sao khong chay ho duoc?"
+        )
+
+
+def test_lenh_ghi_chi_gom_dung_nhung_gi_dashboard_da_lam_duoc() -> None:
+    """Lệnh GHI trong danh sách trắng không được mở thêm quyền nào.
+
+    `RUN_MODE_RUNNING` và `BIEN_DICH_EA` đều ghi. Cả hai đã làm được từ trước bằng đường khác
+    (`/api/run_mode`, và trợ lý cài đặt), nên nút Chạy không thêm khả năng gì — nó chỉ bỏ bớt một
+    lần mở PowerShell. Thêm một lệnh ghi MỚI vào đây là một quyết định khác hẳn: đọc lại D-41.
+    """
+    ghi = {ma for ma, v in LENH_CHAY_DUOC.items() if v.ghi_dia}
+    assert ghi == {"BIEN_DICH_EA", "RUN_MODE_RUNNING"}, ghi
+
+
+def test_moi_lenh_deu_co_ten_tieng_viet_tren_nut(project_root: Path) -> None:
+    """Nút Chạy phải nói tên việc bằng tiếng Việt, không phải mã.
+
+    Thiếu một dòng trong bảng `TEN_LENH` của `app.js` thì nút hiện ra là "Chạy: RUN_MODE_RUNNING" —
+    đúng thứ mà cả tab Hướng dẫn tồn tại để tránh. Nó không hỏng, không báo lỗi, chỉ xấu và khó
+    hiểu, nên không có phép kiểm nào khác bắt được.
+    """
+    from bridge.labels_vi import UI
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("const TEN_LENH = {")
+    bang = js[dau:js.index("};", dau)]
+    for ma in sorted(LENH_CHAY_DUOC):
+        assert f'"{ma}"' in bang, f"app.js/TEN_LENH thieu {ma}"
+        khoa = "hd_lenh_ten_" + ma.lower()
+        assert khoa in bang, f"app.js/TEN_LENH: {ma} phai tro toi {khoa}"
+        assert khoa in UI, f"labels_vi thieu nhan {khoa}"

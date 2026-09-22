@@ -82,6 +82,12 @@ LENH_CHAY_DUOC: dict[str, LenhChay] = {
     "KIEM_DONG_SAI": LenhChay(lambda goc: _admin(goc, "kiem-dong-sai"), han_giay=60),
     "KIEM_TRA": LenhChay(lambda goc: _script_ps1(goc, "kiem-tra.ps1"), han_giay=180),
     "BIEN_DICH_EA": LenhChay(_bien_dich, han_giay=300, ghi_dia=True),
+    # Lệnh GHI duy nhất trong danh sách, và nó **không mở thêm quyền gì**: `/api/run_mode` đã làm
+    # đúng việc này từ trước, cũng không xác thực. Có ở đây để câu lệnh in trên tab Hướng dẫn có
+    # nút Chạy như mọi câu lệnh khác — một ô lệnh không có nút là một câu hỏi, và người dùng đã
+    # hỏi đúng câu đó ngày 2026-09-22.
+    "RUN_MODE_RUNNING": LenhChay(lambda goc: _admin(goc, "run-mode", "RUNNING"),
+                                 han_giay=60, ghi_dia=True),
 }
 
 

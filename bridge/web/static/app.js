@@ -1010,6 +1010,7 @@ const TEN_LENH = {
   "KIEM_DONG_SAI": "hd_lenh_ten_kiem_dong_sai",
   "KIEM_TRA": "hd_lenh_ten_kiem_tra",
   "BIEN_DICH_EA": "hd_lenh_ten_bien_dich_ea",
+  "RUN_MODE_RUNNING": "hd_lenh_ten_run_mode_running",
 };
 
 function veKetQuaChay(d) {
@@ -1039,22 +1040,33 @@ function veKetQuaChay(d) {
   return hop;
 }
 
-function veNutChay(b) {
-  if (!b.ma_chay || !b.ma_chay.length) return null;
+// Mot cau lenh: o chu de chep, roi NGAY DUOI la nut Chay cua chinh no -- hoac mot dong noi ro
+// vi sao khong co nut. Bam dau tien cua ban cu tach hai thu nay ra, va chung lech ngay: buoc Khai
+// clicker IN `sua-agent` nhung nut Chay cua no chay `liet-ke`, con buoc Bat copy in
+// `run-mode RUNNING` ma khong co nut nao. Nguoi dung hoi dung cho do.
+function veMotLenh(l) {
   const hop = document.createElement("div");
-  hop.className = "buoc-chay";
-  for (const ma of b.ma_chay) {
-    const ten = UI[TEN_LENH[ma]] || ma;
-    const n = nut((UI.hd_chay || "").replace("{ten}", ten), "chinh");
-    n.onclick = () => bamCho(n, async () => {
-      const cu = hop.querySelector(".ket-qua-chay");
-      if (cu) cu.remove();
-      const r = await goi("/api/chay/" + encodeURIComponent(ma), { method: "POST" });
-      if (!r.ok) { alert(r.data.message || r.data.error || UI.loi_khong_ro); return; }
-      hop.appendChild(veKetQuaChay(r.data));
-    });
-    hop.appendChild(n);
+  hop.className = "mot-lenh";
+  hop.appendChild(khoiLenh(l.chu));
+  if (!l.ma_chay) {
+    hop.appendChild(nhan(UI.hd_lenh_phai_tu_go, "lenh-tu-go"));
+    return hop;
   }
+  const ten = UI[TEN_LENH[l.ma_chay]] || l.ma_chay;
+  const n = nut((UI.hd_chay || "").replace("{ten}", ten), "chinh");
+  n.onclick = () => bamCho(n, async () => {
+    const cu = hop.querySelector(".ket-qua-chay");
+    if (cu) cu.remove();
+    const r = await goi("/api/chay/" + encodeURIComponent(l.ma_chay), { method: "POST" });
+    if (!r.ok) { alert(r.data.message || r.data.error || UI.loi_khong_ro); return; }
+    hop.appendChild(veKetQuaChay(r.data));
+    // Mot lenh GHI doi trang thai that, nen trang phai noi lai ngay thay vi doi WebSocket.
+    if (l.ma_chay === "RUN_MODE_RUNNING") {
+      const anh = await goi("/api/snapshot");
+      if (anh.ok) veTatCa(anh.data);
+    }
+  });
+  hop.appendChild(n);
   return hop;
 }
 
@@ -1095,12 +1107,10 @@ function chiTietBuoc(b) {
   if (nutLam) hop.appendChild(nutLam);
   if (b.kiem) hop.appendChild(nhan(UI.hd_nhan_kiem + ": " + b.kiem, "buoc-kiem"));
   if (b.bay) hop.appendChild(nhan(UI.hd_nhan_bay + ": " + b.bay, "buoc-bay"));
-  if (b.lenh) {
+  if (b.lenh && b.lenh.length) {
     hop.appendChild(nhan(UI.hd_nhan_lenh + ":", "nhan-nho"));
-    hop.appendChild(khoiLenh(b.lenh));
+    for (const l of b.lenh) hop.appendChild(veMotLenh(l));
   }
-  const nutChay = veNutChay(b);
-  if (nutChay) hop.appendChild(nutChay);
   return hop;
 }
 

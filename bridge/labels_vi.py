@@ -390,6 +390,11 @@ UI = {
     "hd_lenh_ten_kiem_dong_sai": "kiểm đóng sai",
     "hd_lenh_ten_kiem_tra": "kiểm tra toàn hệ thống",
     "hd_lenh_ten_bien_dich_ea": "biên dịch hai EA",
+    "hd_lenh_ten_run_mode_running": "bật copy",
+    # Lệnh phải tự gõ: nó cần tham số mà chỉ người vận hành biết (số tài khoản, tên symbol, mã
+    # Client), nên Bridge không chạy hộ được. Nói thẳng ra, đừng để một ô lệnh trơ trơ không nút
+    # nào rồi để người dùng tự đoán vì sao — họ đã hỏi đúng câu đó.
+    "hd_lenh_phai_tu_go": "Lệnh này cần tham số của riêng bạn nên phải tự gõ trong PowerShell.",
     "hd_kiem_xong": "Kiểm lúc {gio}: đã xong.",
     "hd_kiem_con_thieu": "Kiểm lúc {gio}: còn {n} việc — xem Đang còn thiếu ở trên.",
     "hd_kiem_tu_tich": "Kiểm lúc {gio}: bước này Bridge không tự thấy được, bạn tự tích.",
@@ -586,8 +591,10 @@ UI = {
     "hd_up_tinh_hinh_kiem": "tinh-hinh thoát 0, hoặc mọi mục nó nêu đều là thứ bạn đã biết.",
 
     # Câu lệnh để copy
-    "hd_lenh_kiem_demo": (".\\.venv\\Scripts\\python.exe -m bridge.admin kiem-reason\n"
-                          ".\\.venv\\Scripts\\python.exe -m bridge.admin kiem-dong-sai"),
+    # Tách thành hai: mỗi câu lệnh mang nút Chạy của chính nó, nên một ô chứa HAI lệnh thì nút
+    # bên cạnh không nói được nó đang chạy cái nào.
+    "hd_lenh_kiem_reason": ".\\.venv\\Scripts\\python.exe -m bridge.admin kiem-reason",
+    "hd_lenh_kiem_dong_sai": ".\\.venv\\Scripts\\python.exe -m bridge.admin kiem-dong-sai",
     "hd_lenh_bien_dich": ('& "C:\\Program Files\\MetaTrader 5\\MetaEditor64.exe" '
                           '/compile:"C:\\CopyBridge\\ea\\CopyBridgeMaster.mq5" '
                           '/log:"C:\\CopyBridge\\logs\\compile.log"'),
@@ -598,10 +605,12 @@ UI = {
     # thì trước đây không còn đường nào khác — đã xảy ra thật ở lần chạy thử 2026-09-22.
     "hd_lenh_sua_agent": (".\\.venv\\Scripts\\python.exe -m bridge.admin sua-agent "
                           "AG-CLICKER-MASTER --login <so-tk> --terminal-title <tieu-de>"),
-    "hd_lenh_anh_xa": (".\\.venv\\Scripts\\python.exe -m bridge.admin anh-xa-symbol CL-01 "
+    # `<ma-client>` chứ không đóng cứng `CL-01`: một bản cài có hai Client thì câu lệnh đóng cứng
+    # chạy đúng cho Client thứ nhất và im lặng bỏ qua Client thứ hai.
+    "hd_lenh_anh_xa": (".\\.venv\\Scripts\\python.exe -m bridge.admin anh-xa-symbol <ma-client> "
                        "<symbol-master> --client-symbol <symbol-client>"),
     "hd_lenh_cau_hinh_client": (".\\.venv\\Scripts\\python.exe -m bridge.admin cau-hinh-client "
-                                "CL-01"),
+                                "<ma-client>"),
     "hd_lenh_run_mode": ".\\.venv\\Scripts\\python.exe -m bridge.admin run-mode RUNNING",
     # -- thêm Client bằng một nút --------------------------------------------------------------
     "cfg_client_new_ma": ("Bấm nút dưới đây là hệ thống tạo trọn bộ cho {ma}: agent của EA, agent "

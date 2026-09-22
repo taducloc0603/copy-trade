@@ -3618,3 +3618,37 @@ la 127.0.0.1), va thong bao loi tu no da noi ro phai sua gi -- nhung day la thu 
 ai do cap nhat mot may dang chay that.
 
 926 test xanh (+11).
+
+### Cau lenh in ra va nut Chay phai la MOT (2026-09-22)
+
+Nguoi dung hoi: "toi khong thay nut Run de chay `run-mode RUNNING`". Dung, va no lo ra mot cho lam
+nua voi: `khoa_lenh` (cau lenh IN RA) va `ma_chay` (lenh CHAY DUOC) la hai truong ROI NHAU, nen
+chung lech ngay lan dau:
+
+* `LD_BAT_COPY` in `run-mode RUNNING` -- khong co nut nao.
+* `LD_KHAI_CLICKER` in `sua-agent` nhung nut Chay cua no chay `liet-ke`. Hai thu khac han nhau dung
+  canh nhau, khong mot quy tac nao giai thich duoc.
+* `UP_GAN_LAI_EA` in lenh bien dich -- khong co nut, trong khi `LD_BIEN_DICH` in cung cau lenh do
+  thi co.
+
+Gio mot buoc co DANH SACH CAP `(nhan cau lenh, cach chay)`, va giao dien ve nut ngay duoi chinh cau
+lenh do. `cach chay` rong nghia la PHAI TU GO, va trang noi thang ly do: lenh can tham so cua rieng
+nguoi van hanh. Buoc chung di cung nhau thi khong lech duoc nua.
+
+Kem theo: tach `hd_lenh_kiem_demo` (chua HAI lenh trong mot o) thanh hai; them `RUN_MODE_RUNNING`
+vao danh sach trang -- lenh GHI thu hai, va no khong mo them quyen gi vi `/api/run_mode` da lam dung
+viec do tu truoc, cung khong xac thuc.
+
+**Ba cho test bat duoc ma doc code khong ra:**
+
+1. `cau-hinh-client CL-01` va `anh-xa-symbol CL-01` dong cung ma Client. Test doi: da khai la "phai
+   tu go" thi cau lenh PHAI co cho giu cho -- do la bang chung no can tham so that. `CL-01` khong
+   phai cho giu cho, no la mot gia tri dung cho ban co mot Client va sai im lang cho ban co hai.
+   Doi thanh `<ma-client>`.
+2. Nut hien "Chay: RUN_MODE_RUNNING" -- thieu mot dong trong bang `TEN_LENH` cua `app.js`. Khong
+   hong, khong bao loi, chi xau va kho hieu, nen khong phep kiem nao khac bat duoc. Them test doi
+   moi lenh trong danh sach trang deu co ten tieng Viet.
+3. Doi `khoa_lenh` thanh `lenh` tai cho lam no thanh truong thu 7 cua NamedTuple, va moi loi goi
+   dung `lenh=` thanh "got multiple values". Phai dua no xuong CUOI thu tu truong.
+
+930 test xanh (+3).

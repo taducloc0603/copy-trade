@@ -169,8 +169,9 @@ input { background: var(--nen); color: var(--chu); border: 1px solid var(--vien)
 
 /* Nut Chay va ket qua cua no. Ket qua phai doc duoc boi nguoi KHONG doc log bao gio: mot dong ket
    luan bang tieng Viet truoc, output tho de ben duoi cho ai can. */
-.buoc-chay { margin: 8px 0 4px; display: flex; flex-wrap: wrap; gap: 6px; }
-.buoc-chay button { font-size: 12px; padding: 4px 10px; }
+.mot-lenh { margin: 6px 0 10px; }
+.mot-lenh button { font-size: 12px; padding: 4px 10px; margin-top: 4px; }
+.lenh-tu-go { font-size: 11px; color: var(--mo); margin-top: 3px; }
 .ket-qua-chay { width: 100%; margin-top: 6px; }
 .ket-qua-chay-dong { font-size: 12px; padding: 4px 8px; border-left: 3px solid var(--vien); }
 .ket-qua-chay-dong.xong  { border-left-color: var(--xanh); }

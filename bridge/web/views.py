@@ -517,18 +517,20 @@ class Buoc(NamedTuple):
     khoa_viec: str
     #: Nhãn: tự kiểm bước này xong chưa bằng cách nào.
     khoa_kiem: str
-    #: Nhãn câu lệnh để copy. Rỗng = không có.
-    khoa_lenh: str = ""
     #: Nhãn cái bẫy thường gặp. Rỗng = không có.
     khoa_bay: str = ""
     #: Các hành động làm ngay trong bước. Rỗng = bước này không có gì bấm được.
     hanh_dong: tuple[str, ...] = ()
-    #: Mã lệnh chạy được từ dashboard (`bridge.web.lenh.LENH_CHAY_DUOC`). Rỗng = không có nút Chạy.
+    #: Các câu lệnh của bước, mỗi cái là `(nhãn câu lệnh, mã chạy được)`.
     #:
-    #: Tách khỏi `khoa_lenh`: câu lệnh IN RA và lệnh CHẠY ĐƯỢC không phải lúc nào cũng là một.
-    #: `LD_KHAI_CLICKER` in `sua-agent` (cần tham số, không chạy hộ được) nhưng lệnh kiểm nó là
-    #: `liet-ke`. Và một bước có thể có **hai** lệnh kiểm, như bước thử lệnh demo.
-    ma_chay: tuple[str, ...] = ()
+    #: `mã chạy được` rỗng nghĩa là **phải tự gõ**: lệnh cần tham số mà chỉ người vận hành biết
+    #: (số tài khoản, tên symbol, mã Client), nên Bridge không chạy hộ được.
+    #:
+    #: Vì sao là một danh sách CẶP chứ không phải hai trường rời: bản đầu có `khoa_lenh` (in ra)
+    #: và `ma_chay` (chạy được) tách nhau, và chúng lệch ngay — bước Khai clicker IN `sua-agent`
+    #: nhưng nút Chạy của nó chạy `liet-ke`, còn bước Bật copy in `run-mode RUNNING` mà không có
+    #: nút nào. Người dùng báo đúng chỗ đó. Buộc chúng đi cùng nhau thì không lệch được nữa.
+    lenh: tuple[tuple[str, str], ...] = ()
 
 
 # `CHUA_CO_AGENT` / `CHUA_CO_CLIENT` đi kèm nhiều bước vì thiếu chúng thì phép kiểm thành **rỗng**:
@@ -540,62 +542,56 @@ BUOC_LAN_DAU: tuple[Buoc, ...] = (
     # đó thì bước gắn EA ngay dưới không thể làm được, và triệu chứng lại là "EA không kéo được
     # lên chart" — một câu không dẫn về đây.
     Buoc("LD_BIEN_DICH", "hd_ld_bien_dich", (), NOI_POWERSHELL,
-         "hd_ld_bien_dich_viec", "hd_ld_bien_dich_kiem", "hd_lenh_bien_dich",
-         "hd_ld_bien_dich_bay",
-         ma_chay=("BIEN_DICH_EA",)),
+         "hd_ld_bien_dich_viec", "hd_ld_bien_dich_kiem", "hd_ld_bien_dich_bay",
+         lenh=(("hd_lenh_bien_dich", "BIEN_DICH_EA"),)),
     Buoc("LD_GAN_EA", "hd_ld_gan_ea", ("AGENT_CHUA_ONLINE", "CHUA_CO_AGENT"), NOI_MT5,
-         "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_lenh_liet_ke", "hd_ld_gan_ea_bay",
-         (HD_CAP_TOKEN_EA,),
-         ma_chay=("LIET_KE",)),
+         "hd_ld_gan_ea_viec", "hd_ld_gan_ea_kiem", "hd_ld_gan_ea_bay", (HD_CAP_TOKEN_EA,),
+         lenh=(("hd_lenh_liet_ke", "LIET_KE"),)),
     Buoc("LD_KHAI_CLICKER", "hd_ld_khai_clicker",
          ("CHUA_CO_AGENT", "CLICKER_CHUA_KHAI", "TIEU_DE_KHONG_CHUA_SO_TK",
           "CLICKER_CHUA_ONLINE"), NOI_DASHBOARD,
-         "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_lenh_sua_agent",
-         "hd_ld_khai_clicker_bay",
-         (HD_KHOI_AGENT,),
-         ma_chay=("LIET_KE",)),
+         "hd_ld_khai_clicker_viec", "hd_ld_khai_clicker_kiem", "hd_ld_khai_clicker_bay", (HD_KHOI_AGENT,),
+         lenh=(("hd_lenh_liet_ke", "LIET_KE"), ("hd_lenh_sua_agent", ""))),
     Buoc("LD_ALGO", "hd_ld_algo", ("CHUA_CO_AGENT", "ALGO_TRADING_TAT"), NOI_MT5,
-         "hd_ld_algo_viec", "hd_ld_algo_kiem", "", "hd_ld_algo_bay"),
+         "hd_ld_algo_viec", "hd_ld_algo_kiem", "hd_ld_algo_bay"),
     Buoc("LD_TOOLBOX", "hd_ld_toolbox", (), NOI_MT5,
-         "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "", "hd_ld_toolbox_bay"),
+         "hd_ld_toolbox_viec", "hd_ld_toolbox_kiem", "hd_ld_toolbox_bay"),
     Buoc("LD_ANH_XA", "hd_ld_anh_xa", ("THIEU_ANH_XA", "CHUA_CO_CLIENT"), NOI_DASHBOARD,
-         "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_lenh_anh_xa", "hd_ld_anh_xa_bay",
-         (HD_KHOI_ANH_XA,)),
+         "hd_ld_anh_xa_viec", "hd_ld_anh_xa_kiem", "hd_ld_anh_xa_bay", (HD_KHOI_ANH_XA,),
+         lenh=(("hd_lenh_anh_xa", ""),)),
     Buoc("LD_CAU_HINH_COPY", "hd_ld_cau_hinh_copy", (), NOI_DASHBOARD,
-         "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "hd_lenh_cau_hinh_client", "",
-         (HD_KHOI_CLIENT,)),
+         "hd_ld_cau_hinh_copy_viec", "hd_ld_cau_hinh_copy_kiem", "", (HD_KHOI_CLIENT,),
+         lenh=(("hd_lenh_cau_hinh_client", ""),)),
     Buoc("LD_BAT_COPY", "hd_ld_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
-         "hd_ld_bat_copy_viec", "hd_ld_bat_copy_kiem", "hd_lenh_run_mode", "hd_ld_bat_copy_bay",
-         (HD_BAT_COPY,)),
+         "hd_ld_bat_copy_viec", "hd_ld_bat_copy_kiem", "hd_ld_bat_copy_bay", (HD_BAT_COPY,),
+         lenh=(("hd_lenh_run_mode", "RUN_MODE_RUNNING"),)),
     Buoc("LD_THU_DEMO", "hd_ld_thu_demo", (), NOI_MT5,
-         "hd_ld_thu_demo_viec", "hd_ld_thu_demo_kiem", "hd_lenh_kiem_demo",
-         "hd_ld_thu_demo_bay",
-         ma_chay=("KIEM_REASON", "KIEM_DONG_SAI")),
+         "hd_ld_thu_demo_viec", "hd_ld_thu_demo_kiem", "hd_ld_thu_demo_bay",
+         lenh=(("hd_lenh_kiem_reason", "KIEM_REASON"),
+          ("hd_lenh_kiem_dong_sai", "KIEM_DONG_SAI"))),
 )
 
 BUOC_SAU_UPDATE: tuple[Buoc, ...] = (
     Buoc("UP_CTRL_F5", "hd_up_ctrl_f5", (), NOI_DASHBOARD,
-         "hd_up_ctrl_f5_viec", "hd_up_ctrl_f5_kiem", "", ""),
+         "hd_up_ctrl_f5_viec", "hd_up_ctrl_f5_kiem", ""),
     Buoc("UP_GAN_LAI_EA", "hd_up_gan_lai_ea", (), NOI_MT5,
-         "hd_up_gan_lai_ea_viec", "hd_up_gan_lai_ea_kiem", "hd_lenh_bien_dich",
-         "hd_up_gan_lai_ea_bay"),
+         "hd_up_gan_lai_ea_viec", "hd_up_gan_lai_ea_kiem", "hd_up_gan_lai_ea_bay",
+         lenh=(("hd_lenh_bien_dich", "BIEN_DICH_EA"),)),
     Buoc("UP_AGENT_ONLINE", "hd_up_agent_online",
          ("AGENT_CHUA_ONLINE", "CLICKER_CHUA_ONLINE"), NOI_POWERSHELL,
-         "hd_up_agent_online_viec", "hd_up_agent_online_kiem", "hd_lenh_liet_ke",
-         "hd_up_agent_online_bay",
-         ma_chay=("LIET_KE",)),
+         "hd_up_agent_online_viec", "hd_up_agent_online_kiem", "hd_up_agent_online_bay",
+         lenh=(("hd_lenh_liet_ke", "LIET_KE"),)),
     Buoc("UP_CODE_CU", "hd_up_code_cu", (), NOI_POWERSHELL,
-         "hd_up_code_cu_viec", "hd_up_code_cu_kiem", "hd_lenh_kiem_tra", "",
-         ma_chay=("KIEM_TRA",)),
+         "hd_up_code_cu_viec", "hd_up_code_cu_kiem", "",
+         lenh=(("hd_lenh_kiem_tra", "KIEM_TRA"),)),
     Buoc("UP_CONFIG_SOT", "hd_up_config_sot", ("CONFIG_CON_KHOA_CLICKER",), NOI_DASHBOARD,
-         "hd_up_config_sot_viec", "hd_up_config_sot_kiem", "", "hd_up_config_sot_bay",
-         (HD_KHOI_FILE_CONFIG,)),
+         "hd_up_config_sot_viec", "hd_up_config_sot_kiem", "hd_up_config_sot_bay", (HD_KHOI_FILE_CONFIG,)),
     Buoc("UP_BAT_COPY", "hd_up_bat_copy", ("CHUA_BAT_COPY",), NOI_DASHBOARD,
-         "hd_up_bat_copy_viec", "hd_up_bat_copy_kiem", "hd_lenh_run_mode", "",
-         (HD_BAT_COPY,)),
+         "hd_up_bat_copy_viec", "hd_up_bat_copy_kiem", "", (HD_BAT_COPY,),
+         lenh=(("hd_lenh_run_mode", "RUN_MODE_RUNNING"),)),
     Buoc("UP_TINH_HINH", "hd_up_tinh_hinh", (), NOI_POWERSHELL,
-         "hd_up_tinh_hinh_viec", "hd_up_tinh_hinh_kiem", "hd_lenh_tinh_hinh", "",
-         ma_chay=("TINH_HINH",)),
+         "hd_up_tinh_hinh_viec", "hd_up_tinh_hinh_kiem", "",
+         lenh=(("hd_lenh_tinh_hinh", "TINH_HINH"),)),
 )
 
 #: Mọi mã bước, để `ops.dat_tich_huong_dan` từ chối mã lạ.
@@ -628,12 +624,11 @@ def _mot_buoc(b: Buoc, thieu: list[dict[str, Any]], da_tich: set[str]) -> dict[s
         "viec": list(UI[b.khoa_viec]),
         "kiem": UI[b.khoa_kiem],
         "bay": UI[b.khoa_bay] if b.khoa_bay else "",
-        "lenh": UI[b.khoa_lenh] if b.khoa_lenh else "",
+        "lenh": [{"chu": UI[k], "ma_chay": mc} for k, mc in b.lenh],
         "trang_thai": trang_thai,
         "da_tich": b.ma in da_tich,
         "thieu": cua_buoc,
         "hanh_dong": list(b.hanh_dong),
-        "ma_chay": list(b.ma_chay),
         # `tu_kiem` = Bridge tự biết bước này xong chưa. Giao diện dùng nó để quyết định hiện dấu
         # tích hay hiện ô cho người dùng tự tích — JS không được tự suy ra điều đó.
         "tu_kiem": bool(b.ma_kiem),

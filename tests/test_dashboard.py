@@ -1067,7 +1067,11 @@ def test_lan_dau_co_buoc_bien_dich_ea(seeded_web: Database) -> None:
     ma = [b["ma"] for b in lan_dau["buoc"]]
     assert "LD_BIEN_DICH" in ma
     assert ma.index("LD_BIEN_DICH") < ma.index("LD_GAN_EA")
-    assert "MetaEditor64.exe" in _buoc(seeded_web)["LD_BIEN_DICH"]["lenh"]
+    lenh = _buoc(seeded_web)["LD_BIEN_DICH"]["lenh"]
+    assert any("MetaEditor64.exe" in x["chu"] for x in lenh), lenh
+    # Va no phai CHAY DUOC tu trang: buoc dau tien ma bat nguoi dung mo PowerShell la cho
+    # de bo cuoc nhat.
+    assert any(x["ma_chay"] for x in lenh), lenh
 
 
 def test_moi_buoc_lam_tren_dashboard_deu_co_duong_dong_lenh(seeded_web: Database) -> None:
@@ -1083,8 +1087,8 @@ def test_moi_buoc_lam_tren_dashboard_deu_co_duong_dong_lenh(seeded_web: Database
     for ma, b in _buoc(seeded_web).items():
         if b["noi"] != "DASHBOARD" or ma in khong_can:
             continue
-        assert b["lenh"].strip(), f"{ma}: lam tren dashboard ma khong co duong dong lenh"
-        assert "bridge.admin" in b["lenh"], f"{ma}: lenh khong phai bridge.admin"
+        assert b["lenh"], f"{ma}: lam tren dashboard ma khong co duong dong lenh"
+        assert any("bridge.admin" in x["chu"] for x in b["lenh"]), f"{ma}: khong co bridge.admin"
 
 
 def test_chu_nhom_lan_dau_khong_ghi_cung_so_viec(seeded_web: Database) -> None:
