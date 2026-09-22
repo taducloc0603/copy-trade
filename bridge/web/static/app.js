@@ -297,14 +297,21 @@ function nut(chu, lop) {
 
 // Moi lan ghi di qua day: mot cho bao loi, mot cho tai lai. Endpoint nao tra {error, message}
 // thi hien message do — JS khong tu dung cau nao.
+// `sauKhiXong` chay SAU `taiCauHinh()`, khong phai truoc. Thu tu nay khong phai chi tiet lam
+// dep: `taiCauHinh()` dung LAI CA TAB (`el.innerHTML = ""`), nen bat cu thu gi `sauKhiXong` ve ra
+// truoc do deu bi xoa sau mot nhip -- hien dung mot khoanh khac roi bien mat.
+//
+// Da xay ra that HAI LAN voi cung mot trieu chung "khong thay token dau ca": lan dau o nut Them
+// Client (sua rieng o do, bang cach goi taiCauHinh truoc), lan hai o nut Cap lai token, bat duoc
+// khi chay thu tai lieu tren VPS 2026-09-22. Sua o DAY thay vi o tung cho goi, de khong co lan ba.
 async function ghiCauHinh(duong, than, sauKhiXong) {
   const r = await goi(duong, { method: "POST", body: JSON.stringify(than) });
   if (!r.ok) {
     alert(r.data.message || r.data.error || "");
     return false;
   }
-  if (sauKhiXong) sauKhiXong(r.data);
   await taiCauHinh();
+  if (sauKhiXong) sauKhiXong(r.data);
   return true;
 }
 
@@ -313,6 +320,14 @@ function hienToken(el, token) {
   box.className = "khoi-cau-hinh token-moi";
   const pre = document.createElement("pre");
   pre.textContent = token;
+  pre.className = "lenh";
+  pre.title = UI.token_bam_chon;
+  pre.onclick = () => {
+    const r = document.createRange();
+    r.selectNodeContents(pre);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(r);
+  };
   const dong = nut(UI.btn_close);
   dong.onclick = () => box.remove();
   box.append(nhan(UI.token_once, "canh-bao-nho"), pre, dong);

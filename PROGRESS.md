@@ -3523,3 +3523,32 @@ khi trang co tam).
 
 Kiem chung: 5 test moi, ca ba dot bien deu do dung cho (bo `thieu` -> do; bo buoc bien dich -> do;
 bo viec con -> do). 912 test xanh (+5), ruff sach.
+
+### Lan thu hai cua cung mot loi: token hien roi bi chinh trang xoa (2026-09-22)
+
+Lan chay thu tai lieu tac o buoc 2: bam "Cap lai token" khong thay token nao. Khong phai 403 nhu
+lan truoc (dang nhap da bo han) -- token VAN duoc cap, ve ra man hinh, roi bi xoa sau mot nhip.
+
+`ghiCauHinh` goi `sauKhiXong(r.data)` TRUOC `taiCauHinh()`, ma `taiCauHinh()` dung lai ca tab
+(`el.innerHTML = ""`). Moi thu `sauKhiXong` ve ra deu song dung mot khoanh khac khong ai nhin thay.
+
+Dieu dang ghi: day la lan THU HAI cua dung mot loi. Lan dau o nut Them Client, va no duoc sua
+RIENG TAI CHO GOI (`await taiCauHinh(); veClientMoi(...)`) thay vi sua o `ghiCauHinh`. Mot ban va
+tai cho goi khong bao ve duoc cho goi thu hai. Lan nay sua o `ghiCauHinh`, nen khong co lan ba.
+
+Nguoi dung de nghi "cu hien thi, khong can chi mot lan". Khong lam, va noi ro vi sao: DB chi giu
+`token_hash`, nen "luon hien" doi hoi them cot token dang ro + migration, va khi do ai mo duoc
+dashboard la doc duoc moi token, con ban sao luu database thanh ban ro cua bi mat. Ho chon phuong
+an sua loi. Them: o token gio bam-de-chon-het nhu cac khoi cau lenh -- boi bang chuot qua RDP la
+thu de bo giua, va bo giua mot token thi EA bao "token sai" ma khong ai nghi la do chep thieu.
+
+Test doc thu tu trong ma nguon, vi day la thu khong co phep kiem nao khac: ham chay xong thi DOM da
+dung, chi co dieu no dung trong mot khoanh khac khong ai thay. Kiem hai chieu (dao lai thu tu ->
+test do). Va kiem bang trinh duyet tren dung luong that: bam nut, bam O trong hop xac nhan, cho
+1,5 giay -- khoi token VAN con.
+
+Mot cai bay nho khi kiem: hop xac nhan la mot `<dialog>` rieng, khong phai `window.confirm`, nen
+lan thu dau tien ghi de `window.confirm` khong co tac dung va cho ra ket qua "van khong thay token"
+-- suyt ket luan nham la ban va khong an.
+
+913 test xanh (+1).

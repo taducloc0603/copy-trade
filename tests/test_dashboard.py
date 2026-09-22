@@ -1097,3 +1097,25 @@ def test_chu_nhom_lan_dau_khong_ghi_cung_so_viec(seeded_web: Database) -> None:
     chu = UI["hd_nhom_lan_dau_chu"].lower()
     for so in ("bảy việc", "tám việc", "chín việc", "mười việc"):
         assert so not in chu, f"cau mo ta con ghi cung so viec: {so!r}"
+
+
+def test_ghi_cau_hinh_ve_lai_tab_TRUOC_khi_goi_sauKhiXong(project_root) -> None:
+    """`ghiCauHinh` phải gọi `taiCauHinh()` **trước** `sauKhiXong`, không phải sau.
+
+    `taiCauHinh()` dựng lại cả tab (`el.innerHTML = ""`), nên bất cứ thứ gì `sauKhiXong` vẽ ra
+    trước đó đều bị xoá sau một nhịp: hiện đúng một khoảnh khắc rồi biến mất.
+
+    Cùng một lỗi đã xảy ra **hai lần** với cùng một triệu chứng "không thấy token đâu cả": lần đầu
+    ở nút Thêm Client (sửa riêng tại chỗ gọi), lần hai ở nút Cấp lại token — bắt được khi chạy thử
+    tài liệu trên VPS 2026-09-22, và nó chặn đúng bước 2 của danh sách Cài đặt lần đầu.
+
+    Test đọc thứ tự trong mã nguồn vì đây là thứ không có phép kiểm nào khác: hàm chạy xong thì
+    DOM đã đúng, chỉ có điều nó đúng trong một khoảnh khắc không ai nhìn thấy.
+    """
+    js = (project_root / "bridge" / "web" / "static" / "app.js").read_text(encoding="utf-8")
+    dau = js.index("async function ghiCauHinh(")
+    than = js[dau:js.index("\n}", dau)]
+    assert "taiCauHinh()" in than and "sauKhiXong(" in than
+    assert than.index("taiCauHinh()") < than.index("sauKhiXong(r.data)"), (
+        "ghiCauHinh goi sauKhiXong TRUOC taiCauHinh(): moi thu no ve ra se bi xoa ngay sau do"
+    )

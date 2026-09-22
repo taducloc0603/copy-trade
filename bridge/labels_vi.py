@@ -620,7 +620,9 @@ UI = {
     "btn_new_token": "Cấp lại token",
     "confirm_new_token": ("Cấp token mới làm token cũ hết hiệu lực ngay: EA hoặc clicker đang "
                           "dùng nó sẽ rớt cho tới khi bạn dán token mới. Tiếp tục?"),
-    "token_once": "Token chỉ hiện một lần, không đọc lại được. Chép ngay bây giờ.",
+    "token_once": ("Token chỉ hiện một lần, không đọc lại được — database chỉ giữ hash. "
+                   "Chép ngay bây giờ; mất thì cấp lại (token cũ hết hiệu lực)."),
+    "token_bam_chon": "Bấm để chọn hết",
     "btn_close": "Đóng",
 
     "map_title": "Ánh xạ symbol",
