@@ -18,3 +18,6 @@ tools/
 
 # Anh chup/snapshot do Playwright MCP sinh ra khi do giao dien -- khong phai san pham.
 .playwright-mcp/
+
+# Log cua cac ban thu trong spike/.
+spike/**/*.log
