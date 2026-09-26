@@ -19,7 +19,7 @@ thật xác nhận và cái gì mới chỉ đúng trong đầu người viết 
 kể nhất khi chuyển sang tiền thật. Phase 7 là ví dụ: bộ test dùng số tròn nên **không** lộ ra lỗi
 sai số float `0.030000000000000002`; chỉ phiên demo mới lộ.
 
-**Tổng kết cho TEST-01…TEST-29: DEMO 15 · TEST 8 · KHÔNG 2.** TEST-30…TEST-32 nằm ngoài bảng này: TEST-30a đã ĐẠT trên VPS, phần còn lại **chưa chạy trên demo**.
+**Tổng kết cho TEST-01…TEST-29: DEMO 15 · TEST 9 · KHÔNG 1.** *(2026-09-25: TEST-08 từ KHÔNG lên TEST nhờ D-44.)* TEST-30…TEST-32 nằm ngoài bảng này: TEST-30a đã ĐẠT trên VPS, phần còn lại **chưa chạy trên demo**.
 
 *(Cập nhật 2026-09-06 sau phase 11. Con số của bản phase 10 ghi "DEMO 13 · TEST 9 · KHÔNG 3"
 **không khớp với chính bảng bên dưới** — đếm tay ra 11 · 12 · 2; kiểm toán độc lập bắt được
@@ -39,7 +39,7 @@ sau khi sửa được lỗi nút đóng khẩn cấp bỏ quên phía Master.)*
 | TEST-05 | Client đóng, công tắc BẬT → cascade | **TEST** | `test_cascade_dong_master_va_cac_client_con_lai`, và `test_cl02_bat_cong_tac_dong_tay_thi_cl01_cung_dong_theo` cho trường hợp cờ lệch nhau. Cần ≥2 Client thật để nghiệm thu — đó là TEST-33. |
 | TEST-06 | Đóng một phần theo tỷ lệ | **DEMO** | Phase 7: `PAIR-000027` Master 0.05→0.03, Client 0.05→**0.03**, `PARTIALLY_CLOSED`. Chính bài này lộ ra lỗi float và buộc chuyển sang `Decimal`. **Chạy lại 2026-09-06:** `PAIR-000014` Master 0.02→0.01, Client 0.02→**0.01**, `CLOSE_PARTIAL` volume đúng 0.01, sau **285 ms**. |
 | TEST-07 | Nhiều lệnh cùng symbol, đóng một cái | **DEMO** | Phase 7, `PAIR-000026` là cặp đối chứng cùng symbol không bị đụng. Thêm `test_ba_lenh_dong_cai_o_giua` cho trường hợp ba cặp. **Chạy lại 2026-09-06:** ba cặp cùng `BTCUSD.s`, đóng một cặp không đụng hai cặp kia. |
-| TEST-08 | Nhiều symbol đồng thời | **KHÔNG** | **Chặn bởi giới hạn đã biết:** hộp thoại New Order lấy symbol theo chart đang mở, driver chỉ *kiểm tra* rồi từ chối nếu lệch (ComboBox 10331/10325 chưa đo). Mỗi terminal Client hiện copy được **đúng một symbol**. Đã đưa vào `docs/BACKLOG.md` mục B-01. |
+| TEST-08 | Nhiều symbol đồng thời | **TEST** | **Mở khoá bởi D-44 (2026-09-25):** clicker mở New Order bằng cách nhấp đúp đúng dòng symbol trong Market Watch, không còn phụ thuộc chart. Trên demo mới đo **mở rồi huỷ**, chưa đặt lệnh: 24/24 đúng symbol (kể cả xen kẽ và minimized), code mới 5/5 đúng khi xen kẽ BTCUSD.s/XAUUSD.s. Test tự động ở `tests/test_ui_marketwatch.py`. **Còn thiếu để lên DEMO:** Master mở xen kẽ hai symbol, Client ra đúng symbol/chiều/volume với `DEAL_REASON = CLIENT`. |
 | TEST-09 | Khởi động lại EA và Bridge | **DEMO** | Phase 4 mục 6–7: tắt Bridge, giao dịch, bật lại → 8 event tồn về đủ, đúng thứ tự; restart EA → `seq` tiếp từ 15, không reset. Phase 5: gửi lại cùng `command_id` sau khi khởi động lại EA → **không mở lệnh thứ hai**. |
 | TEST-10 | Client thiếu margin | **TEST** | `retcode = 10019` **không ép được trên demo**: tài khoản có ~1.000.000 USD. Đường xử lý lỗi được kiểm bằng ép `10014 Invalid volume` trên demo (Phase 5) và bằng test cho `10019`. |
 | TEST-11 | Volume tính ra dưới mức tối thiểu | **DEMO** | Chạy thật 2026-09-06: Master 0.01 × 0.5 = 0.005 < mức tối thiểu 0.01 → event `IGNORED` với `ZERO_AFTER_ROUNDING`, alert `VOLUME_BELOW_MIN`, **không** có vị thế Client nào. Không tự nâng volume (D-18). |
@@ -139,12 +139,9 @@ tình huống phải dọn tay.
 
 ---
 
-## Hai mục KHÔNG đạt, và điều đó có ý nghĩa gì
+## Các mục chưa lên DEMO, và điều đó có ý nghĩa gì
 
-**TEST-08 (nhiều symbol)** là mục nghiêm trọng nhất, vì "nhiều symbol đồng thời" nằm trong phạm
-vi MVP ở `plan/00` mục 2. Hệ thống hiện chạy đúng nhưng **hẹp hơn phạm vi đã tuyên bố**. Không
-phải lỗi tiềm ẩn: driver *từ chối* khi symbol lệch thay vì đặt nhầm, nên chế độ hỏng ở đây là
-"không copy và có cảnh báo", không phải "copy sai symbol".
+**TEST-08 (nhiều symbol)** từng là mục nghiêm trọng nhất ở đây. Từ 2026-09-25 (D-44) nó đã có đường giải và đã lên TEST; việc còn lại là chạy lệnh thật trên demo.
 
 **TEST-14 (close-by)** sẽ không bao giờ lên DEMO với broker này. Nếu chuyển sang broker khác,
 đây là bài đầu tiên phải chạy lại.

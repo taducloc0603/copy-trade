@@ -63,8 +63,10 @@ Trên **mỗi** terminal:
   Thiếu dòng này EA không bao giờ lên `ONLINE` (triệu chứng giống sai token).
 - Bật nút **Algo Trading**.
 - Mở **Toolbox** (`Ctrl+T`) và để ở tab **Trade**. Clicker đọc danh sách vị thế ở đây.
-- Terminal **Client**: mở sẵn chart của **symbol sẽ copy** (hộp thoại New Order lấy symbol theo
-  chart; mỗi terminal Client chỉ copy một symbol — B-01).
+- Terminal **Client**: mở **Market Watch** (`Ctrl+M`), kéo vào mọi symbol sẽ copy, và để nó **luôn
+  hiện**. Clicker mở lệnh bằng cách nhấp đúp đúng dòng symbol ở đây, nên một terminal Client copy
+  được nhiều symbol cùng lúc mà không cần mở chart cho từng symbol (D-44).
+- Terminal **Master**: EA gắn trên **một** chart bất kỳ là đủ — nó bắt lệnh của mọi symbol.
 
 > **MT5 và clicker phải cùng mức quyền.** Cả hai chạy thường, hoặc cả hai "Run as administrator".
 > Lệch nhau thì Windows chặn mọi thao tác của clicker mà không báo lỗi.

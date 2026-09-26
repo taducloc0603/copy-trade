@@ -22,9 +22,16 @@ Hệ quả đã được chấp nhận: **không có gì chủ động báo khi 
 
 ## Món nợ — ảnh hưởng tới cách dùng hôm nay
 
-### B-01 — Mỗi terminal Client chỉ copy được một symbol
+### B-01 — Mỗi terminal Client chỉ copy được một symbol — **ĐÃ GIẢI BẰNG CODE** (2026-09-25)
 
-**Trạng thái:** chặn TEST-08. `plan/00` mục 2 nói MVP hỗ trợ "nhiều symbol đồng thời", nên hệ
+> **D-44:** clicker không đổi symbol trong hộp thoại mà mở New Order bằng cách **nhấp đúp dòng
+> Market Watch** của đúng symbol đó (`clicker/ui/marketwatch.py`). Đã đo mở rồi huỷ trên demo, chưa
+> đặt lệnh: 24/24 đúng symbol. **Còn mở cho tới khi TEST-08 lên DEMO** (lệnh thật, nhiều symbol xen
+> kẽ). Giá mới phải trả: Market Watch phải luôn hiện trên terminal Client.
+>
+> Phần dưới giữ nguyên làm hồ sơ. Hướng "đo ComboBox 10331/10325" **không cần đi nữa**.
+
+**Trạng thái (trước D-44):** chặn TEST-08. `plan/00` mục 2 nói MVP hỗ trợ "nhiều symbol đồng thời", nên hệ
 thống hiện **hẹp hơn phạm vi đã tuyên bố**.
 
 Hộp thoại New Order lấy symbol theo chart đang mở. Driver *kiểm tra* symbol và từ chối nếu lệch

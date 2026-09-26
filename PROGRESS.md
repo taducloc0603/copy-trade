@@ -3949,3 +3949,49 @@ la dieu kien can. `cai-dat.ps1:480` huy ca lan cai khi mot test do, nen bo test 
 ban clone SACH, khong phai tren may nay.
 
 975 test xanh (+22).
+
+## 2026-09-25 — Copy nhieu symbol: Client mo New Order qua Market Watch (D-44, B-01)
+
+Cau hoi khoi dau: Master (538216) mo lenh tren nhieu chart (BTCUSD.s, XAUUSD.s). Phia Master **khong
+phai sua**: EA gan tren MOT chart nhung bat `OnTradeTransaction` cua ca tai khoan. Cho nghen la B-01:
+hop thoai New Order lay symbol theo chart active cua Client. Luc do, Client dang active `XAUUSD.s`
+trong khi anh xa duy nhat la `BTCUSD.s` -- lenh BTC luc do se bi tu choi.
+
+Nguoi dung chot huong: dua vao **Market Watch** (symbol da lien ket thi luon co dong o do, vi
+`khai_anh_xa` chi nhan symbol co trong `symbol_spec` = Market Watch cua Client).
+
+### Do truoc khi viet (terminal Client 538217, KHONG dat lenh -- chi mo, doc, huy)
+
+| Duong | Ket qua |
+|---|---|
+| Nhap dup dong Market Watch | 24/24 dung symbol (10 lap, 8 xen ke, 6 minimized), 0,22-0,73 s, chart active khong doi |
+| Chon dong + `32848` | Luon ra symbol cua chart -- loai |
+| Dong cuoi "click to add" | Khong mo hop thoai, mo o go symbol (ComboBox 10011 + Edit) |
+
+Market Watch la `SysListView32` ctrlID 10144, `LVM_GETITEMTEXT` rong (MT5 tu ve) -- cung tinh the
+voi tab Trade, nen dung cung cach: phep tim co kiem chung.
+
+### Da lam
+
+- `clicker/ui/marketwatch.py` (moi): tim danh sach, nhap dup mot dong, dong o go symbol, thu tu do,
+  ban do `symbol -> dong`.
+- `Mt5UiDriver._mo_new_order`: nhap tung dong, doc symbol trong hop thoai, sai thi huy. Ban do bo khi
+  so dong doi. `_commit` giu nguyen buoc doc lai symbol truoc cu bam. Hop thoai mo san o symbol khac:
+  truoc bi `rejected`, nay dong roi mo qua Market Watch.
+- `dialog.NewOrderDialog.cho()` (cho hop thoai ma khong gui lenh menu), `dialog.ten_symbol()`,
+  `win32.post_escape()`.
+- `tests/test_ui_marketwatch.py`: 13 test. Toan bo: **992 passed**, ruff sach.
+- Chay chinh code moi tren terminal that (mo roi huy): 5/5 dung khi xen ke BTC/XAU; lan dau 1,22 s
+  (do 2 dong), sau do 0,36-0,59 s. `EURUSD.s` (khong co) -> `MarketWatchError` ro rang, o go symbol
+  duoc dong, Market Watch con nguyen 3 dong.
+- Tai lieu: D-44, TEST-08 KHONG -> TEST, B-01, `CAI-DAT-VPS.md`, tab Huong dan (Master: mot chart bat
+  ky; Client: Market Watch luon mo).
+
+### Con lai
+
+- **TEST-08 len DEMO**: Master mo xen ke BTCUSD.s / XAUUSD.s (ca hai lenh gan nhu cung luc, di qua
+  hang doi D-31) -> Client dung symbol, chieu, volume, `DEAL_REASON = CLIENT`; dong tung lenh Master.
+- Khai anh xa `XAUUSD.s -> XAUUSD.s` cho CL-01 (hien chi co BTCUSD.s). Thieu thi lenh XAU cua Master
+  bi bo qua voi `NO_SYMBOL_MAPPING`.
+- Khach dang chay ban cu phai cap nhat clicker (`CAP-NHAT.cmd`); EA **khong** doi.
+

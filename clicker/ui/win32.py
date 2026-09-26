@@ -291,6 +291,19 @@ def post_close(hwnd: int) -> bool:
     return bool(user32().PostMessageW(wintypes.HWND(hwnd), WM_CLOSE, 0, 0))
 
 
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
+VK_ESCAPE = 0x1B
+
+
+def post_escape(hwnd: int) -> bool:
+    """Gửi phím Esc (nhấn + nhả) tới một control, kiểu không chờ."""
+    api = user32()
+    xuong = api.PostMessageW(wintypes.HWND(hwnd), WM_KEYDOWN, VK_ESCAPE, 0)
+    api.PostMessageW(wintypes.HWND(hwnd), WM_KEYUP, VK_ESCAPE, 0)
+    return bool(xuong)
+
+
 def post_command(hwnd: int, command_id: int) -> bool:
     """Gửi một lệnh menu tới cửa sổ, như thể người dùng vừa chọn nó."""
     return bool(user32().PostMessageW(wintypes.HWND(hwnd), WM_COMMAND, command_id, 0))

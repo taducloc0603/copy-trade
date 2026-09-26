@@ -77,6 +77,11 @@ class DialogError(RuntimeError):
     """Không tìm được hộp thoại, hoặc nó không có hình dạng mong đợi."""
 
 
+def ten_symbol(text: str) -> str:
+    """Tên symbol trong ô Symbol của hộp thoại: `'BTCUSD.s, Bitcoin vs US Dollar'` → `'BTCUSD.s'`."""
+    return (text or "").split(",")[0].strip()
+
+
 def doc_ticket(text: str) -> int | None:
     """Số vị thế trong một chuỗi kiểu `'Close #72205853 buy 0.01 ...'`.
 
@@ -353,13 +358,23 @@ class NewOrderDialog(_HopThoai):
         if not win32.post_command(terminal_hwnd, win32.MENU_NEW_ORDER):
             raise DialogError("PostMessage WM_COMMAND that bai")
 
+        found = cls.cho(pid, timeout_sec)
+        if found is None:
+            raise DialogError(f"Khong thay hop thoai New Order sau {timeout_sec}s")
+        return found
+
+    @classmethod
+    def cho(cls, pid: int, timeout_sec: float) -> NewOrderDialog | None:
+        """Chờ hộp thoại MỞ của tiến trình `pid` hiện ra, **không** gửi gì để mở nó.
+
+        Dùng sau một cú nhấp đúp vào Market Watch: chỗ gọi đã tự mở, ở đây chỉ chờ.
+        """
         deadline = time.monotonic() + timeout_sec
-        while time.monotonic() < deadline:
+        while True:
             found = cls._find(pid)
-            if found is not None:
+            if found is not None or time.monotonic() >= deadline:
                 return found
             time.sleep(POLL_SEC)
-        raise DialogError(f"Khong thay hop thoai New Order sau {timeout_sec}s")
 
     @classmethod
     def _find(cls, pid: int) -> NewOrderDialog | None:

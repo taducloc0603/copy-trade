@@ -1003,3 +1003,39 @@ khi tin là còn đang copy. Lý do phải nói ra kiểu hỏng: nó không bá
 trong khi cú bấm không tới cửa sổ nào. Chỉ nói "giữ phiên mở" thì khách mất kết nối một lần rồi tin
 rằng nó vẫn chạy. B-08 vẫn **chưa đo**, và `docs/BACKLOG.md` giữ nguyên nguyên văn "chặn triển khai
 VPS": không sửa backlog cho êm tai khi phép đo chưa chạy.
+
+### D-44 — Client mở hộp thoại New Order qua **Market Watch**, không qua chart (trả B-01)
+
+**Vấn đề:** lệnh menu `32848` mở New Order theo **chart đang active**, nên mỗi terminal Client chỉ
+copy được đúng một symbol. Master thì không vướng: EA Master gắn trên một chart nhưng bắt
+`OnTradeTransaction` của **cả tài khoản**, nên Master giao dịch bao nhiêu symbol cũng về Bridge đủ.
+
+**Chọn Market Watch vì Client đã có sẵn nó.** Người dùng đề xuất, và lý lẽ đúng: symbol chỉ được
+copy khi đã có ánh xạ, mà `ops.khai_anh_xa` chỉ nhận symbol Client có trong `symbol_spec` — tức có
+trong Market Watch của Client, vì EA đẩy lên đúng danh sách đó. Nên "symbol đã liên kết thì có dòng
+trong Market Watch" là điều hệ thống **đã đảm bảo**, không phải thêm một bước cài. Mở chart cho từng
+symbol thì là thêm một bước cài, và quên nó thì mất lệnh.
+
+**Đo 2026-09-25 (Connext-Demo, terminal Client 538217, không đặt lệnh nào):**
+
+| Đường | Kết quả |
+|---|---|
+| Nhấp đúp dòng Market Watch (`post_then_double_click`) | **24/24** đúng symbol của dòng: 10 lặp cùng dòng, 8 xen kẽ, 6 với cửa sổ minimized. 0,22–0,73 s. Chart active không đổi |
+| Chọn dòng (`LVM_SETITEMSTATE`) rồi `32848` | **Luôn** ra symbol của chart. Loại |
+| Dòng cuối "click to add" | Không mở hộp thoại; mở ô gõ symbol ngay trong danh sách |
+
+Chạy chính code mới trên terminal ấy (mở rồi huỷ): 5/5 đúng khi xen kẽ BTC/XAU, lần đầu 1,22 s (dò
+2 dòng), từ lần sau 0,36–0,59 s nhờ bản đồ.
+
+**Market Watch không đọc được chữ** (`LVM_GETITEMTEXT` rỗng — MT5 tự vẽ, y như tab Trade ở D-30), nên
+đây là **phép tìm có kiểm chứng**: nhấp một dòng, đọc symbol trong hộp thoại, sai thì huỷ. Bản đồ
+`symbol → dòng` chỉ đổi thứ tự dò, bị bỏ khi số dòng đổi. `_commit` vẫn đọc lại symbol lần cuối
+trước cú bấm, và vẫn **từ chối** chứ không tự đổi — không có đường nào tới nút gửi với symbol lệch.
+
+**Đổi hành vi một chỗ:** hộp thoại New Order mở sẵn ở symbol khác trước đây làm lệnh bị `rejected`;
+nay nó được đóng rồi mở lại qua Market Watch.
+
+**Giá phải trả:** Market Watch phải **luôn hiện** trên terminal Client (cùng loại với tab Trade của
+B-14). Không hiện thì `rejected` với lý do nói rõ, không đoán. Probe khô (`dry_probe`) vẫn mở bằng
+`32848` — nó chỉ kiểm hộp thoại còn điền được, không phụ thuộc symbol.
+

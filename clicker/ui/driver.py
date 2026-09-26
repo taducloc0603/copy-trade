@@ -36,6 +36,13 @@ tìm nhị phân); nó chỉ đổi thứ tự, không đổi việc mọi dòng
 Điều làm phép tìm này an toàn: **mở và huỷ hộp thoại không đặt lệnh nào.** Mọi bước dò đều nằm ở
 phía an toàn của ranh giới D-24, nên một lần dò trượt vẫn là `rejected` đúng nghĩa. Đây không phải
 đoán rồi sửa sau — không có "sau".
+
+## Đường MỞ cũng là một phép tìm, từ khi copy nhiều symbol (D-44)
+
+Hộp thoại mở bằng lệnh menu lấy symbol theo **chart đang active**, nên trước đây mỗi terminal Client
+chỉ copy được một symbol (B-01). Nay hộp thoại được mở bằng cách nhấp đúp **dòng Market Watch** của
+symbol cần mở — cùng kiểu tìm có kiểm chứng như đường đóng, chỉ khác là đọc symbol thay cho ticket.
+Xem `clicker/ui/marketwatch.py`.
 """
 
 from __future__ import annotations
@@ -46,15 +53,17 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from bridge.logging_setup import get_logger
-from clicker.ui import probe, timdong, tradetab, win32
+from clicker.ui import marketwatch, probe, timdong, tradetab, win32
 from clicker.ui.dialog import (
     ClosePositionDialog,
     DialogError,
     HopThoaiDongSoBo,
     NewOrderDialog,
     cho_so_bo,
+    ten_symbol,
     tim_so_bo,
 )
+from clicker.ui.marketwatch import MarketWatchError
 
 log = get_logger(__name__)
 
@@ -286,6 +295,11 @@ class Mt5UiDriver:
         #: cuối cùng, phép nhị phân chọn đúng dòng phụ đó làm điểm giữa và mất ~1,1 s. Chỉ ảnh hưởng
         #: thứ tự dò, không ảnh hưởng kiểm chứng.
         self._so_dong_cuoi_khong_mo = 1
+        #: `symbol → dòng` Market Watch đọc được từ những lần mở trước. Cũng chỉ là **thứ tự dò**:
+        #: dòng gợi ý vẫn bị đọc symbol trong hộp thoại trước khi dùng. Bỏ hết khi số dòng đổi —
+        #: người dùng vừa thêm hoặc bớt symbol.
+        self._mw_ban_do: dict[str, int] = {}
+        self._mw_so_dong: int | None = None
 
     # -- mở lệnh ---------------------------------------------------------------------------
 
@@ -298,11 +312,76 @@ class Mt5UiDriver:
             return Outcome("rejected", f"Canary do: {health.detail}", clicked=False)
         self._moc["probe"] = time.monotonic()
         try:
-            dialog = NewOrderDialog.open(health.hwnd)
-        except DialogError as exc:
+            dialog = self._mo_new_order(health.hwnd, request.symbol)
+        except (DialogError, MarketWatchError) as exc:
             return Outcome("rejected", f"Khong mo duoc hop thoai: {exc}", clicked=False)
         self._moc["mo"] = time.monotonic()
         return self._commit(dialog, request)
+
+    def _mo_new_order(self, terminal_hwnd: int, symbol: str) -> NewOrderDialog:
+        """Hộp thoại New Order **đang ở đúng `symbol`**, mở qua Market Watch (D-44).
+
+        Phép tìm có kiểm chứng: nhấp đúp một dòng, đọc symbol trong hộp thoại, sai thì huỷ và thử
+        dòng khác. Chưa có gì được điền, nên mọi lối ra bằng ngoại lệ ở đây đều là `rejected` thật.
+        """
+        pid = win32.get_process_id(terminal_hwnd)
+
+        # Hộp thoại mở sẵn (người vận hành để lại, hoặc lần trước chưa kịp đóng). Đúng symbol thì
+        # dùng luôn như trước; sai thì đóng đi rồi mở qua Market Watch thay vì từ chối.
+        san = NewOrderDialog.cho(pid, 0)
+        if san is not None:
+            dang = self._doc_symbol(san)
+            if dang == symbol:
+                log.info("Hop thoai New Order da mo san o %s, dung lai", symbol)
+                return san
+            log.info("Hop thoai New Order mo san o %r, dong de mo %s qua Market Watch", dang, symbol)
+            san.cancel()
+            if not san.wait_closed():
+                raise DialogError("Hop thoai New Order mo san khong dong duoc")
+
+        danh_sach = marketwatch.tim_danh_sach(terminal_hwnd)
+        so_dong = marketwatch.so_dong(danh_sach)
+        if not so_dong:
+            raise MarketWatchError(f"Market Watch khong tra loi so dong ({so_dong!r})")
+        if so_dong != self._mw_so_dong:
+            self._mw_ban_do.clear()
+            self._mw_so_dong = so_dong
+
+        da_thu: list[str] = []
+        for row in marketwatch.thu_tu_do(so_dong, symbol, self._mw_ban_do):
+            if not marketwatch.mo_new_order(danh_sach, row):
+                da_thu.append(f"{row}:?")
+                continue
+            dialog = NewOrderDialog.cho(pid, marketwatch.CHO_HOP_THOAI_SEC)
+            if dialog is None:
+                # Dòng "click to add" (hoặc nhấp không tới): không có hộp thoại, có thể có ô gõ.
+                marketwatch.dong_o_them_symbol(danh_sach)
+                marketwatch.ghi_ban_do(self._mw_ban_do, row, None)
+                da_thu.append(f"{row}:-")
+                continue
+            thay = self._doc_symbol(dialog)
+            marketwatch.ghi_ban_do(self._mw_ban_do, row, thay)
+            if thay == symbol:
+                log.info("Market Watch: %s o dong %d/%d, %d lan mo", symbol, row, so_dong,
+                         len(da_thu) + 1)
+                return dialog
+            da_thu.append(f"{row}:{thay}")
+            dialog.cancel()
+            if not dialog.wait_closed():
+                raise DialogError(f"Hop thoai {thay} khong dong sau khi huy")
+        raise MarketWatchError(
+            f"Khong dong Market Watch nao mo ra {symbol} (da thu {', '.join(da_thu)}). "
+            "Symbol nay co trong Market Watch cua Client khong?")
+
+    @staticmethod
+    def _doc_symbol(dialog: NewOrderDialog) -> str:
+        """Symbol hộp thoại đang hiện. Đọc hỏng thì đóng hộp thoại trước khi ném lỗi lên."""
+        try:
+            return ten_symbol(dialog.read_back().symbol)
+        except DialogError:
+            dialog.cancel()
+            dialog.wait_closed()
+            raise
 
     def _log_thoi_gian_mo(self) -> None:
         m = getattr(self, "_moc", {})
@@ -321,9 +400,9 @@ class Mt5UiDriver:
             return Outcome("rejected", ly_do, clicked=False)
 
         try:
-            # Đổi symbol qua ComboBox chưa được đo, nên ở đây chỉ **kiểm tra** chứ không đổi.
-            # Hộp thoại hiện `'BTCUSD.s, Bitcoin vs US Dollar'`, so theo phần trước dấu phẩy.
-            hien_tai = dialog.read_back().symbol.split(",")[0].strip()
+            # Chốt cuối: `_mo_new_order` đã chọn đúng dòng Market Watch, nhưng giữa lúc đó và cú bấm
+            # vẫn phải đọc lại. Sai thì từ chối — không bao giờ tự đổi symbol trong hộp thoại.
+            hien_tai = ten_symbol(dialog.read_back().symbol)
             if hien_tai != request.symbol:
                 return bo_cuoc(f"Hop thoai dang o symbol {hien_tai!r}, "
                                f"khong phai {request.symbol!r}")

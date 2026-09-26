@@ -454,7 +454,8 @@ UI = {
     "hd_ld_toolbox_viec": (
         "Trong mỗi terminal: Ctrl+T để mở Toolbox, chọn tab Trade (không phải History hay "
         "Journal), rồi để nguyên như vậy.",
-        "Trong terminal Client: Ctrl+M mở Market Watch, kéo vào đó mọi symbol bạn sẽ copy.",
+        "Trong terminal Client: Ctrl+M mở Market Watch, kéo vào đó mọi symbol bạn sẽ copy, và "
+        "để Market Watch LUÔN mở.",
         "Làm luôn bây giờ, khi đang ở trong MT5 — bước khai ánh xạ ở phần sau cần danh sách này.",
     ),
     "hd_ld_toolbox_kiem": ("Cả hai terminal thấy danh sách vị thế ở nửa dưới, và Market Watch của "
@@ -462,7 +463,9 @@ UI = {
     "hd_ld_toolbox_bay": ("Clicker đọc danh sách vị thế từ đúng tab Trade để đóng lệnh; đóng "
                          "Toolbox là không đóng được lệnh qua giao diện nữa, và triệu chứng chỉ "
                          "hiện ra lúc cần đóng, tức lúc đắt nhất. Còn Market Watch: Bridge chỉ "
-                         "thấy symbol nào đã có trong đó."),
+                         "thấy symbol nào đã có trong đó, và clicker mở lệnh Client bằng cách "
+                         "nhấp đúp đúng dòng symbol ở đó — đóng Market Watch là không mở được "
+                         "lệnh nào nữa."),
 
     "hd_ld_anh_xa": "Khai ánh xạ symbol cho từng Client",
     "hd_ld_anh_xa_viec": (
@@ -488,8 +491,8 @@ UI = {
     "hd_ld_gan_ea_viec": (
         "Bấm Cấp token cho AG-MASTER ở phần Làm ngay bên dưới. Token hiện ra trong một hộp "
         "riêng: bấm Chép, hoặc bấm vào token để chọn hết. Nó chỉ hiện lần này.",
-        "Trong MT5 của Master: mở đúng một chart của symbol bạn sẽ copy, rồi kéo CopyBridgeMaster "
-        "từ Navigator lên chart đó.",
+        "Trong MT5 của Master: chọn MỘT chart bất kỳ, rồi kéo CopyBridgeMaster từ Navigator lên "
+        "chart đó. Symbol của chart không quan trọng: EA bắt lệnh của mọi symbol trong tài khoản.",
         "Hộp thoại mở ra, tab Inputs: AgentToken = token vừa chép, BridgeHost = 127.0.0.1, "
         "BridgePort = 8787. Bấm OK.",
         "Góc trên phải chart phải có mặt cười. Mặt buồn nghĩa là EA chưa chạy.",
