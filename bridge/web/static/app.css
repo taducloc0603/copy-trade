@@ -28,6 +28,12 @@ nav { display: flex; gap: 4px; padding: 8px 16px; border-bottom: 1px solid var(-
 .tab { background: none; border: 0; color: var(--mo); padding: 6px 12px; cursor: pointer;
        border-radius: 6px; font-size: 14px; }
 .tab.active { background: var(--the); color: var(--chu); }
+/* Tab con trong mot khoi. Lop RIENG, khong dung lai `.tab`: thanh tab chinh gan su kien theo
+   `querySelectorAll(".tab")`, dung chung lop la bam tab con thanh chuyen trang. */
+.hang-tab-con { display: flex; gap: 4px; margin: 12px 0 8px; border-bottom: 1px solid var(--vien); }
+.tab-con { background: none; border: 0; color: var(--mo); padding: 6px 12px; cursor: pointer;
+           border-radius: 6px 6px 0 0; font-size: 14px; }
+.tab-con.active { background: var(--nen); color: var(--chu); }
 main { padding: 16px; }
 .man.an { display: none; }
 
@@ -252,6 +258,11 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .o-va-nut { display: flex; align-items: center; gap: 8px; }
 .o-va-nut input { margin: 0; }
 .o-va-nut button { white-space: nowrap; }
+/* Trang thai mot dong xem truoc quy tac symbol (D-45). */
+.tt-MOI { color: var(--xanh); }
+.tt-DA_CO { color: var(--mo); }
+.tt-KHAC_TAY { color: var(--cam); }
+.tt-KHONG_CO { color: var(--do); }
 
 /* Cum nut doi che do tren thanh tren cung: nho hon nut thuong, nhung van du cao de bam bang
    chuot qua RDP. */

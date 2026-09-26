@@ -1447,3 +1447,50 @@ def test_tai_lieu_khach_khong_nhac_toi_ban_nhieu_client(project_root) -> None:
     noi_bo = project_root / "docs" / "NOI-BO-nhieu-client.md"
     assert noi_bo.exists(), "mat luon tai lieu noi bo ve nhieu Client"
     assert "gioi-han-client" in noi_bo.read_text(encoding="utf-8")
+
+
+# -- anh xa theo quy tac tien to / hau to (D-45) ------------------------------------------------
+
+def _spec_web(s: str, contract: float = 100.0) -> dict[str, object]:
+    return {"symbol": s, "volume_min": 0.01, "volume_step": 0.01, "volume_max": 50.0,
+            "digits": 2, "contract_size": contract}
+
+
+async def test_xem_truoc_quy_tac_khong_luu_gi(client: httpx.AsyncClient,
+                                              seeded_web: Database) -> None:
+    seeded_web.replace_symbol_specs(MASTER_AGENT, [_spec_web("XAUUSD.s")])
+    seeded_web.replace_symbol_specs(CLIENT_AGENT, [_spec_web("XAUUSDm", 1.0)])
+    r = await client.post("/api/symbol_rule/preview", json={
+        "client_id": CLIENT_ID, "master_hau_to": ".s", "client_hau_to": "m"})
+    assert r.status_code == 200
+    [d] = r.json()["dong"]
+    assert (d["client_symbol"], d["trang_thai"], d["ty_le_contract"]) == ("XAUUSDm", "MOI", 100.0)
+    assert seeded_web.get_config("master_symbol_suffix") is None, "Xem truoc khong duoc luu quy tac"
+    assert seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD.s") is None
+
+
+async def test_luu_quy_tac_va_cac_cap_da_tich(client: httpx.AsyncClient,
+                                               seeded_web: Database) -> None:
+    seeded_web.replace_symbol_specs(MASTER_AGENT, [_spec_web("XAUUSD"), _spec_web("EURUSD")])
+    seeded_web.replace_symbol_specs(CLIENT_AGENT, [_spec_web("XAUUSD.c"), _spec_web("EURUSD.c")])
+    r = await client.post("/api/symbol_rule", json={
+        "client_id": CLIENT_ID, "master_tien_to": "", "master_hau_to": "",
+        "client_tien_to": "", "client_hau_to": ".c", "master_symbols": ["XAUUSD"]})
+    assert r.status_code == 200
+    assert r.json()["da_luu"] == ["XAUUSD"]
+    assert seeded_web.find_symbol_map(CLIENT_ID, "XAUUSD")["client_symbol"] == "XAUUSD.c"
+    assert seeded_web.find_symbol_map(CLIENT_ID, "EURUSD") is None, "Khong tich thi khong luu"
+    assert seeded_web.get_client_account(CLIENT_ID)["symbol_suffix"] == ".c"
+
+    trang = views.trang_cau_hinh(seeded_web)
+    assert trang["quy_tac_symbol"][CLIENT_ID]["client_hau_to"] == ".c"
+
+
+async def test_quy_tac_co_khoang_trang_thi_bao_loi_co_dau(client: httpx.AsyncClient,
+                                                           seeded_web: Database) -> None:
+    r = await client.post("/api/symbol_rule", json={"client_id": CLIENT_ID,
+                                                    "client_hau_to": ". c"})
+    assert r.status_code == 400
+    assert r.json()["error"] == "QUY_TAC_CO_KHOANG_TRANG"
+    assert "khoảng trắng" in r.json()["message"]
+

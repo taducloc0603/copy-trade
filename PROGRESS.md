@@ -3995,3 +3995,23 @@ voi tab Trade, nen dung cung cach: phep tim co kiem chung.
   bi bo qua voi `NO_SYMBOL_MAPPING`.
 - Khach dang chay ban cu phai cap nhat clicker (`CAP-NHAT.cmd`); EA **khong** doi.
 
+## 2026-09-25 — Anh xa symbol theo quy tac tien to / hau to (D-45)
+
+Goi y cua khach: khai theo quy uoc dat ten cua san (tien to `cXAUUSD`, hau to `XAUUSD.c`), cap la
+khai tay. Nguoi dung chot: sinh danh sach -> xem truoc -> bam luu (khong tra quy tac luc chay); cap
+khac contract size van vao danh sach kem ty le (sizing da quy doi).
+
+- `ops`: `ten_goc`, `ghep_ten`, `doc_quy_tac`, `luu_quy_tac`, `xem_truoc_quy_tac` (MOI / DA_CO /
+  KHAC_TAY / KHONG_CO), `ap_dung_quy_tac` (tinh lai, chi luu MOI, qua `khai_anh_xa`).
+  `de_xuat_anh_xa` uu tien ket qua quy tac.
+- Migration 009: `client_account.symbol_prefix/suffix`. Quy tac Master o `system_config`.
+- API `/api/symbol_rule/preview` (khong luu), `/api/symbol_rule` (luu quy tac + cap da tich).
+- Dashboard: khoi "Anh xa symbol theo quy tac" tren khoi khai tay. CLI: `quy-tac-symbol`.
+- 17 test moi; toan bo 1005+ passed, ruff sach.
+- Do tren may dev (da `sao-luu` truoc): quy tac `.s -> .s` ra 2 dong "da co, trung". Thu `.c` lan dau
+  bao "da khai tay KHAC" -- gay hieu lam, da sua thanh KHONG_CO (xet truoc). Anh xa that khong doi.
+- **Can khoi dong lai Bridge** de dashboard co khoi moi (code web nap luc khoi dong).
+- 2026-09-26, theo gop y nguoi dung: bo o tich (troi ra giua dong, khong biet thuoc dong nao) -> bang
+  4 cot, nut "Luu cap nay" tren tung dong MOI, nut chinh "Luu quy tac + N cap moi". Gop hai khoi
+  quy tac va khai tay thanh MOT khoi "Anh xa symbol" voi hai tab con (lop `.tab-con` rieng, KHONG
+  dung lai `.tab` vi thanh tab chinh gan su kien theo lop do). Tab dang chon giu qua moi lan luu.

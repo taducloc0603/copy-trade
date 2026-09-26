@@ -1039,3 +1039,31 @@ nay nó được đóng rồi mở lại qua Market Watch.
 B-14). Không hiện thì `rejected` với lý do nói rõ, không đoán. Probe khô (`dry_probe`) vẫn mở bằng
 `32848` — nó chỉ kiểm hộp thoại còn điền được, không phụ thuộc symbol.
 
+### D-45 — Ánh xạ symbol theo quy tắc tiền tố / hậu tố, **xem trước rồi mới lưu**
+
+**Đề xuất của khách:** khai theo quy ước đặt tên của sàn (tiền tố `cXAUUSD`, hậu tố `XAUUSD.c`),
+còn cặp tên lạ (`GOLD` ↔ `XAUUSD`) thì khai tay. Mỗi sàn đặt tên theo **một** quy ước cho mọi symbol,
+nên khai quy ước một lần thay cho từng cặp.
+
+**Quy tắc có cho cả hai bên.** Master cũng có đuôi (Connext `.s`). Tên Master → bỏ tiền tố/hậu tố
+Master → tên gốc → gắn tiền tố/hậu tố Client → tìm trong Market Watch Client (so không phân biệt hoa
+thường, lưu theo đúng cách viết của sàn). Nhờ vậy giải được cả `XAUUSD.s` → `XAUUSDm`, thứ phép so
+tên cũ của `de_xuat_anh_xa` không bắt được vì không bên nào là tiền tố của bên kia.
+
+**Quy tắc không được tra lúc chạy** (người dùng chốt). Nó sinh danh sách xem trước; chỉ dòng được tích
+rồi bấm lưu mới thành `symbol_map`. Processor không đổi, và bảng ánh xạ vẫn nói chính xác symbol nào
+đi đâu. Cùng lý do với chính `de_xuat_anh_xa`: chọn sai symbol không báo lỗi, nó copy sang một thị
+trường khác.
+
+**Khai tay luôn thắng.** `ap_dung_quy_tac` tính **lại** danh sách lúc lưu, không tin cái trình duyệt
+gửi lên, và chỉ lưu dòng còn `MOI`. Mỗi dòng vẫn qua `khai_anh_xa` nên giữ nguyên phép kiểm với sàn.
+
+**Khác contract size vẫn vào danh sách** (người dùng chốt), kèm tỷ lệ "1 lot Master = x lot Client".
+Không chặn vì sizing đã giữ giá trị danh nghĩa (`sizing.py` bước 4). Lúc thảo luận tôi đã nói sai
+điều ngược lại, rồi đính chính trước khi chốt — ghi lại để lần sau không ai lặp lại cái sai đó.
+
+**`KHONG_CO` xét trước `KHAC_TAY`.** Đo trên máy dev: thử hậu tố sai `.c` khi đã có
+`XAUUSD.s -> XAUUSD.s` thì bản đầu báo "đã khai tay khác" — người đang dò quy tắc tưởng nó khớp.
+
+Lưu trữ: quy tắc Master ở `system_config` (`master_symbol_prefix`/`_suffix`), quy tắc Client ở
+`client_account.symbol_prefix`/`_suffix` (migration 009).

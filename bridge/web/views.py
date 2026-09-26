@@ -11,6 +11,7 @@ không chứa nhãn nào, nên thêm một ngôn ngữ hay đổi cách gọi m�
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from typing import Any, NamedTuple
 
 from bridge.clock import parse_iso
@@ -30,6 +31,7 @@ from bridge.ops import (
     KHOA_SUA_DUOC,
     cau_hinh_clicker,
     de_xuat_anh_xa,
+    doc_quy_tac,
     doc_tich_huong_dan,
     gia_tri_khoa,
     gioi_han_client,
@@ -812,6 +814,8 @@ def trang_cau_hinh(db: Database, config: Any = None) -> dict[str, Any]:
         "symbol_master": symbol_cua_agent(db, _agent_master(db)),
         "symbol_client": {c["client_id"]: symbol_cua_agent(db, c["agent_id"]) for c in clients},
         "de_xuat_anh_xa": {c["client_id"]: de_xuat_anh_xa(db, c["client_id"]) for c in clients},
+        # Quy tắc tiền tố/hậu tố đang lưu (D-45), để bốn ô trên trang hiện đúng giá trị cũ.
+        "quy_tac_symbol": {c["client_id"]: asdict(doc_quy_tac(db, c["client_id"])) for c in clients},
         "file_config": _mo_ta_file_config(config),
         # Theo TỪNG Client, không phải một bảng dùng chung. Bản cũ lấy `clients[0]`, nên với
         # hai Client khác hệ số thì khối CL-02 hiển thị con số của CL-01 — một bảng xem trước

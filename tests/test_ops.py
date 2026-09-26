@@ -20,7 +20,13 @@ import pytest
 from bridge.alerting import CUA_SO_GOP_SEC, AlertChannel, BoGop, TinNhan, tao_kenh
 from bridge.db.repo import Database
 from bridge.ops import (
+    QT_DA_CO,
+    QT_KHAC_TAY,
+    QT_KHONG_CO,
+    QT_MOI,
     LoiCauHinh,
+    QuyTacSymbol,
+    ap_dung_quy_tac,
     bao_tri_hang_ngay,
     cap_token,
     cau_hinh_clicker,
@@ -29,13 +35,16 @@ from bridge.ops import (
     dat_lai_toan_bo,
     dat_terminal_clicker,
     de_xuat_anh_xa,
+    doc_quy_tac,
     don_ban_cu,
     don_log_cu,
+    ghep_ten,
     huy_client_moi,
     khai_anh_xa,
     khoi_phuc_thu,
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
+    luu_quy_tac,
     sao_luu,
     sua_client,
     sua_khoa_he_thong,
@@ -43,8 +52,10 @@ from bridge.ops import (
     tao_client,
     tao_client_moi,
     tat_anh_xa,
+    ten_goc,
     ten_theo_client,
     thu_hoi_token,
+    xem_truoc_quy_tac,
     xoa_anh_xa,
     xoa_client,
 )
@@ -1411,6 +1422,122 @@ def test_de_xuat_anh_xa_bo_qua_symbol_da_co(seeded: Database) -> None:
     assert len(de_xuat_anh_xa(seeded, CLIENT_ID)) == 1
     seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD", "XAUUSDm", enabled=1)
     assert de_xuat_anh_xa(seeded, CLIENT_ID) == []
+
+
+# -- anh xa theo quy tac tien to / hau to (D-45) ------------------------------------------------
+
+def test_ten_goc_chi_bo_dung_chuoi_da_khai() -> None:
+    assert ten_goc("XAUUSD.s", "", ".s") == "XAUUSD"
+    assert ten_goc("cXAUUSD", "c", "") == "XAUUSD"
+    assert ten_goc("xauusd.C", "", ".c") == "xauusd", "Khong phan biet hoa thuong"
+    assert ten_goc("US30", "", ".s") == "US30", "Khong mang hau to thi giu nguyen"
+    assert ten_goc(".s", "", ".s") == ".s", "Bo xong khong con gi thi khong bo"
+    assert ghep_ten("XAUUSD", "c", ".c") == "cXAUUSD.c"
+
+
+def _hai_ben(db: Database, master: list[dict], client: list[dict]) -> None:
+    db.replace_symbol_specs(MASTER_AGENT, master)
+    db.replace_symbol_specs(CLIENT_AGENT, client)
+
+
+def test_quy_tac_hau_to_hai_ben_khac_nhau(seeded: Database) -> None:
+    """Connext `.s` sang Exness `m`: phép so tên cũ không bắt được vì không bên nào là tiền tố của
+    bên kia."""
+    _hai_ben(seeded, [_spec("XAUUSD.s"), _spec("BTCUSD.s", 2, 1.0)],
+             [_spec("XAUUSDm"), _spec("BTCUSDm", 2, 1.0), _spec("XAUUSD")])
+    ds = {d["master_symbol"]: d for d in xem_truoc_quy_tac(
+        seeded, CLIENT_ID, QuyTacSymbol(master_hau_to=".s", client_hau_to="m"))}
+
+    assert ds["XAUUSD.s"]["client_symbol"] == "XAUUSDm"
+    assert ds["XAUUSD.s"]["trang_thai"] == QT_MOI
+    assert ds["BTCUSD.s"]["client_symbol"] == "BTCUSDm"
+
+
+def test_quy_tac_tien_to_va_giu_dung_cach_viet_cua_san_client(seeded: Database) -> None:
+    _hai_ben(seeded, [_spec("XAUUSD")], [_spec("cXauUsd")])
+    [d] = xem_truoc_quy_tac(seeded, CLIENT_ID, QuyTacSymbol(client_tien_to="c"))
+    assert d["client_symbol"] == "cXauUsd", "Luu theo ten san Client bao, khong theo chuoi tu ghep"
+    assert d["trang_thai"] == QT_MOI
+
+
+def test_quy_tac_du_bon_trang_thai(seeded: Database) -> None:
+    _hai_ben(seeded, [_spec("XAUUSD"), _spec("EURUSD"), _spec("GOLD"), _spec("US30")],
+             [_spec("XAUUSD.c"), _spec("EURUSD.c"), _spec("GOLD.c"), _spec("XAUUSDpro")])
+    seeded.upsert_symbol_map(CLIENT_ID, "EURUSD", "EURUSD.c", enabled=1)
+    seeded.upsert_symbol_map(CLIENT_ID, "GOLD", "XAUUSDpro", enabled=1)   # khai tay, khac quy tac
+    ds = {d["master_symbol"]: d for d in xem_truoc_quy_tac(
+        seeded, CLIENT_ID, QuyTacSymbol(client_hau_to=".c"))}
+
+    assert ds["XAUUSD"]["trang_thai"] == QT_MOI
+    assert ds["EURUSD"]["trang_thai"] == QT_DA_CO
+    assert ds["GOLD"]["trang_thai"] == QT_KHAC_TAY
+    assert ds["GOLD"]["anh_xa_hien_co"] == "XAUUSDpro"
+    assert ds["US30"]["trang_thai"] == QT_KHONG_CO
+
+
+def test_quy_tac_sai_bao_khong_co_ke_ca_khi_da_khai_tay(seeded: Database) -> None:
+    """Đo trên máy dev 2026-09-25: đã có `XAUUSD.s -> XAUUSD.s`, thử hậu tố `.c` ra "đã khai tay
+    khác" — người dò quy tắc tưởng nó khớp. Sàn không có symbol thì phải nói đúng điều đó."""
+    _hai_ben(seeded, [_spec("XAUUSD.s")], [_spec("XAUUSD.s")])
+    seeded.upsert_symbol_map(CLIENT_ID, "XAUUSD.s", "XAUUSD.s", enabled=1)
+    [d] = xem_truoc_quy_tac(seeded, CLIENT_ID, QuyTacSymbol(master_hau_to=".s", client_hau_to=".c"))
+    assert d["trang_thai"] == QT_KHONG_CO
+    assert d["anh_xa_hien_co"] == "XAUUSD.s"
+
+
+def test_quy_tac_ghi_ty_le_khi_khac_contract_size(seeded: Database) -> None:
+    """Micro: 0.01 lot Master (contract 100) = 1.00 lot Client (contract 1). Bridge tự quy đổi, nhưng
+    người dùng phải THẤY con số trước khi lưu."""
+    _hai_ben(seeded, [_spec("XAUUSD", 2, 100.0)], [_spec("XAUUSDm", 3, 1.0)])
+    [d] = xem_truoc_quy_tac(seeded, CLIENT_ID, QuyTacSymbol(client_hau_to="m"))
+    assert d["trang_thai"] == QT_MOI, "Khac contract size van vao danh sach (nguoi dung chot)"
+    assert d["ty_le_contract"] == 100.0
+    assert d["digits"] == [2, 3]
+
+
+def test_luu_quy_tac_roi_doc_lai(seeded: Database) -> None:
+    luu_quy_tac(seeded, CLIENT_ID, master_hau_to=" .s ", client_hau_to=".c")
+    assert doc_quy_tac(seeded, CLIENT_ID) == QuyTacSymbol("", ".s", "", ".c")
+    luu_quy_tac(seeded, CLIENT_ID, client_hau_to="")          # chuoi rong = bo hau to
+    luu_quy_tac(seeded, CLIENT_ID, master_tien_to=None)       # None = giu nguyen
+    assert doc_quy_tac(seeded, CLIENT_ID) == QuyTacSymbol("", ".s", "", "")
+
+
+def test_luu_quy_tac_tu_choi_khoang_trang_o_giua(seeded: Database) -> None:
+    with pytest.raises(LoiCauHinh) as exc:
+        luu_quy_tac(seeded, CLIENT_ID, client_hau_to=". c")
+    assert exc.value.ma == "QUY_TAC_CO_KHOANG_TRANG"
+
+
+def test_ap_dung_chi_luu_dong_moi_va_khong_de_khai_tay(seeded: Database) -> None:
+    """Trình duyệt gửi cả dòng đã khai tay lẫn một symbol lạ: server tính lại, chỉ lưu dòng MOI."""
+    _hai_ben(seeded, [_spec("XAUUSD"), _spec("GOLD")], [_spec("XAUUSD.c"), _spec("GOLD.c"),
+                                                         _spec("XAUUSDpro")])
+    seeded.upsert_symbol_map(CLIENT_ID, "GOLD", "XAUUSDpro", enabled=1)
+    luu_quy_tac(seeded, CLIENT_ID, client_hau_to=".c")
+
+    da_luu = ap_dung_quy_tac(seeded, CLIENT_ID, ["XAUUSD", "GOLD", "KHONGCO"])
+
+    assert [d["master_symbol"] for d in da_luu] == ["XAUUSD"]
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD")["client_symbol"] == "XAUUSD.c"
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD")["verified_at"]
+    assert seeded.find_symbol_map(CLIENT_ID, "GOLD")["client_symbol"] == "XAUUSDpro"
+
+
+def test_ap_dung_bo_dong_khong_duoc_chon(seeded: Database) -> None:
+    _hai_ben(seeded, [_spec("XAUUSD"), _spec("EURUSD")], [_spec("XAUUSD.c"), _spec("EURUSD.c")])
+    luu_quy_tac(seeded, CLIENT_ID, client_hau_to=".c")
+    ap_dung_quy_tac(seeded, CLIENT_ID, ["EURUSD"])
+    assert seeded.find_symbol_map(CLIENT_ID, "XAUUSD") is None
+    assert seeded.find_symbol_map(CLIENT_ID, "EURUSD") is not None
+
+
+def test_de_xuat_uu_tien_quy_tac(seeded: Database) -> None:
+    """Có quy tắc thì đề xuất lấy theo quy tắc, và là `chac_chan` — đó là điều người dùng đã khai."""
+    _hai_ben(seeded, [_spec("XAUUSD.s")], [_spec("XAUUSDm"), _spec("XAUUSD.spro")])
+    luu_quy_tac(seeded, CLIENT_ID, master_hau_to=".s", client_hau_to="m")
+    [d] = de_xuat_anh_xa(seeded, CLIENT_ID)
+    assert d == {"master_symbol": "XAUUSD.s", "client_symbol": "XAUUSDm", "chac_chan": True}
 
 
 # -- them Client bang mot nut -------------------------------------------------------------------

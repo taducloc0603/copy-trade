@@ -83,6 +83,8 @@ LOI_CAU_HINH = {
     "SAN_KHONG_CO_SYMBOL": ("Sàn Client chưa báo có symbol {client_symbol}. Kiểm tra EA Client "
                             "đang chạy và symbol đã kéo vào Market Watch."),
     "KHONG_CO_ANH_XA": "Không có ánh xạ cho {master_symbol}",
+    "QUY_TAC_CO_KHOANG_TRANG": ("Tiền tố/hậu tố {gia_tri} có khoảng trắng ở giữa — tên symbol "
+                                "không bao giờ có. Kiểm lại ô {truong}."),
     "KHONG_CO_FILE_CONFIG": "Bridge không nạp config.toml nào nên không có gì để sửa.",
     "KHONG_CO_GI_DOI": "Không có giá trị nào được đổi.",
     "TIEU_DE_KHONG_CO_SO_TK": ("Tiêu đề {tieu_de} phải MỞ ĐẦU bằng số tài khoản {login}. "
@@ -469,9 +471,11 @@ UI = {
 
     "hd_ld_anh_xa": "Khai ánh xạ symbol cho từng Client",
     "hd_ld_anh_xa_viec": (
-        "Chọn symbol bên Master, rồi symbol tương ứng bên Client, ở form bên dưới. Trang đã đề "
-        "xuất sẵn cặp khớp nếu tìm được.",
-        "Lưu, rồi làm tiếp cho từng symbol bạn định copy.",
+        "Nhanh nhất: tab Cấu hình, khối Ánh xạ symbol, tab con Theo quy tắc. Khai hậu tố "
+        "(hoặc tiền tố) của hai sàn — ví dụ Master để trống, Client .c — bấm Xem trước, rồi "
+        "bấm Lưu.",
+        "Cặp nào tên khác hẳn (GOLD ↔ XAUUSD) thì khai tay: chọn symbol bên Master, rồi symbol "
+        "tương ứng bên Client, ở form bên dưới. Trang đã đề xuất sẵn cặp khớp nếu tìm được.",
     ),
     "hd_ld_anh_xa_kiem": "Khối Ánh xạ symbol có ít nhất một dòng đang bật cho mỗi Client.",
     "hd_ld_anh_xa_bay": ("Thiếu ánh xạ thì MỌI lệnh của Master bị bỏ qua TRONG IM LẶNG: không "
@@ -700,6 +704,30 @@ UI = {
     "btn_close": "Đóng",
 
     "map_title": "Ánh xạ symbol",
+    "map_tab_quy_tac": "Theo quy tắc tiền tố / hậu tố",
+    "map_tab_tay": "Khai tay từng cặp",
+    "map_tay_hint": ("Cho cặp tên khác hẳn nhau (GOLD ↔ XAUUSD, US30 ↔ DJ30) mà quy tắc không "
+                     "tính ra được. Khai tay luôn thắng quy tắc."),
+    "map_rule_hint": ("Mỗi sàn đặt tên theo một quy ước chung: HFM để XAUUSD trần, Connext thêm "
+                      "hậu tố .c, có sàn thêm tiền tố c. Khai quy ước của hai bên một lần, bấm Xem "
+                      "trước, rồi bấm Lưu. Cặp nào tên khác hẳn thì dùng tab Khai tay từng cặp."),
+    "map_rule_master_tien_to": "Tiền tố phía Master",
+    "map_rule_master_hau_to": "Hậu tố phía Master",
+    "map_rule_client_tien_to": "Tiền tố phía Client",
+    "map_rule_client_hau_to": "Hậu tố phía Client",
+    "map_rule_preview": "Xem trước",
+    "map_rule_save": "Lưu quy tắc",
+    "map_rule_save_n": "Lưu quy tắc + {n} cặp mới",
+    "map_rule_luu_mot": "Lưu cặp này",
+    "map_rule_cot_trang_thai": "Trạng thái",
+    "map_rule_save_hint": "Mỗi cặp vẫn được kiểm với sàn Client trước khi lưu.",
+    "map_rule_trong": "Master chưa báo symbol nào — EA Master đã bắt tay chưa?",
+    "map_rule_tt_MOI": "mới, lưu được",
+    "map_rule_tt_DA_CO": "đã có, trùng",
+    "map_rule_tt_KHAC_TAY": "đã khai tay KHÁC — giữ bản khai tay",
+    "map_rule_tt_KHONG_CO": "sàn Client KHÔNG có symbol này — khai tay nếu cần",
+    "map_rule_ty_le": ("Contract size khác: 1 lot Master = {x} lot Client. Bridge tự quy đổi để "
+                       "giữ đúng giá trị."),
     "map_master_symbol": "Symbol phía Master",
     "map_client_symbol": "Symbol phía Client",
     "map_add": "Thêm ánh xạ",

@@ -20,8 +20,13 @@ from bridge.clock import to_iso
 from bridge.config import load_config
 from bridge.db.repo import Database
 from bridge.ops import (
+    QT_DA_CO,
+    QT_KHAC_TAY,
+    QT_KHONG_CO,
+    QT_MOI,
     VAI_TRO_AGENT,
     LoiCauHinh,
+    ap_dung_quy_tac,
     bao_tri_hang_ngay,
     cap_token,
     dat_duong_dong_master,
@@ -36,6 +41,7 @@ from bridge.ops import (
     kiem_chung_ban_sao_luu,
     kiem_reason_client,
     kiem_reason_master,
+    luu_quy_tac,
     sao_luu,
     sua_client,
     tao_agent,
@@ -43,6 +49,7 @@ from bridge.ops import (
     tat_anh_xa,
     thu_hoi_token,
     thu_muc_sao_luu,
+    xem_truoc_quy_tac,
     xoa_anh_xa,
     xoa_client,
 )
@@ -87,6 +94,8 @@ CAU_LOI: dict[str, str] = {
     "DUONG_LA": "{truong} = {gia_tri} khong hop le (EA hoac UI).",
     "THIEU_SYMBOL": "Thieu symbol phia Client. Vi du: --client-symbol XAUUSDm",
     "KHONG_CO_ANH_XA": "Khong co anh xa cho {master_symbol}",
+    "QUY_TAC_CO_KHOANG_TRANG": ("Tien to/hau to {gia_tri!r} co khoang trang o giua ({truong}). "
+                                "Ten symbol khong bao gio co."),
     "SAN_KHONG_CO_SYMBOL": "San Client chua bao co symbol {client_symbol!r}.",
     "KHOA_NGOAI_DANH_SACH": "Khoa {khoa} khong sua duoc bang lenh nay.",
     "GIA_TRI_LA": "Gia tri {gia_tri!r} khong hop le cho {khoa}.",
@@ -497,6 +506,51 @@ def lenh_anh_xa_symbol(db: Database, args: argparse.Namespace) -> int:
     return 0
 
 
+#: Chữ in cho từng trạng thái xem trước — không dấu, như mọi câu của CLI (D-16).
+_TRANG_THAI_QUY_TAC = {
+    QT_MOI: "MOI (luu duoc)",
+    QT_DA_CO: "da co, trung",
+    QT_KHAC_TAY: "da khai tay KHAC",
+    QT_KHONG_CO: "KHONG CO tren san Client",
+}
+
+
+def lenh_quy_tac_symbol(db: Database, args: argparse.Namespace) -> int:
+    """Khai quy tắc tiền tố/hậu tố, in bảng xem trước, và lưu khi có `--ap-dung` (D-45)."""
+    try:
+        quy_tac = luu_quy_tac(db, args.client_id, args.master_tien_to, args.master_hau_to,
+                              args.client_tien_to, args.client_hau_to)
+        dong = xem_truoc_quy_tac(db, args.client_id, quy_tac)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    print(f"Quy tac {args.client_id}: Master tien to {quy_tac.master_tien_to!r} hau to "
+          f"{quy_tac.master_hau_to!r} | Client tien to {quy_tac.client_tien_to!r} hau to "
+          f"{quy_tac.client_hau_to!r}")
+    if not dong:
+        print("Master chua day symbol nao len (EA Master da bat tay chua?).")
+        return 0
+    print(f"{'symbol Master':<16} {'symbol Client':<16} trang thai")
+    for d in dong:
+        ghi = _TRANG_THAI_QUY_TAC[d["trang_thai"]]
+        if d.get("anh_xa_hien_co") and d["trang_thai"] != QT_DA_CO:
+            ghi += f" (dang anh xa toi {d['anh_xa_hien_co']})"
+        if d["ty_le_contract"]:
+            ghi += f"  | contract khac: 1 lot Master = {d['ty_le_contract']:g} lot Client"
+        print(f"  {d['master_symbol']:<14} {d['client_symbol']:<16} {ghi}")
+
+    moi = [d["master_symbol"] for d in dong if d["trang_thai"] == QT_MOI]
+    if not args.ap_dung:
+        if moi:
+            print(f"{len(moi)} dong MOI. Chay lai kem --ap-dung de luu.")
+        return 0
+    try:
+        da_luu = ap_dung_quy_tac(db, args.client_id, moi)
+    except LoiCauHinh as exc:
+        return _in_loi(exc)
+    print(f"Da luu {len(da_luu)} anh xa.")
+    return 0
+
+
 def lenh_them_client(db: Database, args: argparse.Namespace) -> int:
     """Tạo dòng ``client_account`` cho một agent CLIENT.
 
@@ -760,6 +814,16 @@ def build_parser() -> argparse.ArgumentParser:
     ax.add_argument("--tat", action="store_true", help="Tat anh xa nay (dong van con trong bang)")
     ax.add_argument("--xoa", action="store_true", help="Xoa han anh xa nay khoi bang")
 
+    qt = sub.add_parser("quy-tac-symbol",
+                        help="Khai tien to/hau to symbol hai san, xem truoc, --ap-dung de luu")
+    qt.add_argument("client_id")
+    qt.add_argument("--master-tien-to", dest="master_tien_to")
+    qt.add_argument("--master-hau-to", dest="master_hau_to")
+    qt.add_argument("--client-tien-to", dest="client_tien_to")
+    qt.add_argument("--client-hau-to", dest="client_hau_to")
+    qt.add_argument("--ap-dung", dest="ap_dung", action="store_true",
+                    help="Luu moi dong MOI thanh anh xa (khong ghi de anh xa da khai tay)")
+
     dl = sub.add_parser("dat-lai", help="Xoa lich su (va cau hinh) -- bat go dung cum xac nhan")
     dl.add_argument("muc", choices=("du-lieu", "tat-ca"),
                     help="du-lieu: giu cau hinh. tat-ca: xoa ca client/anh xa/khoa he thong")
@@ -819,6 +883,8 @@ def main(argv: list[str] | None = None) -> int:
             return lenh_tinh_hinh(db, args, db_path)
         if args.lenh == "anh-xa-symbol":
             return lenh_anh_xa_symbol(db, args)
+        if args.lenh == "quy-tac-symbol":
+            return lenh_quy_tac_symbol(db, args)
         if args.lenh == "them-client":
             return lenh_them_client(db, args)
         if args.lenh == "gioi-han-client":

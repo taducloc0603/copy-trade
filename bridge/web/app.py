@@ -29,6 +29,8 @@ from bridge.labels_vi import LOI_CAU_HINH, UI
 from bridge.logging_setup import get_logger
 from bridge.ops import (
     LoiCauHinh,
+    QuyTacSymbol,
+    ap_dung_quy_tac,
     cap_token,
     dat_duong_dong_master,
     dat_lai_lich_su,
@@ -37,12 +39,14 @@ from bridge.ops import (
     dat_tich_huong_dan,
     huy_client_moi,
     khai_anh_xa,
+    luu_quy_tac,
     sua_client,
     sua_khoa_he_thong,
     tao_agent,
     tao_client,
     tao_client_moi,
     tat_anh_xa,
+    xem_truoc_quy_tac,
     xoa_anh_xa,
     xoa_client,
 )
@@ -384,6 +388,37 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
         except LoiCauHinh as exc:
             return _tra_loi(exc)
         return {"ok": True}
+
+    # -- quy tắc tiền tố / hậu tố symbol (D-45) ----------------------------------------------
+
+    def _quy_tac_tu(body: dict[str, Any]) -> dict[str, Any]:
+        return {k: body.get(k) for k in
+                ("master_tien_to", "master_hau_to", "client_tien_to", "client_hau_to")}
+
+    @app.post("/api/symbol_rule/preview")
+    async def api_xem_truoc_quy_tac(request: Request) -> Any:
+        """Xem trước **không lưu gì**: gõ thử quy tắc, thấy ngay cặp nào ra, rồi mới quyết."""
+        body = await request.json()
+        try:
+            quy_tac = QuyTacSymbol(**{k: str(v or "").strip()
+                                      for k, v in _quy_tac_tu(body).items()})
+            dong = xem_truoc_quy_tac(dashboard.db, body.get("client_id") or "", quy_tac)
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        return {"ok": True, "dong": dong}
+
+    @app.post("/api/symbol_rule")
+    async def api_luu_quy_tac(request: Request) -> Any:
+        """Lưu quy tắc rồi lưu các cặp được chọn — một cú bấm, vì tách ra là quên nửa sau."""
+        body = await request.json()
+        client_id = body.get("client_id") or ""
+        try:
+            luu_quy_tac(dashboard.db, client_id, **_quy_tac_tu(body))
+            da_luu = ap_dung_quy_tac(dashboard.db, client_id, body.get("master_symbols") or [])
+        except LoiCauHinh as exc:
+            return _tra_loi(exc)
+        log.info("Dashboard luu quy tac symbol %s, %d anh xa", client_id, len(da_luu))
+        return {"ok": True, "da_luu": [d["master_symbol"] for d in da_luu]}
 
     @app.post("/api/system_config")
     async def api_khoa_he_thong(request: Request) -> Any:

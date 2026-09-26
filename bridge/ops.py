@@ -1182,7 +1182,17 @@ def de_xuat_anh_xa(db: Database, client_id: str) -> list[dict[str, Any]]:
     da_co = {r["master_symbol"] for r in db.query_all(
         "SELECT master_symbol FROM symbol_map WHERE client_id = ?", (client_id,))}
 
+    # Có quy tắc tiền tố/hậu tố (D-45) thì nó đi trước: đó là điều người dùng đã **khai**, còn phép
+    # so tên dưới đây chỉ là đoán. Symbol quy tắc không giải được mới rơi xuống phép đoán.
     ket: list[dict[str, Any]] = []
+    quy_tac = doc_quy_tac(db, client_id)
+    if not quy_tac.trong:
+        for dong in xem_truoc_quy_tac(db, client_id, quy_tac):
+            if dong["trang_thai"] == QT_MOI:
+                ket.append({"master_symbol": dong["master_symbol"],
+                            "client_symbol": dong["client_symbol"], "chac_chan": True})
+                da_co.add(dong["master_symbol"])
+
     for m in ds_master:
         if m["symbol"] in da_co:
             continue
@@ -1195,6 +1205,173 @@ def de_xuat_anh_xa(db: Database, client_id: str) -> list[dict[str, Any]]:
         ket.append({"master_symbol": m["symbol"], "client_symbol": c["symbol"],
                     "chac_chan": hang == 0 and phat == 0})
     return ket
+
+
+# =============================================================================================
+# Ánh xạ theo quy tắc tiền tố / hậu tố (D-45)
+# =============================================================================================
+#
+# Mỗi sàn đặt tên theo MỘT quy ước cho mọi symbol: HFM `XAUUSD`, Connext `XAUUSD.c`, Exness
+# `XAUUSDm`, có sàn thêm tiền tố `cXAUUSD`. Khai quy ước của hai bên một lần: tên Master → bỏ
+# tiền tố/hậu tố Master → **tên gốc** → gắn tiền tố/hậu tố Client → tìm trong Market Watch Client.
+#
+# Quy tắc **không** được tra lúc chạy. Nó sinh một danh sách để xem trước, và chỉ những dòng người
+# dùng bấm lưu mới thành `symbol_map` — cùng lý do với `de_xuat_anh_xa`: chọn sai symbol không báo
+# lỗi, nó copy sang một thị trường khác. Và khai tay luôn thắng: quy tắc không ghi đè dòng đã có.
+
+KHOA_MASTER_TIEN_TO = "master_symbol_prefix"
+KHOA_MASTER_HAU_TO = "master_symbol_suffix"
+
+#: Trạng thái một dòng xem trước. Chỉ `MOI` là lưu được.
+QT_MOI = "MOI"
+QT_DA_CO = "DA_CO"
+QT_KHAC_TAY = "KHAC_TAY"
+QT_KHONG_CO = "KHONG_CO"
+
+
+@dataclass(frozen=True)
+class QuyTacSymbol:
+    master_tien_to: str = ""
+    master_hau_to: str = ""
+    client_tien_to: str = ""
+    client_hau_to: str = ""
+
+    @property
+    def trong(self) -> bool:
+        return not (self.master_tien_to or self.master_hau_to
+                    or self.client_tien_to or self.client_hau_to)
+
+
+def ten_goc(symbol: str, tien_to: str, hau_to: str) -> str:
+    """Bỏ **đúng** tiền tố/hậu tố đã khai, không phân biệt hoa thường.
+
+    Symbol không mang chuỗi đó thì giữ nguyên: sàn hay để chỉ số không đuôi (`US30`) giữa các cặp
+    tiền có đuôi. Không bỏ nếu bỏ xong không còn gì.
+    """
+    goc = symbol
+    if tien_to and goc.upper().startswith(tien_to.upper()) and len(goc) > len(tien_to):
+        goc = goc[len(tien_to):]
+    if hau_to and goc.upper().endswith(hau_to.upper()) and len(goc) > len(hau_to):
+        goc = goc[:-len(hau_to)]
+    return goc
+
+
+def ghep_ten(goc: str, tien_to: str, hau_to: str) -> str:
+    return f"{tien_to}{goc}{hau_to}"
+
+
+def _chuan_hoa_phan_ten(gia_tri: Any, truong: str) -> str:
+    """Tiền tố/hậu tố: bỏ khoảng trắng hai đầu, từ chối khoảng trắng ở giữa (tên symbol không có)."""
+    s = str(gia_tri or "").strip()
+    if any(ch.isspace() for ch in s):
+        raise LoiCauHinh("QUY_TAC_CO_KHOANG_TRANG", truong=truong, gia_tri=s)
+    return s
+
+
+def doc_quy_tac(db: Database, client_id: str) -> QuyTacSymbol:
+    client = db.get_client_account(client_id)
+    if client is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+    return QuyTacSymbol(
+        master_tien_to=db.get_config(KHOA_MASTER_TIEN_TO, "") or "",
+        master_hau_to=db.get_config(KHOA_MASTER_HAU_TO, "") or "",
+        client_tien_to=client["symbol_prefix"] or "",
+        client_hau_to=client["symbol_suffix"] or "")
+
+
+def luu_quy_tac(db: Database, client_id: str, master_tien_to: Any = None,
+                master_hau_to: Any = None, client_tien_to: Any = None,
+                client_hau_to: Any = None) -> QuyTacSymbol:
+    """Lưu quy tắc. `None` = giữ nguyên giá trị cũ; chuỗi rỗng = không có tiền tố/hậu tố.
+
+    Quy tắc Master dùng chung cho mọi Client (chỉ có một Master).
+    """
+    if db.get_client_account(client_id) is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+    doi_master = {k: _chuan_hoa_phan_ten(v, k) for k, v in
+                  ((KHOA_MASTER_TIEN_TO, master_tien_to), (KHOA_MASTER_HAU_TO, master_hau_to))
+                  if v is not None}
+    doi_client = {k: _chuan_hoa_phan_ten(v, k) for k, v in
+                  (("symbol_prefix", client_tien_to), ("symbol_suffix", client_hau_to))
+                  if v is not None}
+    for khoa, gia_tri in doi_master.items():
+        db.set_config(khoa, gia_tri)
+    if doi_client:
+        with db.transaction() as conn:
+            for cot, gia_tri in doi_client.items():
+                conn.execute(f"UPDATE client_account SET {cot} = ?, updated_at = ? "
+                             "WHERE client_id = ?", (gia_tri, utc_now_iso(), client_id))
+    quy_tac = doc_quy_tac(db, client_id)
+    log.info("Quy tac symbol %s: %s", client_id, quy_tac)
+    return quy_tac
+
+
+def _ty_le_contract(master: dict[str, Any], client: dict[str, Any]) -> float | None:
+    """`cs_master / cs_client` khi khác nhau — đúng tỷ lệ sizing dùng để giữ giá trị danh nghĩa."""
+    m, c = master.get("contract_size"), client.get("contract_size")
+    if not m or not c or float(m) == float(c):
+        return None
+    return float(m) / float(c)
+
+
+def xem_truoc_quy_tac(db: Database, client_id: str,
+                      quy_tac: QuyTacSymbol | None = None) -> list[dict[str, Any]]:
+    """Mỗi symbol Master một dòng: symbol Client tính theo quy tắc, và trạng thái của nó.
+
+    `quy_tac` truyền vào để xem thử trước khi lưu; bỏ trống thì dùng quy tắc đã lưu.
+    """
+    if quy_tac is None:
+        quy_tac = doc_quy_tac(db, client_id)
+    client = db.get_client_account(client_id)
+    if client is None:
+        raise LoiCauHinh("KHONG_CO_CLIENT", client_id=client_id)
+    master = db.query_one("SELECT agent_id FROM agent WHERE role = 'MASTER' LIMIT 1")
+    ds_master = symbol_cua_agent(db, master["agent_id"] if master else None)
+    # Tra không phân biệt hoa thường, nhưng giữ **đúng cách viết** của sàn Client để lưu.
+    ds_client = {c["symbol"].upper(): c for c in symbol_cua_agent(db, client["agent_id"])}
+    da_co = {r["master_symbol"]: r["client_symbol"] for r in db.query_all(
+        "SELECT master_symbol, client_symbol FROM symbol_map WHERE client_id = ?", (client_id,))}
+
+    ket: list[dict[str, Any]] = []
+    for m in ds_master:
+        goc = ten_goc(m["symbol"], quy_tac.master_tien_to, quy_tac.master_hau_to)
+        tinh_ra = ghep_ten(goc, quy_tac.client_tien_to, quy_tac.client_hau_to)
+        c = ds_client.get(tinh_ra.upper())
+        dong: dict[str, Any] = {"master_symbol": m["symbol"], "ten_goc": goc,
+                                "client_symbol": c["symbol"] if c else tinh_ra,
+                                "ty_le_contract": None, "digits": None}
+        if m["symbol"] in da_co:
+            dong["anh_xa_hien_co"] = da_co[m["symbol"]]
+        # `KHONG_CO` xét TRƯỚC `KHAC_TAY`: người đang dò quy tắc cần biết quy tắc của mình không
+        # khớp gì trên sàn Client, chứ không phải nghe "đã khai tay khác" rồi tưởng là khớp.
+        if c is None:
+            dong["trang_thai"] = QT_KHONG_CO
+        elif m["symbol"] in da_co:
+            dong["trang_thai"] = QT_DA_CO if da_co[m["symbol"]] == c["symbol"] else QT_KHAC_TAY
+        else:
+            dong["trang_thai"] = QT_MOI
+        if c is not None:
+            dong["ty_le_contract"] = _ty_le_contract(m, c)
+            dong["digits"] = [m["digits"], c["digits"]]
+        ket.append(dong)
+    return ket
+
+
+def ap_dung_quy_tac(db: Database, client_id: str, master_symbols: list[str]) -> list[dict[str, Any]]:
+    """Lưu các dòng `MOI` người dùng đã chọn. Trả về những dòng **đã** lưu.
+
+    Tính lại danh sách ở đây chứ không tin cái trình duyệt gửi lên: giữa lúc xem và lúc bấm, một
+    dòng có thể đã được khai tay, hoặc symbol đã rời Market Watch. Dòng nào không còn `MOI` thì bỏ
+    qua — không ghi đè ánh xạ tay. Mỗi dòng vẫn đi qua `khai_anh_xa` để giữ đúng phép kiểm với sàn.
+    """
+    chon = {s.strip() for s in master_symbols if s and s.strip()}
+    da_luu = []
+    for dong in xem_truoc_quy_tac(db, client_id):
+        if dong["master_symbol"] in chon and dong["trang_thai"] == QT_MOI:
+            khai_anh_xa(db, client_id, dong["master_symbol"], dong["client_symbol"])
+            da_luu.append(dong)
+    log.info("Ap dung quy tac symbol %s: luu %d/%d dong", client_id, len(da_luu), len(chon))
+    return da_luu
 
 
 # =============================================================================================

@@ -686,6 +686,101 @@ function khoiMaster(el) {
   el.appendChild(box);
 }
 
+// Quy tac tien to / hau to (D-45). Khai quy uoc dat ten cua hai san MOT lan, xem truoc cac cap
+// tinh ra, roi bam luu. Khong tu tao: danh sach chi thanh anh xa khi nguoi dung bam, va server
+// tinh LAI danh sach luc luu chu khong tin cai trinh duyet gui len.
+//
+// KHONG dung o tich. Ban dau co, va o tich troi ra giua dong, cach xa chu cua chinh no -- nguoi
+// dung khong biet no thuoc dong nao (2026-09-26). Nay la bang, va nut Luu nam NGAY TREN dong cua no.
+function veQuyTacSymbol(box) {
+  box.appendChild(nhan(UI.map_rule_hint, "ghi-chu"));
+
+  const chonClient = oChon(null, CAU_HINH.clients.map(
+    (c) => ({ gia_tri: c.client_id, nhan: c.client_id })));
+  const o = { master_tien_to: oChu(""), master_hau_to: oChu(""),
+              client_tien_to: oChu(""), client_hau_to: oChu("") };
+  const ketQua = document.createElement("div");
+  const luu = nut(UI.map_rule_save, "chinh");
+  let moi = [];                        // master_symbol cua cac dong MOI o lan xem truoc gan nhat
+  const datMoi = (ds) => {
+    moi = ds;
+    luu.textContent = moi.length ? UI.map_rule_save_n.replace("{n}", moi.length) : UI.map_rule_save;
+  };
+  const napQuyTac = () => {
+    const qt = (CAU_HINH.quy_tac_symbol || {})[chonClient.value] || {};
+    for (const k of Object.keys(o)) o[k].value = qt[k] || "";
+    ketQua.textContent = "";
+    datMoi([]);
+  };
+  // Doi o quy tac la ket qua cu het dung: xoa di, de nut Luu khong mang theo cap cua quy tac cu.
+  for (const k of Object.keys(o)) o[k].oninput = () => { ketQua.textContent = ""; datMoi([]); };
+  chonClient.onchange = napQuyTac;
+  box.append(hang(UI.map_client, chonClient),
+             hang(UI.map_rule_master_tien_to, o.master_tien_to),
+             hang(UI.map_rule_master_hau_to, o.master_hau_to),
+             hang(UI.map_rule_client_tien_to, o.client_tien_to),
+             hang(UI.map_rule_client_hau_to, o.client_hau_to));
+  napQuyTac();
+
+  const giaTri = () => {
+    const v = { client_id: chonClient.value };
+    for (const k of Object.keys(o)) v[k] = o[k].value;
+    return v;
+  };
+  const guiLuu = (ds) => ghiCauHinh("/api/symbol_rule",
+                                    Object.assign(giaTri(), { master_symbols: ds }));
+
+  // Chu cua tung trang thai nam o labels_vi.py (map_rule_tt_*): JS khong tu dung cau (D-16).
+  const veBang = (dong) => {
+    ketQua.textContent = "";
+    datMoi(dong.filter((d) => d.trang_thai === "MOI").map((d) => d.master_symbol));
+    if (!dong.length) { ketQua.appendChild(nhan(UI.map_rule_trong, "canh-bao-nho")); return; }
+    const bang = document.createElement("table");
+    const dau = bang.createTHead().insertRow();
+    for (const h of [UI.map_master_symbol, UI.map_client_symbol, UI.map_rule_cot_trang_thai, ""]) {
+      const th = document.createElement("th");
+      th.textContent = h;
+      dau.appendChild(th);
+    }
+    const than = bang.createTBody();
+    for (const d of dong) {
+      const tr = than.insertRow();
+      tr.insertCell().textContent = d.master_symbol;
+      tr.insertCell().textContent = d.client_symbol;
+      const oTT = tr.insertCell();
+      let chu = UI["map_rule_tt_" + d.trang_thai] || d.trang_thai;
+      if (d.anh_xa_hien_co && d.trang_thai !== "DA_CO") chu += " (" + d.anh_xa_hien_co + ")";
+      oTT.appendChild(nhan(chu, "tt-" + d.trang_thai));
+      if (d.ty_le_contract) {
+        oTT.appendChild(nhan(UI.map_rule_ty_le.replace(
+          "{x}", String(Number(d.ty_le_contract.toPrecision(6)))), "ghi-chu"));
+      }
+      const oNut = tr.insertCell();
+      if (d.trang_thai === "MOI") {
+        const b = nut(UI.map_rule_luu_mot);
+        b.onclick = () => bamCho(b, () => guiLuu([d.master_symbol]));
+        oNut.appendChild(b);
+      }
+    }
+    ketQua.appendChild(bang);
+  };
+
+  const xem = nut(UI.map_rule_preview);
+  xem.onclick = () => bamCho(xem, async () => {
+    const r = await goi("/api/symbol_rule/preview",
+                        { method: "POST", body: JSON.stringify(giaTri()) });
+    if (!r.ok) { alert(r.data.message || r.data.error || UI.loi_khong_ro); return; }
+    veBang(r.data.dong || []);
+  });
+  box.append(chanKhoi(xem), ketQua);
+
+  luu.onclick = () => bamCho(luu, () => guiLuu(moi));
+  box.appendChild(chanKhoi(luu, UI.map_rule_save_hint));
+}
+
+// Tab con dang chon cua khoi Anh xa symbol. Nam NGOAI ham vi `taiCauHinh()` ve lai ca tab moi lan luu.
+let tabAnhXa = "quy-tac";
+
 function khoiAnhXa(el) {
   const box = khoi(UI.map_title, "khoi-anh-xa");
   for (const x of CAU_HINH.symbol_maps) {
@@ -718,6 +813,30 @@ function khoiAnhXa(el) {
     box.appendChild(d);
   }
 
+  // Hai cach tao anh xa, MOT muc tieu: hai tab con trong cung khoi (2026-09-26). Hai khoi rieng
+  // truoc do lam nguoi ta tuong la hai thu khac nhau. Tab dang chon giu qua moi lan `taiCauHinh()`
+  // ve lai trang -- bam Luu o tab Khai tay ma bi day ve tab Quy tac la mat cho dang lam.
+  const thanhTab = document.createElement("div");
+  thanhTab.className = "hang-tab-con";
+  const vung = { "quy-tac": document.createElement("div"), "tay": document.createElement("div") };
+  const chonTab = (ma) => {
+    tabAnhXa = ma;
+    for (const [k, v] of Object.entries(vung)) v.hidden = k !== ma;
+    thanhTab.querySelectorAll(".tab-con").forEach(
+      (b) => b.classList.toggle("active", b.dataset.ma === ma));
+  };
+  for (const [ma, chu] of [["quy-tac", UI.map_tab_quy_tac], ["tay", UI.map_tab_tay]]) {
+    const b = nut(chu, "tab-con");
+    b.dataset.ma = ma;
+    b.onclick = () => chonTab(ma);
+    thanhTab.appendChild(b);
+  }
+  box.append(thanhTab, vung["quy-tac"], vung["tay"]);
+  if (CAU_HINH.clients.length) veQuyTacSymbol(vung["quy-tac"]);
+  const tay = vung["tay"];
+  tay.appendChild(nhan(UI.map_tay_hint, "ghi-chu"));
+  chonTab(tabAnhXa);
+
   const chonClient = oChon(null, CAU_HINH.clients.map(
     (c) => ({ gia_tri: c.client_id, nhan: c.client_id })));
 
@@ -744,14 +863,14 @@ function khoiAnhXa(el) {
     return moi;
   };
 
-  box.append(hang(UI.map_client, chonClient), hang(UI.map_master_symbol, sMaster),
+  tay.append(hang(UI.map_client, chonClient), hang(UI.map_master_symbol, sMaster),
              hang(UI.map_client_symbol, sClient), luuY);
   let oClient = veOClient();
   chonClient.onchange = () => { oClient = veOClient(); veDeXuat(); };
 
   // De xuat, khong tu tao: chon sai symbol khong bao loi, no chi copy sang mot thi truong khac.
   const hopDeXuat = document.createElement("div");
-  box.appendChild(hopDeXuat);
+  tay.appendChild(hopDeXuat);
   function veDeXuat() {
     hopDeXuat.textContent = "";
     const ds = (CAU_HINH.de_xuat_anh_xa || {})[chonClient.value] || [];
@@ -782,7 +901,7 @@ function khoiAnhXa(el) {
     master_symbol: sMaster.value,
     client_symbol: oClient.value,
   });
-  box.appendChild(chanKhoi(them, UI.map_add_hint));
+  tay.appendChild(chanKhoi(them, UI.map_add_hint));
   el.appendChild(box);
 }
 
