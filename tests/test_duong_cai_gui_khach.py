@@ -198,7 +198,8 @@ def test_don_ban_khach_khai_tuong_minh_tung_duong(project_root: Path) -> None:
     noi = _doc(project_root, "scripts/cai-dat.ps1")
     dau = noi.index("$script:DuongNoiBo = @(")
     danh_sach = noi[dau : noi.index(")", dau)]
-    for phai_co in ("PROGRESS.md", "plan", "NOI-BO-nhieu-client.md", "DECISIONS.md"):
+    for phai_co in ("PROGRESS.md", "plan", "spike", "NOI-BO-nhieu-client.md",
+                    "DECISIONS.md"):
         assert phai_co in danh_sach, f"thieu {phai_co} trong danh sach don"
     for phai_giu in ("CAI-DAT-VPS.md", "RUNBOOK.md"):
         assert phai_giu not in danh_sach, f"{phai_giu} la tai lieu khach CAN -- khong duoc xoa"

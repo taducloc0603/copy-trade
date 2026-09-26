@@ -286,6 +286,8 @@ function truoc_khi_cap_nhat([string] $venvPy) {
 $script:DuongNoiBo = @(
     "PROGRESS.md",
     "plan",
+    # Ban thu ky thuat, vd. named pipe o huong A: cong cu cua nguoi phat trien, khong phai cua khach.
+    "spike",
     "docs\NOI-BO-nhieu-client.md",
     "docs\BACKLOG.md",
     "docs\DECISIONS.md",
