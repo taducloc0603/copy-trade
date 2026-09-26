@@ -9,6 +9,10 @@ dependencies = [
     # Form dang nhap cua dashboard (phase 9) can multipart.
     "python-multipart>=0.0.9",
     "uvicorn>=0.29",
+    # `uvicorn` tran KHONG kem thu vien WebSocket: `/ws` cua dashboard tra 404 va log ghi "No
+    # supported WebSocket library detected" (2026-09-26). Khai rieng `websockets` thay vi
+    # `uvicorn[standard]` de khong keo theo watchfiles/httptools/pyyaml ma Bridge khong dung.
+    "websockets>=12",
 ]
 
 [project.optional-dependencies]

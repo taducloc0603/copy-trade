@@ -14,6 +14,7 @@ nhất, nên trang này không được phụ thuộc bất cứ thứ gì ngoà
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -528,15 +529,42 @@ def tao_app(dashboard: Dashboard) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws(socket: WebSocket) -> None:
+        """Đẩy ảnh chụp mỗi `WS_PUSH_SEC`, và **đọc** song song để biết lúc trình duyệt rời đi.
+
+        Bản đầu chỉ gửi, không bao giờ đọc — nên nó không bao giờ nhận được tin ngắt kết nối, chỉ
+        biết client đã đi khi một lần gửi ném lỗi. Kiểu lỗi đó tuỳ thư viện (có kiểu không phải
+        `ConnectionError`), và có môi trường gửi vào socket đã đóng mà **không** lỗi, nên vòng gửi
+        chạy mãi. Lộ ra ngày 2026-09-26, lần đầu `/ws` chạy thật (trước đó nó trả 404 vì thiếu
+        thư viện WebSocket) và lần đầu có test chạm tới nó.
+        """
         await socket.accept()
-        try:
+
+        async def day() -> None:
             while True:
                 await socket.send_text(json.dumps(dashboard.anh_chup(), ensure_ascii=False,
                                                   default=str))
                 await asyncio.sleep(WS_PUSH_SEC)
-        except (WebSocketDisconnect, ConnectionError):
-            return
-        except Exception:
-            log.exception("Loi trong vong day WebSocket")
+
+        async def doc() -> None:
+            # Dashboard không gửi gì lên; vòng này chỉ để nhận tin ngắt kết nối.
+            with contextlib.suppress(WebSocketDisconnect):
+                while True:
+                    await socket.receive_text()
+
+        # Vòng nào dừng trước thì dừng luôn vòng kia: client đi thì thôi gửi, còn vòng gửi chết
+        # (ví dụ `anh_chup` ném lỗi) thì đóng kết nối để trình duyệt tự nối lại, thay vì giữ một
+        # kết nối sống mà không bao giờ có dữ liệu.
+        vong_day, vong_doc = asyncio.create_task(day()), asyncio.create_task(doc())
+        xong, con = await asyncio.wait({vong_day, vong_doc}, return_when=asyncio.FIRST_COMPLETED)
+        for t in con:
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await t
+        if vong_day in xong and vong_day.exception() is not None:
+            loi = vong_day.exception()
+            if not isinstance(loi, WebSocketDisconnect | ConnectionError):
+                log.warning("Vong day WebSocket dung: %r", loi)
+            with contextlib.suppress(Exception):
+                await socket.close()
 
     return app

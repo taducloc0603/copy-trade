@@ -4015,3 +4015,13 @@ khac contract size van vao danh sach kem ty le (sizing da quy doi).
   4 cot, nut "Luu cap nay" tren tung dong MOI, nut chinh "Luu quy tac + N cap moi". Gop hai khoi
   quy tac va khai tay thanh MOT khoi "Anh xa symbol" voi hai tab con (lop `.tab-con` rieng, KHONG
   dung lai `.tab` vi thanh tab chinh gan su kien theo lop do). Tab dang chon giu qua moi lan luu.
+- **WebSocket `/ws` tra 404 tren moi ban cai** (co tu truoc): `pyproject.toml` khai `uvicorn` tran,
+  khong kem thu vien WebSocket. Sua: them `websockets>=12` (khong dung `uvicorn[standard]`, keo theo
+  watchfiles/httptools/pyyaml vo ich). `cai-dat.ps1` chay `pip install -e` ca luc `-CapNhat`, nen
+  khach nhan ban sua o lan cap nhat toi.
+- Cho `/ws` chay that lan dau thi lo loi thu hai: handler chi GUI, khong bao gio DOC, nen khong biet
+  trinh duyet da di -- test dau tien TREO. Sua: vong doc chay song song, vong nao dung truoc thi
+  dung vong kia. Test moi noi ASGI truc tiep (TestClient chay app o luong khac, SQLite khong chiu)
+  va khoa ca "handler phai KET THUC khi client roi di". 1008 passed.
+- Do tren may dev sau khi sua: trang moi khong con loi console, 2 ket noi WebSocket giu mo toi 8080,
+  log Bridge sach.

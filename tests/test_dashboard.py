@@ -1494,3 +1494,42 @@ async def test_quy_tac_co_khoang_trang_thi_bao_loi_co_dau(client: httpx.AsyncCli
     assert r.json()["error"] == "QUY_TAC_CO_KHOANG_TRANG"
     assert "khoảng trắng" in r.json()["message"]
 
+
+# -- WebSocket ---------------------------------------------------------------------------------
+
+async def test_websocket_day_anh_chup_roi_dung_khi_trinh_duyet_roi_di(seeded_web: Database) -> None:
+    """`/ws` từng trả 404 trên mọi bản cài vì `uvicorn` trần không kèm thư viện WebSocket
+    (2026-09-26), và không test nào chạm tới nó. Lần đầu cho nó chạy thì lộ lỗi thứ hai: handler
+    chỉ gửi, không bao giờ đọc, nên không biết trình duyệt đã đi và vòng gửi chạy mãi.
+
+    Nói chuyện ASGI trực tiếp chứ không qua `TestClient`: cái đó chạy app ở luồng khác, còn kết
+    nối SQLite chỉ dùng được trong luồng tạo ra nó — Bridge thật thì chạy chung một vòng sự kiện.
+    """
+    import asyncio
+    import json
+
+    app = tao_app(Dashboard(seeded_web))
+    vao: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    ra: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    scope = {"type": "websocket", "path": "/ws", "raw_path": b"/ws", "query_string": b"",
+             "headers": [], "scheme": "ws", "server": ("127.0.0.1", 8080),
+             "client": ("127.0.0.1", 50000), "root_path": "", "subprotocols": [],
+             "asgi": {"version": "3.0"}}
+    await vao.put({"type": "websocket.connect"})
+    chay = asyncio.create_task(app(scope, vao.get, ra.put))
+
+    assert (await asyncio.wait_for(ra.get(), 5))["type"] == "websocket.accept"
+    anh = json.loads((await asyncio.wait_for(ra.get(), 5))["text"])
+    assert {"ui", "status", "metrics", "pairs", "findings_count"} <= set(anh)
+
+    await vao.put({"type": "websocket.disconnect", "code": 1001})
+    await asyncio.wait_for(chay, 5)   # treo o day = vong gui khong biet trinh duyet da di
+
+
+def test_pyproject_khai_thu_vien_websocket(project_root: Path) -> None:
+    """Thiếu dòng này thì dashboard vẫn chạy, chỉ là không bao giờ nhận cập nhật tức thời — hỏng
+    trong im lặng, đúng kiểu đã xảy ra. `TestClient` ở test trên KHÔNG cần thư viện này, nên phải
+    khoá riêng ở đây."""
+    phu_thuoc = tomllib.loads((project_root / "pyproject.toml").read_text(encoding="utf-8"))
+    ds = " ".join(phu_thuoc["project"]["dependencies"])
+    assert re.search(r"\bwebsockets\b|\bwsproto\b|uvicorn\[standard\]", ds)
