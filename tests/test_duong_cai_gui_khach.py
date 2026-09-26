@@ -141,6 +141,15 @@ def test_canh_bao_noi_ro_phai_giu_phien_rdp(project_root: Path) -> None:
     assert "kiem-tra.ps1" in noi
 
 
+def test_canh_bao_khong_con_day_mo_chart_theo_symbol(project_root: Path) -> None:
+    """Mục 4 cũ dặn "phai mo dung chart do" — đúng trước D-44, SAI từ khi clicker mở lệnh qua
+    Market Watch. File này in ra cuối mọi lần cài và cập nhật, nên nó phải nói điều mới."""
+    noi = _doc(project_root, "scripts/canh-bao.txt")
+    assert "CHI COPY DUOC MOT SYMBOL" not in noi
+    assert "Phai mo dung" not in noi
+    assert "MARKET WATCH" in noi
+
+
 def test_canh_bao_dung_so_muc_voi_tieu_de(project_root: Path) -> None:
     """Tiêu đề nói "7 viec" thì phải đúng bảy mục. Một con số lệch là một tài liệu mất tin."""
     noi = _doc(project_root, "scripts/canh-bao.txt")

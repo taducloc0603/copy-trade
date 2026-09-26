@@ -569,6 +569,19 @@ UI = {
     "hd_up_gan_lai_ea_bay": ("Đổi khung thời gian KHÔNG làm MT5 đọc lại .ex5 từ đĩa. Phải gỡ rồi "
                             "gắn lại, không có đường tắt nào."),
 
+    "hd_up_market_watch": "Mở Market Watch trên terminal Client và để luôn hiện",
+    "hd_up_market_watch_viec": (
+        "Trong terminal Client: bấm Ctrl+M. Khung Market Watch phải hiện ra và ĐỂ NGUYÊN, đừng đóng.",
+        "Mọi symbol bạn copy phải có một dòng trong đó. Thiếu thì chuột phải > Symbols > Show.",
+        "Terminal Master: EA chỉ cần gắn trên MỘT chart, symbol nào cũng được.",
+    ),
+    "hd_up_market_watch_kiem": ("Terminal Client hiện khung Market Watch, có đủ các symbol đang "
+                                "copy."),
+    "hd_up_market_watch_bay": ("Từ bản này, clicker mở lệnh Client bằng cách nhấp đúp đúng dòng "
+                               "symbol trong Market Watch — không còn theo chart đang mở nữa. Đóng "
+                               "Market Watch là MỌI lệnh mở bị từ chối (alert \"Khong thay Market "
+                               "Watch\"), và không có gì khác báo cho bạn."),
+
     "hd_up_agent_online": "Kiểm mọi agent ONLINE lại",
     "hd_up_agent_online_viec": (
         "Chạy lệnh liet-ke dưới đây.",

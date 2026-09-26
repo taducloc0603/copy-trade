@@ -625,6 +625,11 @@ BUOC_SAU_UPDATE: tuple[Buoc, ...] = (
     Buoc("UP_GAN_LAI_EA", "hd_up_gan_lai_ea", (), NOI_MT5,
          "hd_up_gan_lai_ea_viec", "hd_up_gan_lai_ea_kiem", "hd_up_gan_lai_ea_bay",
          lenh=(("hd_lenh_bien_dich", "BIEN_DICH_EA"),)),
+    # D-44: clicker mở lệnh Client bằng cách nhấp đúp dòng Market Watch. Khách chạy bản cũ có thể đã
+    # đóng khung đó từ lâu (bản cũ chỉ cần một chart), và khi ấy MỌI lệnh mở bị từ chối — nên bước
+    # này phải có ở lần cập nhật, không chỉ ở lần cài đầu.
+    Buoc("UP_MARKET_WATCH", "hd_up_market_watch", (), NOI_MT5,
+         "hd_up_market_watch_viec", "hd_up_market_watch_kiem", "hd_up_market_watch_bay"),
     Buoc("UP_AGENT_ONLINE", "hd_up_agent_online",
          ("AGENT_CHUA_ONLINE", "CLICKER_CHUA_ONLINE"), NOI_POWERSHELL,
          "hd_up_agent_online_viec", "hd_up_agent_online_kiem", "hd_up_agent_online_bay",

@@ -29,9 +29,12 @@
     tu bat lai 3 gio sang. Day la chu dich. Dich vu tu bat lai KHONG
     co nghia la he thong dang copy lenh.
 
- 4. MOI TERMINAL CLIENT CHI COPY DUOC MOT SYMBOL (B-01).
-    Hop thoai New Order lay symbol theo chart dang mo. Phai mo dung
-    chart do va giu nguyen.
+ 4. TERMINAL CLIENT PHAI GIU MARKET WATCH LUON MO (D-44).
+    Clicker mo lenh Client bang cach nhap dup dung dong symbol trong
+    Market Watch (Ctrl+M) -- khong con theo chart dang mo. Dong khung
+    do la MOI lenh mo bi tu choi. Moi symbol dang copy phai co mot
+    dong o do. Phia Master: EA gan tren MOT chart, symbol nao cung
+    duoc -- no bat lenh cua moi symbol trong tai khoan.
 
  5. GAN EA LEN CHART PHAI LAM TAY.
     Cai terminal MT5, keo EA len chart, dien token -- khong tu dong

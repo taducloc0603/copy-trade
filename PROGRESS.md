@@ -4025,3 +4025,22 @@ khac contract size van vao danh sach kem ty le (sizing da quy doi).
   va khoa ca "handler phai KET THUC khi client roi di". 1008 passed.
 - Do tren may dev sau khi sua: trang moi khong con loi console, 2 ket noi WebSocket giu mo toi 8080,
   log Bridge sach.
+
+## 2026-09-26 -- Ra soat duong cai va duong cap nhat sau D-44/D-45
+
+Ba cho lech voi cach chay moi, da sua:
+- Muc "Sau khi cap nhat code" khong nhac mo Market Watch. Khach chay ban cu (mot chart) co the da
+  dong khung do tu lau -> MOI lenh mo bi tu choi. Them buoc `UP_MARKET_WATCH` (tu tich, noi MT5).
+- `canh-bao.txt` muc 4 van day "phai mo dung chart do" -- file in cuoi MOI lan cai va cap nhat.
+  Viet lai theo D-44, giu dung 7 muc; test chan cau cu quay lai.
+- `RUNBOOK.md`: bo "Phia Client giu chart cua symbol dang copy"; thay dong "tu choi vi symbol lech"
+  bang hai dong tra loi cho `Khong thay Market Watch` va `Khong dong Market Watch nao mo ra`.
+  Ban dau toi viet "lenh bi tu choi khong tu mo bu" -- sai: `rejected` duoc thu lai `max_retry` lan
+  (D-24). Doc code roi sua cau.
+
+Con mo, co y de rieng: CAP-NHAT.cmd chay cai-dat.ps1 BAN DANG CO tren dia, va PowerShell nap ca
+script tu dau, nen moi thay doi trong chinh cai-dat.ps1 chi co tac dung tu lan cap nhat SAU. Lan nay:
+`spike/` nam lai tren VPS mot lan cap nhat. Huong sua: sau `git pull`, neu cai-dat.ps1 doi thi chay
+lai ban moi cho cac buoc con lai.
+
+1009 test xanh (+1), ruff sach.
